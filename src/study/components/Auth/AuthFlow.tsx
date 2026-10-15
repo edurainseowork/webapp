@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthLayout } from './AuthLayout';
 import { TextLink } from './AuthFields';
 import { LoginView } from './LoginView';
@@ -29,11 +29,17 @@ const clearResetParams = () => {
 
 export function AuthFlow({ onAuthenticated, initialScreen = 'login' }: AuthFlowProps) {
   const [resetCode] = useState(readResetCode);
+  const [resetEmail, setResetEmail] = useState<string | undefined>();
   const [screen, setScreen] = useState<AuthScreen>(resetCode ? 'reset-password' : initialScreen);
   const [pendingSignup, setPendingSignup] = useState<SignUpData | null>(null);
   const [forgotEmail, setForgotEmail] = useState('');
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const [passwordWasReset, setPasswordWasReset] = useState(false);
+  // Show which account the reset link belongs to (Firebase checks the code)
+  useEffect(() => {
+    if (!resetCode) return;
+    authService.verifyResetCode(resetCode).then((email) => setResetEmail(email ?? undefined));
+  }, [resetCode]);
 
   const goTo = (next: AuthScreen) => {
     setScreen(next);
@@ -121,6 +127,7 @@ export function AuthFlow({ onAuthenticated, initialScreen = 'login' }: AuthFlowP
 
         {activeScreen === 'reset-password' && (
           <ResetPasswordView
+            email={resetEmail}
             onSubmit={async (newPassword) => {
               const res = await authService.confirmPasswordReset(resetCode ?? '', newPassword);
               if (res.ok) setPasswordWasReset(true);

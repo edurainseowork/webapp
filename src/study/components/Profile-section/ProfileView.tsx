@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import { PerformanceProjectionView } from './PerformanceProjectionView';
 import { SyllabusVelocityView } from './SyllabusVelocityView';
-import { AirRankDetailView } from './AirRankDetailView';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
