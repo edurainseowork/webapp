@@ -40,13 +40,14 @@ import { AiMentorView } from './components/AiMentorView';
 import { BookDoubtSessionView } from './components/askYourDoubt';
 import { BookmarksView } from './components/BookmarksView';
 import { EBookLibraryView } from './components/EBookLibraryView';
-import { AuthFlow } from './components/Auth/AuthFlow';
+import { useAuth } from './AuthGate';
 import { CoursesHub } from './components/Courses/CoursesHub';
 import { VaultResource, NotificationItem } from './types';
 
 export function App() {
-  // Auth — TODO: replace with your real session state (e.g. Firebase onAuthStateChanged)
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Signed-in student (AuthGate only renders App when there is one)
+  const { session, firstName, logout } = useAuth();
+  const initials = session.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'ST';
 
   // Navigation States
   const [activeNav, setActiveNav] = useState<'study-central' | 'pi' | 'library' | 'courses' | 'test-series' | 'arena' | 'profile'>('study-central');
@@ -119,8 +120,8 @@ export function App() {
   const handleLogout = () => {
     setIsProfileDropdownOpen(false);
     setActiveNav('study-central');
-    // TODO: also tear down the real session here (e.g. Firebase signOut)
-    setIsAuthenticated(false);
+    // Signing out returns AuthGate to the login screen
+    logout().catch((err) => console.error('Logout failed', err));
   };
 
   const handleEnrollBatch = (batchId: string) =>
@@ -213,10 +214,6 @@ export function App() {
     !searchQuery || v.title.toLowerCase().includes(searchQuery.toLowerCase()) || v.subject.toLowerCase().includes(searchQuery.toLowerCase()) || v.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  if (!isAuthenticated) {
-    return <AuthFlow onAuthenticated={() => setIsAuthenticated(true)} />;
-  }
-
   if (isEbookLibraryOpen) {
     return <EBookLibraryView onBack={() => setIsEbookLibraryOpen(false)} />;
   }
@@ -224,7 +221,7 @@ export function App() {
   if (isAiMentorPageOpen) {
     return (
       <AiMentorView
-        userName="Abhinav"
+        userName={firstName}
         onBack={() => setIsAiMentorPageOpen(false)}
       />
     );
@@ -374,16 +371,16 @@ export function App() {
           {/* User Avatar */}
           <div className="relative flex items-center gap-2 sm:gap-3 pl-1 sm:pl-3 border-l border-[#175A67]/20" ref={profileMenuRef}>
             <div className="text-right hidden sm:block leading-tight">
-              <span className="text-xs font-bold text-[#175A67] tracking-wide block">Hi, ABHINAV</span>
+              <span className="text-xs font-bold text-[#175A67] tracking-wide block">Hi, {firstName.toUpperCase()}</span>
             </div>
             <div
               className="relative cursor-pointer"
               onClick={() => setIsProfileDropdownOpen((o) => !o)}
-              title="Abhinav - Target JEE 2027"
+              title={session.name}
             >
               <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-[#175A67] to-[#2A707C] p-0.5 shadow-sm">
                 <div className="w-full h-full rounded-full bg-[#EAE3DE] flex items-center justify-center text-xs font-bold text-[#175A67]">
-                  AB
+                {initials}
                 </div>
               </div>
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#10B981] ring-2 ring-[#EAE3DE]" />
@@ -392,8 +389,8 @@ export function App() {
             {isProfileDropdownOpen && (
               <div className="absolute right-0 top-full mt-2 w-52 bg-white/95 backdrop-blur-md border border-[#175A67]/10 rounded-2xl shadow-xl py-1.5 z-50 overflow-hidden">
                 <div className="px-3.5 py-2.5 border-b border-[#175A67]/10">
-                  <p className="text-xs font-bold text-[#175A67]">Abhinav Sharma</p>
-                  <p className="text-[10px] text-[#2A707C] truncate">abhinav.sharma@example.com</p>
+                  <p className="text-xs font-bold text-[#175A67]">{session.name}</p>
+                  <p className="text-[10px] text-[#2A707C] truncate">{session.email}</p>
                 </div>
                 <button
                   onClick={() => {
@@ -509,7 +506,7 @@ export function App() {
                 }}
                 className="text-xs font-bold text-[#175A67] hover:underline"
               >
-                Abhinav Sharma
+                {session.name}
               </button>
 
               {/* Batch Selector inside mobile drawer */}
@@ -800,7 +797,7 @@ export function App() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
                 <div>
                   <div className="text-[#175A67] font-semibold text-base sm:text-lg">
-                    Welcome back, <span className="text-[#B8860B]">Gauransh</span>
+                    Welcome back, <span className="text-[#B8860B]">{firstName}</span>
                   </div>
                   <div className="text-xs text-[#2A707C]">
                     Target: IIT-JEE Advanced • Current Batch: <span className="font-bold text-[#175A67]">{selectedBatch}</span>
