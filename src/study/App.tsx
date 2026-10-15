@@ -37,12 +37,14 @@ import { PiView } from './components/PiView';
 import { CoursesView } from './components/CoursesView';
 import { TestSeriesView } from './components/TestSeriesView';
 import { ArenaView } from './components/ArenaView';
-import { AiMentorView } from './components/AiMentorView';
-import { BookDoubtSessionView } from './components/askYourDoubt';
-import { BookmarksView } from './components/BookmarksView';
+import { EBookLibraryView } from './components/EBookLibraryView';
+import { AuthFlow } from './components/Auth/AuthFlow';
 import { VaultResource, NotificationItem } from './types';
 
 export function App() {
+  // Auth — TODO: replace with your real session state (e.g. Firebase onAuthStateChanged)
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
   // Navigation States
   const [activeNav, setActiveNav] = useState<'study-central' | 'pi' | 'library' | 'courses' | 'test-series' | 'arena' | 'profile'>('study-central');
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,9 +58,7 @@ export function App() {
   // Modals
   const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
   const [isDoubtSolverOpen, setIsDoubtSolverOpen] = useState(false);
-  const [isAiMentorPageOpen, setIsAiMentorPageOpen] = useState(false);
-  const [isBookDoubtSessionOpen, setIsBookDoubtSessionOpen] = useState(false);
-  const [isBookmarksPageOpen, setIsBookmarksPageOpen] = useState(false);
+  const [isEbookLibraryOpen, setIsEbookLibraryOpen] = useState(false);
   const [selectedVaultItem, setSelectedVaultItem] = useState<VaultResource | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -109,8 +109,18 @@ export function App() {
 
   const handleLogout = () => {
     setIsProfileDropdownOpen(false);
-    // TODO: wire this up to your real auth/session teardown
-    console.log('Logging out...');
+    setActiveNav('study-central');
+    // TODO: also tear down the real session here (e.g. Firebase signOut)
+    setIsAuthenticated(false);
+  };
+
+  // "Your Ebook" opens the full E-Book library; the other library cards keep the detail modal
+  const handleOpenVaultItem = (item: VaultResource) => {
+    if (item.id === 'vault-combat') {
+      setIsEbookLibraryOpen(true);
+      return;
+    }
+    setSelectedVaultItem(item);
   };
   const batches = ['12th - IIT JEE', '11th - IIT JEE', 'Dropper - JEE Advanced', 'NEET-UG Premier'];
 
@@ -180,14 +190,14 @@ export function App() {
       title: 'ASK YOUR DOUBT',
       subtitle: '',
       icon: HelpCircle,
-      action: () => setIsBookDoubtSessionOpen(true),
+      action: () => setIsDoubtSolverOpen(true),
     },
     {
       id: 'sp3',
       title: 'AI- MENTOR',
       subtitle: '',
       icon: Bot,
-      action: () => setIsAiMentorPageOpen(true),
+      action: () => setIsDoubtSolverOpen(true),
     }
   ];
 
@@ -199,35 +209,12 @@ export function App() {
     !searchQuery || v.title.toLowerCase().includes(searchQuery.toLowerCase()) || v.subject.toLowerCase().includes(searchQuery.toLowerCase()) || v.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  if (isAiMentorPageOpen) {
-    return (
-      <AiMentorView
-        userName="Abhinav"
-        onBack={() => setIsAiMentorPageOpen(false)}
-      />
-    );
+  if (!isAuthenticated) {
+    return <AuthFlow onAuthenticated={() => setIsAuthenticated(true)} />;
   }
 
-  if (isBookDoubtSessionOpen) {
-    return (
-      <BookDoubtSessionView
-        onBack={() => setIsBookDoubtSessionOpen(false)}
-        onOpenMySessions={() => setIsPurchasesModalOpen(true)}
-      />
-    );
-  }
-
-  if (isBookmarksPageOpen) {
-    return (
-      <BookmarksView
-        onBack={() => setIsBookmarksPageOpen(false)}
-        onWatchVideo={(video) => console.log('Resuming video:', video.title)}
-        onOpenPdfViewer={() => console.log('Opening saved PDF viewer…')}
-        onOpenWatchLater={() => console.log('Opening Watch Later list…')}
-        onAddDocument={() => console.log('Add document to wishlist…')}
-        onClearHistory={() => console.log('Clearing watch history…')}
-      />
-    );
+  if (isEbookLibraryOpen) {
+    return <EBookLibraryView onBack={() => setIsEbookLibraryOpen(false)} />;
   }
 
   return (
@@ -661,7 +648,7 @@ export function App() {
                 <span>PI</span>
               </button>
 
-              {/* <button
+              <button
                 onClick={() => setActiveNav('library')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
                   activeNav === 'library'
@@ -671,7 +658,7 @@ export function App() {
               >
                 <Library className="w-4 h-4" />
                 <span>LIBRARY</span>
-              </button> */}
+              </button>
             </div>
 
             {/* Group: YOUR STUDY */}
@@ -839,15 +826,7 @@ export function App() {
                     return (
                       <div 
                         key={item.id}
-                        onClick={() => {
-                          if (item.id === 'vault-physics') {
-                            setIsBookmarksPageOpen(true);
-                          } else if (item.id === 'vault-chemistry') {
-                            setActiveNav('library');
-                          } else {
-                            setSelectedVaultItem(item);
-                          }
-                        }}
+                        onClick={() => handleOpenVaultItem(item)}
                         className="bg-white/60 hover:bg-white/85 backdrop-blur-md border border-white/80 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.05)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.09)] transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col items-center justify-between min-h-[190px] sm:min-h-[220px] active:scale-[0.98]"
                       >
                         <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#175A67] text-white rounded-2xl flex items-center justify-center shadow-md mb-2 sm:mb-3">
