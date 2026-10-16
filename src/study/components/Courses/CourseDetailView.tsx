@@ -359,7 +359,7 @@ export function CourseDetailView({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30]">
+    <div className="relative w-full rounded-[24px] overflow-hidden flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30] min-h-[calc(100vh-6rem)] shadow-sm">
       {/* ---------------------------------------------------------- */}
       {/* Top bar                                                     */}
       {/* ---------------------------------------------------------- */}

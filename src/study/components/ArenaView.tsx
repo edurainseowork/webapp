@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Swords, Trophy, Zap, Flame, Crown, Users, Award, Play, ArrowLeft } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { SubPageHeader } from './SubPageHeader';
 
 interface ArenaViewProps {
   onBack: () => void;
@@ -33,17 +34,19 @@ export const ArenaView: React.FC<ArenaViewProps> = ({ onBack, onOpenUpgrade }) =
 
   return (
     <div className="space-y-6 pb-20 animate-fadeIn">
+      {/* 1. Standardized Back Button + Breadcrumb */}
+      <SubPageHeader
+        onBack={onBack}
+        crumbs={[
+          { label: 'Home', onClick: onBack },
+          { label: 'Arena' },
+        ]}
+      />
+
       {/* Banner */}
       <div className="rounded-2xl bg-white/60 backdrop-blur-md border border-white/80 p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.05)]">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="flex items-start gap-3">
-            <button
-              onClick={onBack}
-              className="p-2 rounded-xl bg-white/60 hover:bg-white/90 border border-white/80 text-[#175A67] transition-all mt-1 shadow-sm"
-              title="Back to Study Central"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full bg-[#10B981]/15 border border-[#10B981]/30 text-[#059669] text-[10px] font-black animate-pulse flex items-center gap-1">

@@ -11,6 +11,7 @@ interface CoursesHubProps {
   mode: HubView;
   selectedBatch: string;
   enrolledBatchIds: string[];
+  searchQuery?: string;
   onEnroll: (batchId: string, plan: PlanId) => void;
   onExit: () => void;
 }
@@ -21,7 +22,7 @@ interface CoursesHubProps {
  *  - enrolled → "Your Enrolled Courses"
  *  - clicking any course or batch from either one → course detail page
  */
-export function CoursesHub({ mode, selectedBatch, enrolledBatchIds, onEnroll, onExit }: CoursesHubProps) {
+export function CoursesHub({ mode, selectedBatch, enrolledBatchIds, searchQuery, onEnroll, onExit }: CoursesHubProps) {
   const [view, setView] = useState<HubView>(mode);
   const [openBatchId, setOpenBatchId] = useState<string | null>(null);
   const [jumpToPlans, setJumpToPlans] = useState(false);
@@ -66,7 +67,7 @@ export function CoursesHub({ mode, selectedBatch, enrolledBatchIds, onEnroll, on
     );
   }
 
-  return <CourseStoreView onBack={onExit} onOpenBatch={(id) => openBatch(id)} onBuyBatch={(id) => openBatch(id, true)} />;
+  return <CourseStoreView searchQuery={searchQuery} onBack={onExit} onOpenBatch={(id) => openBatch(id)} onBuyBatch={(id) => openBatch(id, true)} />;
 }
 
 export default CoursesHub;
