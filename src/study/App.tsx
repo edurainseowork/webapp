@@ -33,6 +33,7 @@ import { ProfileView } from './components/Profile-section/ProfileView';
 import { LibraryView } from './components/LibraryView';
 import { CohortGoalModal, GoalId } from './components/Modals/CohortGoalModal';
 import { PurchasesModal } from './components/Modals/PurchasesModal';
+import { PurchasesView } from './components/PurchasesView';
 import { PiView } from './components/PiView';
 import { TestSeriesView } from './components/TestSeriesView';
 import { ArenaView } from './components/ArenaView';
@@ -42,6 +43,7 @@ import { BookmarksView } from './components/BookmarksView';
 import { EBookLibraryView } from './components/EBookLibraryView';
 import { useAuth } from './AuthGate';
 import { CoursesHub } from './components/Courses/CoursesHub';
+import { MentorshipHub } from './components/Mentorship/MentorshipHub';
 import { VaultResource, NotificationItem } from './types';
 
 export function App() {
@@ -69,6 +71,8 @@ export function App() {
   // Courses — TODO: load the student's real enrolments from your backend
   const [enrolledBatchIds, setEnrolledBatchIds] = useState<string[]>([]);
   const [isMyCoursesOpen, setIsMyCoursesOpen] = useState(false);
+  const [isPurchasesPageOpen, setIsPurchasesPageOpen] = useState(false);
+  const [isMentorshipOpen, setIsMentorshipOpen] = useState(false);
   const [selectedVaultItem, setSelectedVaultItem] = useState<VaultResource | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -117,9 +121,106 @@ export function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isProfileDropdownOpen]);
 
+  const resetSubViews = () => {
+    setIsAiMentorPageOpen(false);
+    setIsBookDoubtSessionOpen(false);
+    setIsBookmarksPageOpen(false);
+    setIsEbookLibraryOpen(false);
+    setIsMyCoursesOpen(false);
+    setIsPurchasesPageOpen(false);
+    setIsMentorshipOpen(false);
+  };
+
+  const syncRouteFromUrl = () => {
+    if (typeof window === 'undefined') return;
+    const path = window.location.pathname.replace(/\/$/, '');
+    resetSubViews();
+    setSearchQuery('');
+    if (path.endsWith('/courses')) {
+      setActiveNav('courses');
+    } else if (path.endsWith('/pi')) {
+      setActiveNav('pi');
+    } else if (path.endsWith('/test-series')) {
+      setActiveNav('test-series');
+    } else if (path.endsWith('/arena')) {
+      setActiveNav('arena');
+    } else if (path.endsWith('/profile')) {
+      setActiveNav('profile');
+    } else if (path.endsWith('/library')) {
+      setActiveNav('library');
+    } else if (path.endsWith('/ebooks')) {
+      setIsEbookLibraryOpen(true);
+    } else if (path.endsWith('/bookmarks')) {
+      setIsBookmarksPageOpen(true);
+    } else if (path.endsWith('/doubts')) {
+      setIsBookDoubtSessionOpen(true);
+    } else if (path.endsWith('/ai-mentor')) {
+      setIsAiMentorPageOpen(true);
+    } else if (path.endsWith('/my-courses')) {
+      setIsMyCoursesOpen(true);
+    } else if (path.endsWith('/purchases')) {
+      setIsPurchasesPageOpen(true);
+    } else if (path.endsWith('/mentorship')) {
+      setIsMentorshipOpen(true);
+    } else {
+      setActiveNav('study-central');
+    }
+  };
+
+  const navigateTo = (nav: typeof activeNav, customSlug?: string) => {
+    resetSubViews();
+    setSearchQuery('');
+    setActiveNav(nav);
+    if (typeof window !== 'undefined') {
+      const slug = customSlug !== undefined ? customSlug : (nav === 'study-central' ? '' : nav);
+      const url = `/study/${slug ? slug : ''}`;
+      if (window.location.pathname !== url) {
+        window.history.pushState(null, '', url);
+      }
+    }
+  };
+
+  const openSubView = (type: 'ebooks' | 'bookmarks' | 'doubts' | 'ai-mentor' | 'my-courses' | 'purchases' | 'mentorship') => {
+    resetSubViews();
+    setSearchQuery('');
+    if (type === 'ebooks') setIsEbookLibraryOpen(true);
+    else if (type === 'bookmarks') setIsBookmarksPageOpen(true);
+    else if (type === 'doubts') setIsBookDoubtSessionOpen(true);
+    else if (type === 'ai-mentor') setIsAiMentorPageOpen(true);
+    else if (type === 'my-courses') setIsMyCoursesOpen(true);
+    else if (type === 'purchases') setIsPurchasesPageOpen(true);
+    else if (type === 'mentorship') setIsMentorshipOpen(true);
+    if (typeof window !== 'undefined') {
+      const url = `/study/${type}`;
+      if (window.location.pathname !== url) {
+        window.history.pushState(null, '', url);
+      }
+    }
+  };
+
+  useEffect(() => {
+    syncRouteFromUrl();
+    const handlePopState = () => {
+      syncRouteFromUrl();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const getSearchPlaceholder = () => {
+    if (activeNav === 'courses' || isMyCoursesOpen) return 'Search in Courses';
+    if (activeNav === 'pi') return 'Search in Pi';
+    if (activeNav === 'test-series') return 'Search in Test Series';
+    if (activeNav === 'arena') return 'Search in Arena';
+    if (isEbookLibraryOpen) return 'Search in E-Books';
+    if (isAiMentorPageOpen) return 'Search in AI-Mentor';
+    if (isBookmarksPageOpen) return 'Search in Bookmarks';
+    return 'Search in Resources';
+  };
+
   const handleLogout = () => {
     setIsProfileDropdownOpen(false);
-    setActiveNav('study-central');
+    navigateTo('study-central');
     // Signing out returns AuthGate to the login screen
     logout().catch((err) => console.error('Logout failed', err));
   };
@@ -170,14 +271,14 @@ export function App() {
     },
     {
       id: 'vault-math',
-      title: 'Your Enrolled Courses',
+      title: 'Test Series',
       second_text:'',
-      subject: 'Mathematics',
-      countLabel: 'Starts in 2 hrs',
-      tags: ['Coordinate Geometry', 'Calculus Drill', 'Vectors & 3D'],
+      subject: 'Mock Tests',
+      countLabel: 'Active Tests',
+      tags: ['Full Syllabus', 'Part Tests', 'Real NTA Engine'],
       iconType: 'analytics',
-      description: 'Step-by-step calculus mastery modules, graphical shortcuts, and high-difficulty algebra problem sets.',
-      downloadSize: '32.1 MB',
+      description: 'Live adaptive mock test mirror mimicking actual JEE and NEET CBT interfaces with instant rank analytics.',
+      downloadSize: 'Online CBT',
       rating: 4.9,
     },
   ];
@@ -188,21 +289,21 @@ export function App() {
       title: '1 to 1 MENTORSHIP',
       subtitle: '',
       icon: Users,
-      action: () => setIsUpgradeOpen(true),
+      action: () => openSubView('mentorship'),
     },
     {
       id: 'sp2',
       title: 'ASK YOUR DOUBT',
       subtitle: '',
       icon: HelpCircle,
-      action: () => setIsBookDoubtSessionOpen(true),
+      action: () => openSubView('doubts'),
     },
     {
       id: 'sp3',
       title: 'AI- MENTOR',
       subtitle: '',
       icon: Bot,
-      action: () => setIsAiMentorPageOpen(true),
+      action: () => openSubView('ai-mentor'),
     }
   ];
 
@@ -213,53 +314,6 @@ export function App() {
   const filteredVaultItems = vaultItems.filter(v =>
     !searchQuery || v.title.toLowerCase().includes(searchQuery.toLowerCase()) || v.subject.toLowerCase().includes(searchQuery.toLowerCase()) || v.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
   );
-
-  if (isEbookLibraryOpen) {
-    return <EBookLibraryView onBack={() => setIsEbookLibraryOpen(false)} />;
-  }
-
-  if (isAiMentorPageOpen) {
-    return (
-      <AiMentorView
-        userName={firstName}
-        onBack={() => setIsAiMentorPageOpen(false)}
-      />
-    );
-  }
-
-  if (isBookDoubtSessionOpen) {
-    return (
-      <BookDoubtSessionView
-        onBack={() => setIsBookDoubtSessionOpen(false)}
-        onOpenMySessions={() => setIsPurchasesModalOpen(true)}
-      />
-    );
-  }
-
-  if (isBookmarksPageOpen) {
-    return (
-      <BookmarksView
-        onBack={() => setIsBookmarksPageOpen(false)}
-        onWatchVideo={(video) => console.log('Resuming video:', video.title)}
-        onOpenPdfViewer={() => console.log('Opening saved PDF viewer…')}
-        onOpenWatchLater={() => console.log('Opening Watch Later list…')}
-        onAddDocument={() => console.log('Add document to wishlist…')}
-        onClearHistory={() => console.log('Clearing watch history…')}
-      />
-    );
-  }
-
-  if (isMyCoursesOpen) {
-    return (
-      <CoursesHub
-        mode="enrolled"
-        selectedBatch={selectedBatch}
-        enrolledBatchIds={enrolledBatchIds}
-        onEnroll={handleEnrollBatch}
-        onExit={() => setIsMyCoursesOpen(false)}
-      />
-    );
-  }
 
   return (
     <div className="relative min-h-screen w-full font-sans antialiased text-[#175A67] bg-[#DCEAE3] selection:bg-[#175A67] selection:text-[#EAE3DE] overflow-x-hidden">
@@ -275,18 +329,10 @@ export function App() {
       {/* 2. TOP NAVIGATION BAR */}
       <header className="fixed top-0 left-0 right-0 z-40 h-16 bg-white/60 backdrop-blur-[16px] flex items-center justify-between px-3 sm:px-6 shadow-[0px_1px_2px_0px_#0000000D]">
 
-        {/* Left: Brand + Hamburger + Desktop Target Selector */}
+        {/* Left: Brand + Desktop Target Selector */}
         <div className="flex items-center gap-2 sm:gap-4">
-          <button
-            onClick={() => setIsMobileSidebarOpen(true)}
-            className="lg:hidden bg-[#175A67] hover:bg-[#124853] text-[#EAE3DE] p-2 sm:p-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center active:scale-95"
-            title="Open Mobile Navigation Menu"
-          >
-            <Menu className="w-5 h-5 text-[#EAE3DE]" />
-          </button>
-
           <div
-            onClick={() => setActiveNav('study-central')}
+            onClick={() => navigateTo('study-central')}
             className="flex items-center gap-2 sm:gap-2.5 cursor-pointer"
           >
 
@@ -322,7 +368,7 @@ export function App() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search in Resources"
+              placeholder={getSearchPlaceholder()}
               className="bg-white/60 border border-white/80 text-[#175A67] placeholder-[#2A707C] pl-10 pr-8 py-1.5 rounded-full w-full text-xs sm:text-sm focus:outline-none focus:border-[#175A67] focus:ring-2 focus:ring-[#175A67]/20 transition-all shadow-inner backdrop-blur-md"
             />
             {searchQuery && (
@@ -395,7 +441,7 @@ export function App() {
                 <button
                   onClick={() => {
                     setIsProfileDropdownOpen(false);
-                    setActiveNav('profile');
+                    navigateTo('profile');
                   }}
                   className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-[#175A67] hover:bg-[#175A67]/5 transition-colors"
                 >
@@ -405,7 +451,7 @@ export function App() {
                 <button
                   onClick={() => {
                     setIsProfileDropdownOpen(false);
-                    setIsPurchasesModalOpen(true);
+                    openSubView('purchases');
                   }}
                   className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-[#175A67] hover:bg-[#175A67]/5 transition-colors"
                 >
@@ -438,7 +484,7 @@ export function App() {
               autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search in Resources"
+              placeholder={getSearchPlaceholder()}
               className="bg-white/60 border border-[#175A67]/30 text-[#175A67] placeholder-[#2A707C] pl-10 pr-8 py-2 rounded-xl w-full text-sm focus:outline-none focus:ring-2 focus:ring-[#175A67]/20 shadow-inner"
             />
             <button
@@ -502,7 +548,7 @@ export function App() {
               <button
                 onClick={() => {
                   setIsMobileSidebarOpen(false);
-                  setActiveNav('profile');
+                  navigateTo('profile');
                 }}
                 className="text-xs font-bold text-[#175A67] hover:underline"
               >
@@ -546,11 +592,11 @@ export function App() {
             <div className="space-y-1">
               <button
                 onClick={() => {
-                  setActiveNav('study-central');
+                  navigateTo('study-central');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'study-central'
+                  activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
                     ? 'bg-[#175A67] text-white shadow-sm'
                     : 'text-[#175A67] hover:bg-[#175A67]/10'
                 }`}
@@ -561,7 +607,7 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setActiveNav('pi');
+                  navigateTo('pi');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
@@ -576,32 +622,11 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setActiveNav('library');
+                  navigateTo('courses');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'library'
-                    ? 'bg-[#175A67] text-white shadow-sm'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
-              >
-                <Library className="w-4 h-4" />
-                <span>LIBRARY</span>
-              </button>
-            </div>
-
-            {/* Nav Group: YOUR STUDY */}
-            <div className="text-[11px] font-bold text-[#2A707C] px-2 mt-5 mb-2 tracking-wider uppercase">
-              YOUR STUDY
-            </div>
-            <div className="space-y-1">
-              <button
-                onClick={() => {
-                  setActiveNav('courses');
-                  setIsMobileSidebarOpen(false);
-                }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'courses'
+                  activeNav === 'courses' || isMyCoursesOpen
                     ? 'bg-[#175A67] text-white shadow-sm'
                     : 'text-[#175A67] hover:bg-[#175A67]/10'
                 }`}
@@ -612,7 +637,7 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setActiveNav('test-series');
+                  navigateTo('test-series');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
@@ -627,7 +652,7 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setActiveNav('arena');
+                  navigateTo('arena');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
@@ -669,9 +694,9 @@ export function App() {
             </div>
             <div className="space-y-1">
               <button
-                onClick={() => setActiveNav('study-central')}
+                onClick={() => navigateTo('study-central')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'study-central'
+                  activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
                     ? 'bg-[#175A67] text-white shadow-md'
                     : 'text-[#175A67] hover:bg-[#175A67]/10'
                 }`}
@@ -681,7 +706,7 @@ export function App() {
               </button>
 
               <button
-                onClick={() => setActiveNav('pi')}
+                onClick={() => navigateTo('pi')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
                   activeNav === 'pi'
                     ? 'bg-[#175A67] text-white shadow-md'
@@ -692,28 +717,10 @@ export function App() {
                 <span>PI</span>
               </button>
 
-              {/* <button
-                onClick={() => setActiveNav('library')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'library'
-                    ? 'bg-[#175A67] text-white shadow-md'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
-              >
-                <Library className="w-4 h-4" />
-                <span>LIBRARY</span>
-              </button> */}
-            </div>
-
-            {/* Group: YOUR STUDY */}
-            <div className="text-xs font-bold text-[#2A707C] px-3 mt-6 mb-2 tracking-wider uppercase">
-              YOUR STUDY
-            </div>
-            <div className="space-y-1">
               <button
-                onClick={() => setActiveNav('courses')}
+                onClick={() => navigateTo('courses')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'courses'
+                  activeNav === 'courses' || isMyCoursesOpen
                     ? 'bg-[#175A67] text-white shadow-md'
                     : 'text-[#175A67] hover:bg-[#175A67]/10'
                 }`}
@@ -723,7 +730,7 @@ export function App() {
               </button>
 
               <button
-                onClick={() => setActiveNav('test-series')}
+                onClick={() => navigateTo('test-series')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
                   activeNav === 'test-series'
                     ? 'bg-[#175A67] text-white shadow-md'
@@ -735,7 +742,7 @@ export function App() {
               </button>
 
               <button
-                onClick={() => setActiveNav('arena')}
+                onClick={() => navigateTo('arena')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
                   activeNav === 'arena'
                     ? 'bg-[#175A67] text-white shadow-md'
@@ -764,12 +771,72 @@ export function App() {
         <main className="flex-1 lg:ml-[250px] px-4 sm:px-8 py-5 sm:py-6 max-w-[1600px] w-full overflow-hidden">
 
           {/* Active View Switching */}
-          {activeNav === 'profile' ? (
-            <ProfileView onBack={() => setActiveNav('study-central')} />
+          {isPurchasesPageOpen ? (
+            <PurchasesView
+              onBack={() => setIsPurchasesPageOpen(false)}
+              selectedBatch={selectedBatch}
+              enrolledBatchIds={enrolledBatchIds}
+              onEnrollBatch={handleEnrollBatch}
+            />
+          ) : isMentorshipOpen ? (
+            <MentorshipHub
+              studentEmail={session.email}
+              onExit={() => setIsMentorshipOpen(false)}
+            />
+          ) : isAiMentorPageOpen ? (
+            <AiMentorView
+              userName={firstName}
+              onBack={() => setIsAiMentorPageOpen(false)}
+            />
+          ) : isBookDoubtSessionOpen ? (
+            <BookDoubtSessionView
+              onBack={() => setIsBookDoubtSessionOpen(false)}
+              onOpenMySessions={() => openSubView('purchases')}
+            />
+          ) : isBookmarksPageOpen ? (
+            <BookmarksView
+              onBack={() => setIsBookmarksPageOpen(false)}
+              onGoLibrary={() => {
+                setIsBookmarksPageOpen(false);
+                navigateTo('study-central');
+              }}
+              searchQuery={searchQuery}
+              onBrowseEbooks={() => openSubView('ebooks')}
+              onWatchVideo={(video) => console.log('Resuming video:', video.title)}
+              onOpenPdfViewer={() => console.log('Opening saved PDF viewer…')}
+              onOpenWatchLater={() => console.log('Opening Watch Later list…')}
+              onAddDocument={() => console.log('Add document to wishlist…')}
+              onClearHistory={() => console.log('Clearing watch history…')}
+            />
+          ) : isEbookLibraryOpen ? (
+            <EBookLibraryView
+              onBack={() => setIsEbookLibraryOpen(false)}
+              onGoLibrary={() => {
+                setIsEbookLibraryOpen(false);
+                navigateTo('study-central');
+              }}
+              searchQuery={searchQuery}
+            />
+          ) : isMyCoursesOpen ? (
+            <PurchasesView
+              initialView="enrolled"
+              onBack={() => setIsMyCoursesOpen(false)}
+              selectedBatch={selectedBatch}
+              enrolledBatchIds={enrolledBatchIds}
+              onEnrollBatch={handleEnrollBatch}
+            />
+          ) : activeNav === 'profile' ? (
+            <ProfileView onBack={() => navigateTo('study-central')} />
           ) : activeNav === 'library' ? (
-            <LibraryView onOpenUpgrade={() => setIsUpgradeOpen(true)} />
+            <LibraryView
+              onBack={() => navigateTo('study-central')}
+              searchQuery={searchQuery}
+              onOpenUpgrade={() => setIsUpgradeOpen(true)}
+            />
           ) : activeNav === 'pi' ? (
             <PiView
+              searchQuery={searchQuery}
+              onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
               onOpenDoubtSolver={() => setIsDoubtSolverOpen(true)}
             />
@@ -778,17 +845,18 @@ export function App() {
               mode="catalog"
               selectedBatch={selectedBatch}
               enrolledBatchIds={enrolledBatchIds}
+              searchQuery={searchQuery}
               onEnroll={handleEnrollBatch}
-              onExit={() => setActiveNav('study-central')}
+              onExit={() => navigateTo('study-central')}
             />
           ) : activeNav === 'test-series' ? (
             <TestSeriesView
-              onBack={() => setActiveNav('study-central')}
+              onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
             />
           ) : activeNav === 'arena' ? (
             <ArenaView
-              onBack={() => setActiveNav('study-central')}
+              onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
             />
           ) : (
@@ -851,13 +919,6 @@ export function App() {
                     <AlignLeft className="w-5 h-5 text-[#175A67]" />
                     <h2 className="text-lg sm:text-xl font-bold text-[#175A67]">Library</h2>
                   </div>
-                  <button
-                    onClick={() => setActiveNav('library')}
-                    className="text-xs sm:text-sm font-semibold text-[#175A67] hover:underline flex items-center gap-1"
-                  >
-                    <span>View All Resources</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-4">
@@ -875,14 +936,15 @@ export function App() {
                         key={item.id}
                         onClick={() => {
                           if (item.id === 'vault-physics') {
-                            setIsBookmarksPageOpen(true);
+                            openSubView('bookmarks');
                           } else if (item.id === 'vault-chemistry') {
-                            setActiveNav('library');
+                            navigateTo('library');
                           } else if (item.id === 'vault-combat') {
-                            setIsEbookLibraryOpen(true);
+                            openSubView('ebooks');
                           } else if (item.id === 'vault-math') {
-                            setIsMyCoursesOpen(true);
+                            navigateTo('test-series');
                           } else {
+                            resetSubViews();
                             setSelectedVaultItem(item);
                           }
                         }}

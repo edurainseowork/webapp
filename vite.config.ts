@@ -13,6 +13,9 @@ export default defineConfig({
             res.end();
             return;
           }
+          if (req.url && req.url.startsWith('/study/') && !req.url.includes('.')) {
+            req.url = '/study/index.html';
+          }
           next();
         });
       }

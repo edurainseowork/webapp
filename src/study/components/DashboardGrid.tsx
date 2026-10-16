@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { 
   Target, 
   BookOpen, 
@@ -353,13 +353,6 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={() => onOpenVaultItem(VAULT_RESOURCES[0])}
-            className="group flex items-center gap-1 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
-          >
-            <span>View All Resources</span>
-            <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-          </button>
         </div>
 
         {/* Grid of 4 Modular Cards with Glassmorphism + Hover Scale */}
