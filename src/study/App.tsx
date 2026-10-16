@@ -42,6 +42,7 @@ import { BookmarksView } from './components/BookmarksView';
 import { EBookLibraryView } from './components/EBookLibraryView';
 import { useAuth } from './AuthGate';
 import { CoursesHub } from './components/Courses/CoursesHub';
+import { MentorshipHub } from './components/Mentorship/MentorshipHub';
 import { VaultResource, NotificationItem } from './types';
 
 export function App() {
@@ -69,6 +70,7 @@ export function App() {
   // Courses — TODO: load the student's real enrolments from your backend
   const [enrolledBatchIds, setEnrolledBatchIds] = useState<string[]>([]);
   const [isMyCoursesOpen, setIsMyCoursesOpen] = useState(false);
+  const [isMentorshipOpen, setIsMentorshipOpen] = useState(false);
   const [selectedVaultItem, setSelectedVaultItem] = useState<VaultResource | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -188,7 +190,7 @@ export function App() {
       title: '1 to 1 MENTORSHIP',
       subtitle: '',
       icon: Users,
-      action: () => setIsUpgradeOpen(true),
+      action: () => setIsMentorshipOpen(true),
     },
     {
       id: 'sp2',
@@ -245,6 +247,15 @@ export function App() {
         onOpenWatchLater={() => console.log('Opening Watch Later list…')}
         onAddDocument={() => console.log('Add document to wishlist…')}
         onClearHistory={() => console.log('Clearing watch history…')}
+      />
+    );
+  }
+
+  if (isMentorshipOpen) {
+    return (
+      <MentorshipHub
+        studentEmail={session.email}
+        onExit={() => setIsMentorshipOpen(false)}
       />
     );
   }
