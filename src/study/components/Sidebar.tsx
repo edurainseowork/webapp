@@ -160,18 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
               );
             })}
-          </nav>
-        </div>
-
-        {/* SECTION: YOUR STUDY */}
-        <div>
-          <div className="px-3 mb-2 text-[11px] font-bold text-emerald-400/80 uppercase tracking-wider flex items-center justify-between">
-            <span>YOUR STUDY</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" />
-          </div>
-
-          <nav className="space-y-1">
-            {yourStudyItems.map((item) => {
+          {yourStudyItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
 
