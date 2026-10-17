@@ -68,8 +68,7 @@ export function App() {
   const [isBookDoubtSessionOpen, setIsBookDoubtSessionOpen] = useState(false);
   const [isBookmarksPageOpen, setIsBookmarksPageOpen] = useState(false);
   const [isEbookLibraryOpen, setIsEbookLibraryOpen] = useState(false);
-  // Courses — TODO: load the student's real enrolments from your backend
-  const [enrolledBatchIds, setEnrolledBatchIds] = useState<string[]>([]);
+
   const [isMyCoursesOpen, setIsMyCoursesOpen] = useState(false);
   const [isPurchasesPageOpen, setIsPurchasesPageOpen] = useState(false);
   const [isMentorshipOpen, setIsMentorshipOpen] = useState(false);
@@ -225,8 +224,6 @@ export function App() {
     logout().catch((err) => console.error('Logout failed', err));
   };
 
-  const handleEnrollBatch = (batchId: string) =>
-    setEnrolledBatchIds((ids) => (ids.includes(batchId) ? ids : [...ids, batchId]));
 
   const batches = ['12th - IIT JEE', '11th - IIT JEE', 'Dropper - JEE Advanced', 'NEET-UG Premier'];
 
@@ -775,8 +772,7 @@ export function App() {
             <PurchasesView
               onBack={() => setIsPurchasesPageOpen(false)}
               selectedBatch={selectedBatch}
-              enrolledBatchIds={enrolledBatchIds}
-              onEnrollBatch={handleEnrollBatch}
+
             />
           ) : isMentorshipOpen ? (
             <MentorshipHub
@@ -822,8 +818,7 @@ export function App() {
               initialView="enrolled"
               onBack={() => setIsMyCoursesOpen(false)}
               selectedBatch={selectedBatch}
-              enrolledBatchIds={enrolledBatchIds}
-              onEnrollBatch={handleEnrollBatch}
+
             />
           ) : activeNav === 'profile' ? (
             <ProfileView onBack={() => navigateTo('study-central')} />
@@ -844,9 +839,9 @@ export function App() {
             <CoursesHub
               mode="catalog"
               selectedBatch={selectedBatch}
-              enrolledBatchIds={enrolledBatchIds}
+             
               searchQuery={searchQuery}
-              onEnroll={handleEnrollBatch}
+      
               onExit={() => navigateTo('study-central')}
             />
           ) : activeNav === 'test-series' ? (

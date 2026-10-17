@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { ENROLLED_COURSES, PlanId, getBatch } from './courseData';
+import { useCatalog } from './courseData';
 import { CourseStoreView } from './CourseStoreView';
 import { EnrolledCoursesView } from './EnrolledCoursesView';
 import { CourseDetailView } from './CourseDetailView';
+import { CatalogError, CatalogSkeleton } from './CourseShared';
+import { SubPageHeader } from '../SubPageHeader';
 
 type HubView = 'catalog' | 'enrolled';
 
@@ -10,42 +12,39 @@ interface CoursesHubProps {
   /** "catalog" = sidebar COURSES (all courses), "enrolled" = home Library "Test Series" card */
   mode: HubView;
   selectedBatch: string;
-  enrolledBatchIds: string[];
   searchQuery?: string;
-  onEnroll: (batchId: string, plan: PlanId) => void;
   onExit: () => void;
 }
 
 /**
- * Shared course screens:
- *  - catalog  → all courses (try before you enroll)
+ * Shared course screens (all data from the admin CMS):
+ *  - catalog  → all published courses
  *  - enrolled → "Your Enrolled Courses"
- *  - clicking any course or batch from either one → course detail page
+ *  - clicking any course from either one → course detail page
  */
-export function CoursesHub({ mode, selectedBatch, enrolledBatchIds, searchQuery, onEnroll, onExit }: CoursesHubProps) {
+export function CoursesHub({ mode, selectedBatch, searchQuery, onExit }: CoursesHubProps) {
   const [view, setView] = useState<HubView>(mode);
   const [openBatchId, setOpenBatchId] = useState<string | null>(null);
   const [jumpToPlans, setJumpToPlans] = useState(false);
+  const catalog = useCatalog();
 
   const openBatch = (batchId: string, toPlans = false) => {
     setJumpToPlans(toPlans);
     setOpenBatchId(batchId);
   };
 
-  const isEnrolledIn = (batchId: string) =>
-    enrolledBatchIds.includes(batchId) || ENROLLED_COURSES.some((course) => course.batchId === batchId);
-
   if (openBatchId) {
+    const batch = catalog.getBatch(openBatchId);
+    if (!batch) return <MissingCourse status={catalog.status} error={catalog.error} onRetry={catalog.reload} onBack={() => setOpenBatchId(null)} />;
     return (
       <CourseDetailView
         key={openBatchId}
-        batch={getBatch(openBatchId)}
-        isEnrolled={isEnrolledIn(openBatchId)}
+        batch={batch}
+        isEnrolled={catalog.isOwned(openBatchId)}
         selectedBatch={selectedBatch}
         scrollToPlans={jumpToPlans}
         onBack={() => setOpenBatchId(null)}
         onExit={onExit}
-        onEnroll={(plan) => onEnroll(openBatchId, plan)}
         onGoToMyCourses={() => {
           setOpenBatchId(null);
           setView('enrolled');
@@ -58,7 +57,6 @@ export function CoursesHub({ mode, selectedBatch, enrolledBatchIds, searchQuery,
     return (
       <EnrolledCoursesView
         selectedBatch={selectedBatch}
-        enrolledBatchIds={enrolledBatchIds}
         // Opened from the courses page → back returns there; opened from home → back to home
         onBack={mode === 'catalog' ? () => setView('catalog') : onExit}
         onOpenBatch={(id) => openBatch(id)}
@@ -68,6 +66,40 @@ export function CoursesHub({ mode, selectedBatch, enrolledBatchIds, searchQuery,
   }
 
   return <CourseStoreView searchQuery={searchQuery} onBack={onExit} onOpenBatch={(id) => openBatch(id)} onBuyBatch={(id) => openBatch(id, true)} />;
+}
+
+/** Shown when an opened course is still loading, failed to load, or was unpublished by an admin. */
+export function MissingCourse({
+  status,
+  error,
+  onRetry,
+  onBack,
+}: {
+  status: 'loading' | 'ready' | 'error';
+  error: string | null;
+  onRetry: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="relative w-full rounded-[24px] overflow-hidden bg-[#DCEAE3] font-sans text-[#0B1C30] min-h-[calc(100vh-6rem)] shadow-sm">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <SubPageHeader onBack={onBack} />
+        {status === 'loading' ? (
+          <CatalogSkeleton count={1} />
+        ) : status === 'error' ? (
+          <CatalogError message={error} onRetry={onRetry} />
+        ) : (
+          <div className="bg-white rounded-2xl py-12 px-6 flex flex-col items-center text-center">
+            <p className="font-semibold">This course is no longer available</p>
+            <p className="text-xs text-slate-500 mt-1">It may have been unpublished. Browse the other courses instead.</p>
+            <button onClick={onBack} className="mt-4 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold px-4 py-2 rounded-full">
+              Back to courses
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default CoursesHub;

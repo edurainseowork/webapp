@@ -1,10 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
-  ArrowLeft,
   ArrowRight,
   ArrowUpRight,
-  Search,
-  ChevronDown,
   PlayCircle,
   Play,
   Timer,
@@ -18,8 +15,8 @@ import {
   CheckCircle2,
   Circle,
 } from 'lucide-react';
-import { BATCHES, DEMO_CLASSES, getBatch } from './courseData';
-import { BatchCatalog, Toast, discountPct, formatINR, useSearchShortcut, useToast } from './CourseShared';
+import { Batch, useCatalog } from './courseData';
+import { LiveBatchCatalog, Toast, discountPct, formatINR, useSearchShortcut, useToast } from './CourseShared';
 import { SubPageHeader } from '../SubPageHeader';
 
 /* ------------------------------------------------------------------ */
@@ -48,22 +45,22 @@ const FORMAT_OPTIONS: { id: FormatId; title: string; sub: string; icon: React.Co
   { id: 'recorded', title: 'Self-Paced Recorded', sub: 'Flexible library access', icon: MonitorPlay },
 ];
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'demos', label: 'Live Demos' },
-  { id: 'batches', label: 'Syllabus & Batches' },
-  { id: 'faculty', label: 'Top Faculty' },
-  { id: 'national-test', label: 'National Test (KSAT)' },
-];
+const EXAM_KEYWORDS: Record<ExamId, RegExp> = { jee: /\b(jee|iit)/i, neet: /\bneet|medical/i, cbse: /\bcbse|board/i };
+const CLASS_KEYWORDS: Record<ClassId, RegExp> = { class11: /\b(11|xi)(th)?\b/i, class12: /\b(12|xii)(th)?\b/i, dropper: /drop|repeat/i };
 
-const STREAM_LABELS: Record<ExamId, string> = { jee: 'IIT-JEE', neet: 'NEET-UG', cbse: 'CBSE Boards' };
-
-const pickBestFit = (cls: ClassId, exam: ExamId) => {
-  if (exam === 'neet') return 'neet-drill-2026';
-  if (exam === 'cbse') return 'udaan-2027';
-  if (cls === 'class12') return 'lakshya-2026';
-  if (cls === 'dropper') return 'prayas-2026';
-  return 'arjuna-2027';
+/** Best CMS course for the chosen class + exam (matched on title, category and description); first course otherwise. */
+const pickBestFit = (batches: Batch[], cls: ClassId, exam: ExamId): Batch | null => {
+  let best: Batch | null = batches[0] ?? null;
+  let bestScore = 0;
+  for (const batch of batches) {
+    const text = `${batch.title} ${batch.category} ${batch.description}`;
+    const score = (EXAM_KEYWORDS[exam].test(text) ? 2 : 0) + (CLASS_KEYWORDS[cls].test(text) ? 1 : 0);
+    if (score > bestScore) {
+      best = batch;
+      bestScore = score;
+    }
+  }
+  return best;
 };
 
 /* ------------------------------------------------------------------ */
@@ -108,9 +105,7 @@ interface CourseStoreViewProps {
 }
 
 export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }: CourseStoreViewProps) {
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
-  const [query, setQuery] = useState('');
-  const [isStreamMenuOpen, setIsStreamMenuOpen] = useState(false);
+  const [query] = useState('');
   const [classId, setClassId] = useState<ClassId>('class11');
   const [exam, setExam] = useState<ExamId>('jee');
   const [format, setFormat] = useState<FormatId>('live');
@@ -122,20 +117,18 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
   const batchesRef = useRef<HTMLElement>(null);
   useSearchShortcut(searchRef);
 
-  const bestFit = getBatch(pickBestFit(classId, exam));
-  const catalog = BATCHES.filter((b) => !b.featured);
+  const { status, error, reload, batches, filters } = useCatalog();
+  const bestFit = pickBestFit(batches, classId, exam);
   const q = (searchQuery ?? query).trim().toLowerCase();
-  const demos = DEMO_CLASSES.filter(
-    (d) =>
-      !q ||
-      d.title.toLowerCase().includes(q) ||
-      d.meta.toLowerCase().includes(q)
+  // "Try before you enroll": the free courses published in the CMS
+  const freeCourses = batches.filter((b) => b.price === 0);
+  const demos = freeCourses.filter(
+    (d) => !q || d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q)
   );
 
   const scrollTo = (el: HTMLElement | null) => el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   const handleTab = (tab: TabId) => {
-    setActiveTab(tab);
     if (tab === 'overview') scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     else if (tab === 'demos') scrollTo(demosRef.current);
     else if (tab === 'batches') scrollTo(batchesRef.current);
@@ -147,10 +140,10 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
     {
       icon: PlayCircle,
       iconWrap: 'bg-sky-200 text-[#0F3B42]',
-      badge: '3 Lectures Ready',
-      title: 'Free Masterclasses',
-      cta: 'Stream now',
-      onClick: () => handleTab('demos'),
+      badge: freeCourses.length ? `${freeCourses.length} Free Course${freeCourses.length === 1 ? '' : 's'}` : `${batches.length} Courses Live`,
+      title: freeCourses.length ? 'Free Courses' : 'Browse All Courses',
+      cta: freeCourses.length ? 'Start free' : 'Explore courses',
+      onClick: () => handleTab(freeCourses.length ? 'demos' : 'batches'),
     },
     {
       icon: Timer,
@@ -172,9 +165,6 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
 
   return (
     <div className="relative w-full rounded-[24px] overflow-hidden flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30] min-h-[calc(100vh-6rem)] shadow-sm">
-      {/* ---------------------------------------------------------- */}
-      {/* Body                                                        */}
-      {/* ---------------------------------------------------------- */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-16 space-y-6 sm:space-y-8">
           {/* 1. Standardized Back Button */}
@@ -183,7 +173,17 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
           {/* Catalogue - Academic Batches & Crash Courses */}
           <section ref={batchesRef} className="scroll-mt-4">
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-5">Academic Batches &amp; Crash Courses</h2>
-            <BatchCatalog batches={catalog} query={q} onOpenBatch={onOpenBatch} onBuyBatch={onBuyBatch} />
+            <LiveBatchCatalog
+              status={status}
+              error={error}
+              onRetry={reload}
+              batches={batches}
+              filters={filters}
+              showFilters
+              query={q}
+              onOpenBatch={onOpenBatch}
+              onBuyBatch={onBuyBatch}
+            />
           </section>
 
           {/* Hero */}
@@ -218,54 +218,62 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
             </div>
           </section>
 
-          {/* Demo classes */}
-          <section ref={demosRef} className="scroll-mt-4">
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-5">Experience The Classroom — Try Before You Buy</h2>
-            {demos.length === 0 ? (
-              <p className="text-sm text-slate-500 bg-white rounded-2xl p-6">No demo classes match “{query.trim()}”.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {demos.map((demo) => (
-                  <article key={demo.id} className="bg-white rounded-2xl overflow-hidden shadow-[0_6px_24px_rgb(0,0,0,0.05)]">
-                    <button
-                      onClick={() => showToast(`Playing free demo: ${demo.title}`)}
-                      className="group relative block w-full h-[150px] bg-gradient-to-br from-[#10272C] to-[#071417] text-left"
-                    >
-                      <span className="absolute top-3 left-3 text-[9px] font-bold uppercase tracking-wide bg-amber-300 text-[#0B1C30] px-2 py-0.5 rounded">
-                        No Payment Required
-                      </span>
-                      <span className="absolute top-3 right-3 flex items-center gap-1 text-[10px] font-medium text-white/80">
-                        <Clock3 className="w-3 h-3" />
-                        {demo.duration}
-                      </span>
-                      <span className="absolute inset-0 flex items-center justify-center">
-                        <span className="w-12 h-12 rounded-full bg-white/90 text-[#0B1C30] flex items-center justify-center shadow-lg transition-all opacity-90 sm:opacity-0 sm:group-hover:opacity-100 group-hover:scale-105">
-                          <Play className="w-5 h-5 fill-current ml-0.5" />
-                        </span>
-                      </span>
-                      <span className="absolute bottom-3 left-3 text-[10px] font-medium text-white/70">{demo.meta}</span>
-                    </button>
-                    <div className="p-5">
-                      <h3 className="font-semibold text-[15px]">{demo.title}</h3>
-                      <p className="flex items-center gap-2 mt-3 bg-[#F8F1EC] rounded-lg px-3 py-2 text-[11px] text-slate-600">
-                        <BadgeCheck className="w-3.5 h-3.5 text-[#175A67] shrink-0" />
-                        Includes free PDF notes + 10 DPPs
-                      </p>
+          {/* Free courses (published as free in the CMS) */}
+          {freeCourses.length > 0 && (
+            <section ref={demosRef} className="scroll-mt-4">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-5">Experience The Classroom — Try Before You Buy</h2>
+              {demos.length === 0 ? (
+                <p className="text-sm text-slate-500 bg-white rounded-2xl p-6">No free courses match “{q}”.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {demos.map((demo) => (
+                    <article key={demo.id} className="bg-white rounded-2xl overflow-hidden shadow-[0_6px_24px_rgb(0,0,0,0.05)]">
                       <button
-                        onClick={() => showToast(`Playing free demo: ${demo.title}`)}
-                        className="mt-4 w-full flex items-center justify-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold py-2.5 rounded-lg transition-all active:scale-[0.98]"
+                        onClick={() => onOpenBatch(demo.id)}
+                        className="group relative block w-full h-[150px] bg-gradient-to-br from-[#10272C] to-[#071417] text-left overflow-hidden"
                       >
-                        Watch Free Class
-                        <ArrowUpRight className="w-3.5 h-3.5" />
+                        {demo.thumbnail && (
+                          <img src={demo.thumbnail} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover opacity-60" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                        )}
+                        <span className="absolute top-3 left-3 text-[9px] font-bold uppercase tracking-wide bg-amber-300 text-[#0B1C30] px-2 py-0.5 rounded">
+                          No Payment Required
+                        </span>
+                        {demo.duration && (
+                          <span className="absolute top-3 right-3 flex items-center gap-1 text-[10px] font-medium text-white/80">
+                            <Clock3 className="w-3 h-3" />
+                            {demo.duration}
+                          </span>
+                        )}
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="w-12 h-12 rounded-full bg-white/90 text-[#0B1C30] flex items-center justify-center shadow-lg transition-all opacity-90 sm:opacity-0 sm:group-hover:opacity-100 group-hover:scale-105">
+                            <Play className="w-5 h-5 fill-current ml-0.5" />
+                          </span>
+                        </span>
+                        <span className="absolute bottom-3 left-3 text-[10px] font-medium text-white/80">{demo.category}</span>
                       </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
+                      <div className="p-5">
+                        <h3 className="font-semibold text-[15px]">{demo.title}</h3>
+                        <p className="flex items-center gap-2 mt-3 bg-[#F8F1EC] rounded-lg px-3 py-2 text-[11px] text-slate-600">
+                          <BadgeCheck className="w-3.5 h-3.5 text-[#175A67] shrink-0" />
+                          {demo.features[0]?.text ?? 'Free full access'}
+                        </p>
+                        <button
+                          onClick={() => onOpenBatch(demo.id)}
+                          className="mt-4 w-full flex items-center justify-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold py-2.5 rounded-lg transition-all active:scale-[0.98]"
+                        >
+                          Start Free Course
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
-          {/* Batch finder */}
+          {/* Batch finder (needs at least one CMS course) */}
+          {bestFit && (
           <section>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-5">Find Your Batch</h2>
             <div className="bg-white rounded-3xl p-5 sm:p-8 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6 lg:gap-8 items-center shadow-[0_6px_24px_rgb(0,0,0,0.04)]">
@@ -336,23 +344,27 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
                   </span>
                 </div>
                 <h3 className="text-xl font-semibold mt-3 leading-snug">
-                  {bestFit.title} <span className="text-white/60 font-normal text-base">{bestFit.subtitle}</span>
+                  {bestFit.title} <span className="text-white/60 font-normal text-base">{bestFit.category}</span>
                 </h3>
                 <p className="text-xs text-white/60 mt-1">
-                  Starts {bestFit.startDate} • {format === 'live' ? bestFit.schedule : 'Learn at your own pace'}
+                  {[bestFit.duration, bestFit.totalLessons ? `${bestFit.totalLessons} lessons` : null, format === 'live' ? null : 'Learn at your own pace']
+                    .filter(Boolean)
+                    .join(' • ') || 'Enrolments open'}
                 </p>
 
                 <div className="mt-5 rounded-xl bg-white/[0.06] border border-white/10 p-4 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-white/50">Course Fee</p>
                     <p className="flex items-baseline gap-2 mt-0.5">
-                      <span className="text-3xl font-bold">{formatINR(bestFit.price)}</span>
-                      <span className="text-xs text-white/40 line-through">{formatINR(bestFit.mrp)}</span>
+                      <span className="text-3xl font-bold">{bestFit.price === 0 ? 'Free' : formatINR(bestFit.price)}</span>
+                      {bestFit.mrp > bestFit.price && <span className="text-xs text-white/40 line-through">{formatINR(bestFit.mrp)}</span>}
                     </p>
                   </div>
-                  <span className="text-[11px] font-bold bg-amber-300 text-[#0B1C30] px-2.5 py-1 rounded-md">
-                    {discountPct(bestFit.price, bestFit.mrp)}% OFF
-                  </span>
+                  {bestFit.mrp > bestFit.price && (
+                    <span className="text-[11px] font-bold bg-amber-300 text-[#0B1C30] px-2.5 py-1 rounded-md">
+                      {discountPct(bestFit.price, bestFit.mrp)}% OFF
+                    </span>
+                  )}
                 </div>
 
                 <ul className="mt-5 space-y-2.5">
@@ -371,13 +383,14 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
                   onClick={() => onOpenBatch(bestFit.id)}
                   className="mt-6 w-full flex items-center justify-center gap-2 bg-amber-300 hover:bg-amber-200 text-[#0B1C30] font-semibold text-sm py-3 rounded-xl transition-all active:scale-[0.98]"
                 >
-                  Explore Batch Details
+                  Explore Course Details
                   <ArrowRight className="w-4 h-4" />
                 </button>
                 <p className="text-[10px] text-white/50 text-center mt-3">7-Day Unconditional Money Back Guarantee</p>
               </div>
             </div>
           </section>
+          )}
         </div>
       </div>
 
