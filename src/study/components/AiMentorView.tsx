@@ -1,10 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ArrowLeft,
   HelpCircle,
   Search,
   Sparkles,
-  ChevronDown,
   Plus,
   ClipboardCheck,
   Zap,
@@ -14,6 +12,7 @@ import {
   ArrowUp,
   FileText,
 } from 'lucide-react';
+import { SubPageHeader } from './SubPageHeader';
 
 /* ------------------------------------------------------------------ */
 /*  Types & mock data                                                  */
@@ -94,7 +93,7 @@ export function AiMentorView({ userName, onBack }: AiMentorViewProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-[#DCEAE3] font-sans">
+    <div className="relative w-full rounded-[24px] overflow-hidden flex bg-[#DCEAE3] font-sans min-h-[calc(100vh-6rem)] shadow-sm border border-emerald-900/10">
       {/* ---------------------------------------------------------- */}
       {/* Left Sidebar                                                */}
       {/* ---------------------------------------------------------- */}
@@ -187,48 +186,35 @@ export function AiMentorView({ userName, onBack }: AiMentorViewProps) {
       {/* ---------------------------------------------------------- */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 bg-[#F0FCFE]/90 backdrop-blur-md border-b border-[#175A67]/10">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={onBack}
-              className="p-1.5 rounded-lg text-[#175A67] hover:bg-white transition-colors shrink-0"
-              title="Back to Study Central"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={onBack}
-              className="flex items-center gap-1.5 text-sm font-bold text-[#0B1C30] hover:opacity-80 transition-opacity shrink-0"
-            >
-              <Sparkles className="w-4 h-4 text-[#175A67]" />
-              AI-MENTOR
-              <ChevronDown className="w-3.5 h-3.5 text-[#70787C]" />
-            </button>
-
-            <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-[#2A707C] truncate">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
-              SAHAYAK &bull; Solution Evaluator Ready
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => flashStatus('Upload your solution to assess it.')}
-              className="hidden sm:flex items-center gap-1.5 bg-white hover:bg-[#EAF3F1] text-[#175A67] border border-[#175A67]/20 font-bold text-xs px-3.5 py-2 rounded-xl transition-all active:scale-95"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              Assess My Solution
-            </button>
-            <button
-              onClick={handleAskNewDoubt}
-              className="flex items-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm transition-all active:scale-95"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              New Doubt
-            </button>
-          </div>
-        </header>
+        <div className="shrink-0 px-4 sm:px-6 pt-4 pb-2 border-b border-[#175A67]/10 bg-[#F0FCFE]/90 backdrop-blur-md">
+          <SubPageHeader
+            onBack={onBack}
+            className="mb-0"
+            crumbs={[
+              { label: 'Home', onClick: onBack },
+              { label: 'Features', onClick: onBack },
+              { label: 'AI Mentor' },
+            ]}
+            rightElement={
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => flashStatus('Upload your solution to assess it.')}
+                  className="hidden sm:flex items-center gap-1.5 bg-white hover:bg-[#EAF3F1] text-[#175A67] border border-[#175A67]/20 font-bold text-xs px-3.5 py-2 rounded-xl transition-all active:scale-95 shadow-sm"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Assess My Solution
+                </button>
+                <button
+                  onClick={handleAskNewDoubt}
+                  className="flex items-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm transition-all active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  New Doubt
+                </button>
+              </div>
+            }
+          />
+        </div>
 
         {/* Center content */}
         <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 gap-6 overflow-y-auto">
