@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import { auth } from '../firebase'
 import { apiFetch, uploadFile, API_BASE_URL, type AdminCourse } from '../api'
@@ -10,10 +10,17 @@ import Coupons from './Coupons'
 import GoLive from './GoLive'
 import Notifications from './Notifications'
 import Tests from './Tests'
+import MentorDesk from './MentorDesk'
 import '../index.css'
 
+// Mentor Desk has its own URL: /mentorDesk
+const MENTOR_DESK_PATH = '/mentorDesk';
+const isMentorDeskPath = () => window.location.pathname.replace(/\/+$/, '').toLowerCase() === MENTOR_DESK_PATH.toLowerCase();
+
 function App() {
-  const [activeTab, setActiveTab] = useState('courses');
+  const [activeTab, setActiveTab] = useState(() => (isMentorDeskPath() ? 'mentorDesk' : 'courses'));
+  const lastCmsTab = useRef('courses');
+  const isFirstUrlSync = useRef(true);
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -78,6 +85,26 @@ function App() {
       console.error("Failed to fetch stats", e);
     }
   };
+
+  // Keep the address bar in sync: /mentorDesk for Mentor Desk, / for the other CMS tabs
+  useEffect(() => {
+    if (activeTab !== 'mentorDesk') lastCmsTab.current = activeTab;
+    const path = activeTab === 'mentorDesk' ? MENTOR_DESK_PATH : '/';
+    if (window.location.pathname !== path) {
+      const url = path + window.location.search;
+      if (isFirstUrlSync.current) window.history.replaceState(null, '', url);
+      else window.history.pushState(null, '', url);
+    }
+    isFirstUrlSync.current = false;
+  }, [activeTab]);
+
+  // Browser back / forward buttons
+  useEffect(() => {
+    const onPopState = () =>
+      setActiveTab((prev) => (isMentorDeskPath() ? 'mentorDesk' : prev === 'mentorDesk' ? lastCmsTab.current : prev));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   useEffect(() => {
     if (user && (activeTab === 'courses' || activeTab === 'dashboard' || activeTab === 'content')) {
@@ -197,6 +224,15 @@ function App() {
     </div>
   );
 
+  // Mentor Desk is a full page with its own sidebar
+  if (activeTab === 'mentorDesk') {
+    return (
+      <RoleGuard allowedRoles={['admin', 'faculty']} fallbackLogin={loginForm}>
+        <MentorDesk user={user} onExit={() => setActiveTab(lastCmsTab.current)} />
+      </RoleGuard>
+    );
+  }
+
   return (
     <RoleGuard allowedRoles={['admin', 'faculty']} fallbackLogin={loginForm}>
       <div className="layout">
@@ -259,6 +295,9 @@ function App() {
           </div>
           <div className={`nav-link ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => setActiveTab('tests')}>
             Tests
+          </div>
+          <div className={`nav-link ${activeTab === 'mentorDesk' ? 'active' : ''}`} onClick={() => setActiveTab('mentorDesk')}>
+            Mentor Desk
           </div>
         </nav>
       </aside>
