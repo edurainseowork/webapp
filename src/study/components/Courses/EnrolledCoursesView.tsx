@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
-  Search,
-  GraduationCap,
   Star,
   Timer,
   Video,
@@ -22,9 +20,9 @@ import {
   daysHoursMinutes, 
   formatINR,
   useCountdown,
-  useSearchShortcut,
   useToast,
 } from './CourseShared';
+import { SubPageHeader, BreadcrumbCrumb } from '../SubPageHeader';
 
 /* ------------------------------------------------------------------ */
 /*  Hero promos                                                         */
@@ -84,16 +82,15 @@ interface EnrolledCoursesViewProps {
   onBack: () => void;
   onOpenBatch: (batchId: string) => void;
   onBuyBatch: (batchId: string) => void;
+  crumbs?: BreadcrumbCrumb[];
 }
 
-export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, onOpenBatch, onBuyBatch }: EnrolledCoursesViewProps) {
+export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, onOpenBatch, onBuyBatch, crumbs }: EnrolledCoursesViewProps) {
   const [query, setQuery] = useState('');
   const [promoIndex, setPromoIndex] = useState(0);
   const [toast, showToast] = useToast();
-  const searchRef = useRef<HTMLInputElement>(null);
   const catalogRef = useRef<HTMLElement>(null);
   const countdown = useCountdown(daysHoursMinutes(3, 14, 22));
-  useSearchShortcut(searchRef);
 
   // Rotate the hero promo; restarts whenever the student picks a slide
   useEffect(() => {
@@ -131,62 +128,20 @@ export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, o
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30]">
-      {/* ---------------------------------------------------------- */}
-      {/* Top bar                                                     */}
-      {/* ---------------------------------------------------------- */}
-      <header className="shrink-0 h-14 sm:h-16 bg-[#FBF8F5] border-b border-slate-200/70 px-3 sm:px-6 flex items-center gap-2 sm:gap-3">
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0 lg:w-[360px]">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 bg-[#F1EBE5] hover:bg-[#E9DFD6] text-xs font-semibold px-3 py-2 rounded-full transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back
-          </button>
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-[#0F3B42] text-white flex items-center justify-center">
-              <GraduationCap className="w-4 h-4" />
-            </span>
-            <span className="text-sm font-bold">EduRain</span>
-          </div>
-          <span className="hidden md:flex items-center gap-1.5 text-[11px] font-semibold bg-white border border-slate-200 px-2.5 py-1 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#175A67]" />
-            {selectedBatch}
-          </span>
-        </div>
-
-        <div className="flex-1 flex justify-center">
-          <button
-            onClick={() => showToast('Opening today’s live classes…')}
-            className="bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all active:scale-95 whitespace-nowrap"
-          >
-            Live Classes
-          </button>
-        </div>
-
-        <div className="flex justify-end shrink-0 lg:w-[360px]">
-          <div className="relative w-36 sm:w-64 lg:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search formulas, tests..."
-              className="w-full pl-9 pr-3 sm:pr-12 py-2 rounded-full bg-[#F1EBE5] text-xs placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#175A67]/10 border border-transparent focus:border-[#175A67] transition-all"
-            />
-            <kbd className="hidden sm:block absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500 bg-white border border-slate-200 rounded px-1.5 py-0.5">
-              ⌘K
-            </kbd>
-          </div>
-        </div>
-      </header>
-
-      {/* ---------------------------------------------------------- */}
-      {/* Body                                                        */}
-      {/* ---------------------------------------------------------- */}
+    <div className="relative w-full rounded-[24px] overflow-hidden flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30] min-h-[calc(100vh-6rem)] shadow-sm">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-16 space-y-10">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-16 space-y-6 sm:space-y-8">
+          {/* 1. Standardized Back Button + Breadcrumb */}
+          <SubPageHeader
+            onBack={onBack}
+            crumbs={
+              crumbs || [
+                { label: 'Home', onClick: onBack },
+                { label: 'My Purchases', onClick: onBack },
+                { label: 'Your Enrolled Courses' },
+              ]
+            }
+          />
           {/* Hero promo carousel */}
           <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0F3B42] via-[#0D3238] to-[#0A2329] text-white p-6 sm:p-8 shadow-[0_12px_40px_rgba(15,59,66,0.25)]">
             <div className="absolute -top-24 -left-10 w-[380px] h-[380px] rounded-full bg-teal-300/10 blur-[100px] pointer-events-none" />
