@@ -16,6 +16,11 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Local copy of the monorepo schemas (see src/shared/api-zod.ts) */
+    "paths": {
+      "@workspace/api-zod": ["./src/shared/api-zod.ts"]
+    },
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
