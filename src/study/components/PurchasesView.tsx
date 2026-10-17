@@ -17,7 +17,8 @@ import {
 import { SubPageHeader } from './SubPageHeader';
 import { EnrolledCoursesView } from './Courses/EnrolledCoursesView';
 import { CourseDetailView } from './Courses/CourseDetailView';
-import { ENROLLED_COURSES, PlanId, getBatch } from './Courses/courseData';
+import { useCatalog } from './Courses/courseData';
+import { MissingCourse } from './Courses/CoursesHub';
 import { Toast, formatINR, useToast } from './Courses/CourseShared';
 
 /* ------------------------------------------------------------------ */
@@ -116,16 +117,12 @@ const STATUS_STYLES: Record<PurchaseRecord['status'], { badge: string; dot: stri
 interface PurchasesViewProps {
   onBack: () => void;
   selectedBatch: string;
-  enrolledBatchIds: string[];
-  onEnrollBatch: (batchId: string, plan: PlanId) => void;
   initialView?: 'overview' | 'enrolled' | 'transactions';
 }
 
 export function PurchasesView({
   onBack,
   selectedBatch,
-  enrolledBatchIds,
-  onEnrollBatch,
   initialView = 'overview',
 }: PurchasesViewProps) {
   const [currentView, setCurrentView] = useState<'overview' | 'enrolled' | 'transactions'>(initialView);
@@ -137,7 +134,8 @@ export function PurchasesView({
 
   const totalSpent = DEFAULT_PURCHASES.reduce((sum, p) => sum + p.amount, 0);
   const activeCount = DEFAULT_PURCHASES.filter((p) => p.status === 'Active').length;
-  const enrolledCoursesCount = ENROLLED_COURSES.length + enrolledBatchIds.length;
+  const catalog = useCatalog();
+  const enrolledCoursesCount = catalog.ownedBatches.length;
 
   const filteredPurchases = DEFAULT_PURCHASES.filter((p) => {
     const matchesFilter = statusFilter === 'all' || p.status === statusFilter;
@@ -155,19 +153,20 @@ export function PurchasesView({
 
   // If a batch detail view is open:
   if (selectedBatchId) {
-    const isEnrolled =
-      enrolledBatchIds.includes(selectedBatchId) ||
-      ENROLLED_COURSES.some((c) => c.batchId === selectedBatchId);
+    const batch = catalog.getBatch(selectedBatchId);
+    if (!batch) {
+      return <MissingCourse status={catalog.status} error={catalog.error} onRetry={catalog.reload} onBack={() => setSelectedBatchId(null)} />;
+    }
 
     return (
       <CourseDetailView
-        batch={getBatch(selectedBatchId)}
-        isEnrolled={isEnrolled}
+        key={selectedBatchId}
+        batch={batch}
+        isEnrolled={catalog.isOwned(selectedBatchId)}
         selectedBatch={selectedBatch}
         scrollToPlans={jumpToPlans}
         onBack={() => setSelectedBatchId(null)}
         onExit={onBack}
-        onEnroll={(plan) => onEnrollBatch(selectedBatchId, plan)}
         onGoToMyCourses={() => {
           setSelectedBatchId(null);
           setCurrentView('enrolled');
@@ -181,7 +180,6 @@ export function PurchasesView({
     return (
       <EnrolledCoursesView
         selectedBatch={selectedBatch}
-        enrolledBatchIds={enrolledBatchIds}
         onBack={() => setCurrentView('overview')}
         onOpenBatch={(batchId) => {
           setJumpToPlans(false);
@@ -199,7 +197,6 @@ export function PurchasesView({
       />
     );
   }
-
   // If user clicked into "Transaction History":
   if (currentView === 'transactions') {
     return (

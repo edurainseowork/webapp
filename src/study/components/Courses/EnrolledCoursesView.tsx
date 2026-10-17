@@ -1,76 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, Star, Timer, Users, PlayCircle, Play } from 'lucide-react';
+import { Batch, toEnrolledCourse, useCatalog } from './courseData';
 import {
-  ArrowLeft,
-  ArrowRight,
-  Star,
-  Timer,
-  Video,
-  CheckCircle2,
-  Users,
-  PlayCircle,
-  Play,
-  FileText,
-  Zap,
-  BookOpen,
-} from 'lucide-react';
-import { BATCHES, ENROLLED_COURSES, EnrolledCourse, getBatch } from './courseData';
-import {
-  BatchCatalog,
-  Toast,
-  daysHoursMinutes, 
+  CatalogEmpty,
+  CatalogError,
+  CatalogSkeleton,
+  LiveBatchCatalog,
+  daysHoursMinutes,
+  discountPct,
   formatINR,
   useCountdown,
-  useToast,
 } from './CourseShared';
 import { SubPageHeader, BreadcrumbCrumb } from '../SubPageHeader';
 
 /* ------------------------------------------------------------------ */
-/*  Hero promos                                                         */
+/*  Hero promos — the best CMS offers the student doesn't own yet       */
 /* ------------------------------------------------------------------ */
 
-const PROMOS = [
-  {
-    batchId: 'arjuna-2027',
-    badge: 'Early Bird Special • 40% OFF',
-    headline: 'ARJUNA JEE 2027 • Ranker Elite Track',
-    highlights: [
-      { icon: Video, text: '500+ Hrs Live Classes' },
-      { icon: CheckCircle2, text: 'Daily DPPs + Video Sol.' },
-      { icon: Users, text: '1-on-1 Ranker Mentorship' },
-    ],
-    seatsFilled: 264,
-    seatsMax: 300,
-    note: 'Includes Free Hardcopy Formula Booklet & 30 Mock Test Series delivery to your address.',
-  },
-  {
-    batchId: 'lakshya-2026',
-    badge: 'Most Popular • 48% OFF',
-    headline: 'LAKSHYA JEE 2026 • Class 12 Power Track',
-    highlights: [
-      { icon: FileText, text: '40 Full & Part Mock Tests' },
-      { icon: Zap, text: 'AI Weakness Diagnosis' },
-      { icon: BookOpen, text: 'Boards + JEE Together' },
-    ],
-    seatsFilled: 412,
-    seatsMax: 500,
-    note: 'New batch starts June 1 — includes the complete Class 12 DPP archive.',
-  },
-  {
-    batchId: 'prayas-2026',
-    badge: 'Dropper Special • 51% OFF',
-    headline: 'PRAYAS JEE 2026 • 300-Day Rank Booster',
-    highlights: [
-      { icon: Zap, text: 'Daily 6-Hr Core Lectures' },
-      { icon: Users, text: 'Micro-Batch Doubt Rooms' },
-      { icon: CheckCircle2, text: 'Full Revision Cycle' },
-    ],
-    seatsFilled: 171,
-    seatsMax: 200,
-    note: 'Batch 2 admissions open — seats are capped to keep doubt rooms small.',
-  },
-];
-
+const MAX_PROMOS = 3;
 const PROMO_INTERVAL_MS = 6000;
+
+const pickPromos = (batches: Batch[], isOwned: (id: string) => boolean): Batch[] =>
+  batches
+    .filter((b) => !isOwned(b.id) && b.price > 0)
+    .sort((a, b) => discountPct(b.price, b.mrp) - discountPct(a.price, a.mrp))
+    .slice(0, MAX_PROMOS);
 
 /* ------------------------------------------------------------------ */
 /*  Main view                                                           */
@@ -78,53 +32,36 @@ const PROMO_INTERVAL_MS = 6000;
 
 interface EnrolledCoursesViewProps {
   selectedBatch: string;
-  enrolledBatchIds: string[];
   onBack: () => void;
   onOpenBatch: (batchId: string) => void;
   onBuyBatch: (batchId: string) => void;
   crumbs?: BreadcrumbCrumb[];
 }
 
-export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, onOpenBatch, onBuyBatch, crumbs }: EnrolledCoursesViewProps) {
-  const [query, setQuery] = useState('');
+export function EnrolledCoursesView({ onBack, onOpenBatch, onBuyBatch, crumbs }: EnrolledCoursesViewProps) {
+  const [query] = useState('');
   const [promoIndex, setPromoIndex] = useState(0);
-  const [toast, showToast] = useToast();
   const catalogRef = useRef<HTMLElement>(null);
   const countdown = useCountdown(daysHoursMinutes(3, 14, 22));
 
+  const { status, error, reload, batches, filters, ownedBatches, isOwned } = useCatalog();
+  const promos = pickPromos(batches, isOwned);
+
   // Rotate the hero promo; restarts whenever the student picks a slide
   useEffect(() => {
-    const timer = setTimeout(() => setPromoIndex((i) => (i + 1) % PROMOS.length), PROMO_INTERVAL_MS);
+    if (promos.length < 2) return;
+    const timer = setTimeout(() => setPromoIndex((i) => (i + 1) % promos.length), PROMO_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [promoIndex]);
+  }, [promoIndex, promos.length]);
 
-  const promo = PROMOS[promoIndex];
-  const promoBatch = getBatch(promo.batchId);
-  const seatsPct = Math.round((promo.seatsFilled / promo.seatsMax) * 100);
+  const promoBatch: Batch | undefined = promos[promoIndex % Math.max(promos.length, 1)];
+  const promoOff = promoBatch ? discountPct(promoBatch.price, promoBatch.mrp) : 0;
 
-  // Batches bought in this session show up first, ahead of the existing enrolments
-  const newlyEnrolled: EnrolledCourse[] = [...enrolledBatchIds]
-    .reverse()
-    .filter((id) => !ENROLLED_COURSES.some((c) => c.batchId === id))
-    .map((id) => {
-      const batch = getBatch(id);
-      return {
-        id: `new-${id}`,
-        batchId: id,
-        batchLabel: batch.chips[0],
-        title: `${batch.title} ${batch.subtitle}`,
-        progress: 0,
-        completedLectures: 0,
-        totalLectures: 0,
-        currentTopic: `Orientation • Starts ${batch.startDate}`,
-      };
-    });
-  const allCourses = [...newlyEnrolled, ...ENROLLED_COURSES];
-
-  const catalog = BATCHES.filter((b) => !b.featured);
+  // The student's courses, straight from the backend (GET /razorpay/my-courses)
+  const allCourses = ownedBatches.map(toEnrolledCourse);
   const q = query.trim().toLowerCase();
   const courses = allCourses.filter(
-    (c) => !q || c.title.toLowerCase().includes(q) || c.currentTopic.toLowerCase().includes(q)
+    (c) => !q || c.title.toLowerCase().includes(q) || c.batchLabel.toLowerCase().includes(q)
   );
 
   return (
@@ -142,91 +79,98 @@ export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, o
               ]
             }
           />
+
           {/* Hero promo carousel */}
-          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0F3B42] via-[#0D3238] to-[#0A2329] text-white p-6 sm:p-8 shadow-[0_12px_40px_rgba(15,59,66,0.25)]">
-            <div className="absolute -top-24 -left-10 w-[380px] h-[380px] rounded-full bg-teal-300/10 blur-[100px] pointer-events-none" />
-            <div key={promo.batchId} className="relative grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-center animate-fadeIn">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide bg-amber-200 text-[#5B3A00] px-3 py-1 rounded-full">
-                    <Star className="w-3 h-3 fill-current" />
-                    {promo.badge}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-[10px] font-semibold text-white/80 bg-white/10 border border-white/15 px-3 py-1 rounded-full tabular-nums">
-                    <Timer className="w-3 h-3" />
-                    ENDS IN: {countdown.days}d : {countdown.hours}h : {countdown.minutes}m
-                  </span>
-                </div>
-
-                <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mt-4 leading-tight">{promo.headline}</h1>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
-                  {promo.highlights.map((h) => (
-                    <span key={h.text} className="flex items-center gap-2 text-xs text-white/85 bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2">
-                      <h.icon className="w-3.5 h-3.5 shrink-0" />
-                      {h.text}
+          {promoBatch && (
+            <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0F3B42] via-[#0D3238] to-[#0A2329] text-white p-6 sm:p-8 shadow-[0_12px_40px_rgba(15,59,66,0.25)]">
+              <div className="absolute -top-24 -left-10 w-[380px] h-[380px] rounded-full bg-teal-300/10 blur-[100px] pointer-events-none" />
+              <div key={promoBatch.id} className="relative grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-center animate-fadeIn">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide bg-amber-200 text-[#5B3A00] px-3 py-1 rounded-full">
+                      <Star className="w-3 h-3 fill-current" />
+                      {promoOff > 0 ? `${promoBatch.category} • ${promoOff}% OFF` : promoBatch.category}
                     </span>
-                  ))}
-                </div>
+                    {promoOff > 0 && (
+                      <span className="flex items-center gap-1.5 text-[10px] font-semibold text-white/80 bg-white/10 border border-white/15 px-3 py-1 rounded-full tabular-nums">
+                        <Timer className="w-3 h-3" />
+                        ENDS IN: {countdown.days}d : {countdown.hours}h : {countdown.minutes}m
+                      </span>
+                    )}
+                  </div>
 
-                <div className="flex flex-wrap items-center gap-3 mt-6">
-                  <button
-                    onClick={() => onOpenBatch(promo.batchId)}
-                    className="flex items-center gap-2 bg-[#FAD9B5] hover:bg-[#F7CC9C] text-[#0B1C30] text-sm font-semibold px-5 py-3 rounded-xl transition-all active:scale-95"
-                  >
-                    Explore Batch &amp; Enroll
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => showToast(`Playing a sample class from ${promoBatch.title}…`)}
-                    className="flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 text-sm font-semibold px-4 py-3 rounded-xl transition-all"
-                  >
-                    <PlayCircle className="w-4 h-4" />
-                    Watch Sample
-                  </button>
-                </div>
-              </div>
+                  <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mt-4 leading-tight">{promoBatch.title}</h1>
 
-              <div>
-                <div className="rounded-2xl bg-white/[0.07] border border-white/15 p-5 backdrop-blur-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-white/70">Batch Admissions Status</span>
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
+                    {promoBatch.features.slice(0, 3).map((h) => (
+                      <span key={h.text} className="flex items-center gap-2 text-xs text-white/85 bg-white/[0.06] border border-white/10 rounded-lg px-3 py-2">
+                        <h.icon className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{h.text}</span>
+                      </span>
+                    ))}
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-white/70 mt-3">
-                    <span>Seats Filled</span>
-                    <span>
-                      {seatsPct}% ({promo.seatsFilled} / {promo.seatsMax} Max)
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-2 rounded-full bg-white/15 overflow-hidden">
-                    <div className="h-full rounded-full bg-amber-400 transition-all duration-700" style={{ width: `${seatsPct}%` }} />
-                  </div>
-                  <div className="flex items-center justify-between gap-2 mt-4">
-                    <p className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold">{formatINR(promoBatch.price)}</span>
-                      <span className="text-xs text-white/40 line-through">{formatINR(promoBatch.mrp)}</span>
-                    </p>
-                    <span className="text-[10px] font-bold bg-white/10 border border-white/15 px-2 py-1 rounded-md">
-                      SAVE {formatINR(promoBatch.mrp - promoBatch.price)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-white/60 mt-2 leading-relaxed">{promo.note}</p>
-                </div>
 
-                <div className="flex justify-center gap-1.5 mt-4">
-                  {PROMOS.map((p, i) => (
+                  <div className="flex flex-wrap items-center gap-3 mt-6">
                     <button
-                      key={p.batchId}
-                      onClick={() => setPromoIndex(i)}
-                      title={`Show offer ${i + 1}`}
-                      className={`h-1.5 rounded-full transition-all ${i === promoIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/60'}`}
-                    />
-                  ))}
+                      onClick={() => onOpenBatch(promoBatch.id)}
+                      className="flex items-center gap-2 bg-[#FAD9B5] hover:bg-[#F7CC9C] text-[#0B1C30] text-sm font-semibold px-5 py-3 rounded-xl transition-all active:scale-95"
+                    >
+                      Explore Course &amp; Enroll
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => onBuyBatch(promoBatch.id)}
+                      className="flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/15 text-sm font-semibold px-4 py-3 rounded-xl transition-all"
+                    >
+                      <PlayCircle className="w-4 h-4" />
+                      View Price
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="rounded-2xl bg-white/[0.07] border border-white/15 overflow-hidden backdrop-blur-sm">
+                    {promoBatch.thumbnail && (
+                      <img src={promoBatch.thumbnail} alt="" className="w-full h-36 object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                    )}
+                    <div className="p-5">
+                      {promoBatch.studentsEnrolled ? (
+                        <p className="flex items-center gap-1.5 text-[11px] text-white/70">
+                          <Users className="w-3.5 h-3.5" />
+                          {promoBatch.studentsEnrolled.toLocaleString('en-IN')}+ students enrolled
+                        </p>
+                      ) : null}
+                      <div className="flex items-center justify-between gap-2 mt-3">
+                        <p className="flex items-baseline gap-2">
+                          <span className="text-3xl font-bold">{formatINR(promoBatch.price)}</span>
+                          {promoBatch.mrp > promoBatch.price && <span className="text-xs text-white/40 line-through">{formatINR(promoBatch.mrp)}</span>}
+                        </p>
+                        {promoBatch.mrp > promoBatch.price && (
+                          <span className="text-[10px] font-bold bg-white/10 border border-white/15 px-2 py-1 rounded-md">
+                            SAVE {formatINR(promoBatch.mrp - promoBatch.price)}
+                          </span>
+                        )}
+                      </div>
+                      {promoBatch.description && <p className="text-xs text-white/60 mt-2 leading-relaxed line-clamp-2">{promoBatch.description}</p>}
+                    </div>
+                  </div>
+
+                  {promos.length > 1 && (
+                    <div className="flex justify-center gap-1.5 mt-4">
+                      {promos.map((p, i) => (
+                        <button
+                          key={p.id}
+                          onClick={() => setPromoIndex(i)}
+                          title={`Show offer ${i + 1}`}
+                          className={`h-1.5 rounded-full transition-all ${i === promoIndex % promos.length ? 'w-6 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/60'}`}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* Enrolled courses */}
           <section>
@@ -248,17 +192,24 @@ export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, o
                 onClick={() => catalogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 className="flex items-center gap-1.5 bg-[#F6EFE9] hover:bg-[#EEE2D8] text-xs font-semibold px-4 py-2 rounded-full transition-colors"
               >
-                Explore All Batches
+                Explore All Courses
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {courses.length === 0 ? (
+            {status === 'loading' && allCourses.length === 0 ? (
+              <CatalogSkeleton />
+            ) : status === 'error' && allCourses.length === 0 ? (
+              <CatalogError message={error} onRetry={reload} />
+            ) : allCourses.length === 0 ? (
+              <CatalogEmpty title="You haven't enrolled in a course yet" hint="Pick a course below to get started." />
+            ) : courses.length === 0 ? (
               <p className="text-sm text-slate-500 bg-white rounded-2xl p-6">None of your courses match “{query.trim()}”.</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {courses.map((course) => {
-                  const justEnrolled = course.totalLectures === 0;
+                  // Lesson progress isn't tracked by the backend yet
+                  const justEnrolled = course.progress === 0;
                   return (
                     <article
                       key={course.id}
@@ -286,7 +237,11 @@ export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, o
                         <div className="flex items-center justify-between text-[10px] text-slate-500">
                           <span>Syllabus Covered</span>
                           <span>
-                            {justEnrolled ? 'Not started yet' : `${course.completedLectures} / ${course.totalLectures} Lectures`}
+                            {justEnrolled
+                              ? course.totalLectures
+                                ? `${course.totalLectures} Lectures`
+                                : 'Not started yet'
+                              : `${course.completedLectures} / ${course.totalLectures} Lectures`}
                           </span>
                         </div>
                         <div className="mt-1.5 h-1.5 rounded-full bg-[#F1E6DD] overflow-hidden">
@@ -296,7 +251,7 @@ export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, o
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            showToast(justEnrolled ? `Opening orientation for ${course.title}` : `Resuming ${course.currentTopic}`);
+                            onOpenBatch(course.batchId);
                           }}
                           className="mt-4 w-full flex items-center justify-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold py-2.5 rounded-full transition-all active:scale-[0.98]"
                         >
@@ -314,12 +269,20 @@ export function EnrolledCoursesView({ selectedBatch, enrolledBatchIds, onBack, o
           {/* Catalogue */}
           <section ref={catalogRef} className="scroll-mt-4">
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-5">Academic Batches &amp; Crash Courses</h2>
-            <BatchCatalog batches={catalog} query={query} showFilters onOpenBatch={onOpenBatch} onBuyBatch={onBuyBatch} />
+            <LiveBatchCatalog
+              status={status}
+              error={error}
+              onRetry={reload}
+              batches={batches}
+              filters={filters}
+              query={query}
+              showFilters
+              onOpenBatch={onOpenBatch}
+              onBuyBatch={onBuyBatch}
+            />
           </section>
         </div>
       </div>
-
-      <Toast message={toast} />
     </div>
   );
 }
