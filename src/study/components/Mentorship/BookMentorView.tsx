@@ -14,6 +14,7 @@ import {
   MessageSquareText,
   Loader2,
 } from 'lucide-react';
+import { SubPageHeader } from '../SubPageHeader';
 import { Mentor, formatBookingDate, getBookingDays, getSlots, initialsOf } from './mentorData';
 
 const TOPIC_MAX = 100;
@@ -86,19 +87,20 @@ export function BookMentorView({ mentor, studentEmail, onBack, onExit, onBooked 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30]">
-      {/* Top bar */}
-      <header className="shrink-0 h-14 sm:h-16 bg-[#FCF6F1] border-b border-[#175A67]/10 px-4 sm:px-8 flex items-center justify-between gap-3">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-[#0B1C30] hover:text-[#175A67] transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-        <h1 className="text-base sm:text-xl font-semibold tracking-tight truncate">Book a 1:1 Mentorship Session</h1>
-      </header>
+    <div className="relative w-full rounded-[24px] overflow-hidden flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30] min-h-[calc(100vh-6rem)] shadow-sm">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
+        <SubPageHeader
+          onBack={onBack}
+          crumbs={[
+            { label: 'Home', onClick: onExit },
+            { label: 'Features', onClick: onExit },
+            { label: '1 to 1 Mentorship', onClick: onBack },
+            { label: `Book ${mentor.name}` },
+          ]}
+        />
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-[1160px] mx-auto px-0 sm:px-6 sm:py-6">
-          <div className="bg-white sm:rounded-3xl overflow-hidden grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] shadow-[0_12px_40px_rgba(11,28,32,0.06)]">
+        <div className="max-w-[1160px] mx-auto">
+          <div className="bg-white rounded-3xl overflow-hidden grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] shadow-[0_12px_40px_rgba(11,28,32,0.06)]">
             {/* ------------------------------------------------------ */}
             {/* Mentor panel                                            */}
             {/* ------------------------------------------------------ */}

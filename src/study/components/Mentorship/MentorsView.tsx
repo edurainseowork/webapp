@@ -15,6 +15,7 @@ import {
   SearchX,
 } from 'lucide-react';
 import { AVAILABILITY_LABELS, MENTORS, Mentor, MentorSubject, SUBJECT_FILTERS, initialsOf } from './mentorData';
+import { SubPageHeader } from '../SubPageHeader';
 
 type SubjectFilter = 'All' | MentorSubject;
 type ViewMode = 'list' | 'grid';
@@ -101,63 +102,43 @@ export function MentorsView({ favorites, onToggleFavorite, onBack, onOpenMentor 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30]">
-      {/* ---------------------------------------------------------- */}
-      {/* Top bar                                                     */}
-      {/* ---------------------------------------------------------- */}
-      <header className="shrink-0 h-16 bg-[#FCF6F1] border-b border-[#175A67]/10 px-3 sm:px-6 flex items-center gap-2 sm:gap-4">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 bg-[#F1EBE5] hover:bg-[#E9DFD6] border border-[#175A67]/10 text-xs font-semibold px-3 py-2 rounded-full transition-colors shrink-0"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Back
-        </button>
+    <div className="relative w-full rounded-[24px] overflow-hidden flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30] min-h-[calc(100vh-6rem)] shadow-sm">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
+        {/* 1. SubPageHeader with Features Breadcrumbs */}
+        <SubPageHeader
+          onBack={onBack}
+          crumbs={[
+            { label: 'Home', onClick: onBack },
+            { label: 'Features', onClick: onBack },
+            { label: '1 to 1 Mentorship' },
+          ]}
+          rightElement={
+            <div className="flex items-center gap-2">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#2A707C]" />
+                <input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search mentor or college..."
+                  className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white/90 text-xs text-[#0B1C30] placeholder-[#70787C] border border-white/80 focus:outline-none focus:ring-2 focus:ring-[#175A67]/20 shadow-sm"
+                />
+                {query && (
+                  <button onClick={() => setQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#0B1C30]">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          }
+        />
 
-        <div className="hidden sm:block shrink-0 leading-tight">
-          <span className="inline-block text-[9px] font-bold uppercase tracking-wider bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">
-            Mentorship
-          </span>
-          <p className="text-[10px] text-slate-500 mt-0.5">1-on-1 sessions</p>
-        </div>
-
-        <button
-          onClick={() => {
-            resetFilters();
-            searchRef.current?.focus();
-          }}
-          className="hidden md:block bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors shrink-0"
-        >
-          Find Mentors
-        </button>
-
-        <div className="flex-1 min-w-0 flex justify-center">
-          <div className="relative w-full max-w-xl flex items-center">
-            <Search className="absolute left-3.5 w-4 h-4 text-slate-500 pointer-events-none" />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search mentor name, 'Moment of Inertia', 'IIT Bombay'..."
-              className="w-full pl-10 pr-9 py-2.5 rounded-full bg-[#F4EDE7] text-xs sm:text-sm placeholder-slate-400 border border-transparent focus:outline-none focus:bg-white focus:border-[#175A67] focus:ring-4 focus:ring-[#175A67]/10 transition-all"
-            />
-            {query && (
-              <button onClick={() => setQuery('')} className="absolute right-3 text-slate-400 hover:text-[#0B1C30]" title="Clear search">
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* ---------------------------------------------------------- */}
-      {/* Body                                                        */}
-      {/* ---------------------------------------------------------- */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-5 pb-16">
-          <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#175A67] mb-3">
-            <span className="text-slate-400 font-normal">/</span> 1-on-1 Mentors <span className="text-slate-400 font-normal">/</span>
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-black text-[#0B1C30] tracking-tight">1-on-1 Mentorship Sessions</h1>
+          <p className="text-xs sm:text-sm text-[#2A707C] font-medium mt-1">
+            Book live personalized guidance with verified IITians and top medical rankers.
           </p>
+        </div>
 
           {/* Filter bar */}
           <div className="bg-white rounded-2xl px-3 sm:px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_6px_24px_rgb(0,0,0,0.04)] mb-6">
@@ -278,8 +259,7 @@ export function MentorsView({ favorites, onToggleFavorite, onBack, onOpenMentor 
           )}
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
 export default MentorsView;

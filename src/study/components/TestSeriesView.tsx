@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileText, Clock, Trophy, Award, CheckCircle, Play, ArrowLeft, Swords } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { SubPageHeader } from './SubPageHeader';
 
 interface TestSeriesViewProps {
   onBack: () => void;
@@ -76,17 +77,19 @@ export const TestSeriesView: React.FC<TestSeriesViewProps> = ({ onBack, onOpenUp
 
   return (
     <div className="space-y-6 pb-20 animate-fadeIn">
+      {/* 1. Standardized Back Button + Breadcrumb */}
+      <SubPageHeader
+        onBack={onBack}
+        crumbs={[
+          { label: 'Home', onClick: onBack },
+          { label: 'Test Series' },
+        ]}
+      />
+
       {/* Banner */}
       <div className="rounded-2xl bg-white/60 backdrop-blur-md border border-white/80 p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.05)]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="p-2 rounded-xl bg-white/60 hover:bg-white/90 border border-white/80 text-[#175A67] transition-all shadow-sm"
-              title="Back to Study Central"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-[#175A67]">All-India CBT Test Series</h1>
