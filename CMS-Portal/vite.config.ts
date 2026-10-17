@@ -11,4 +11,7 @@ export default defineConfig({
       '@workspace/api-zod': fileURLToPath(new URL('./src/shared/api-zod.ts', import.meta.url)),
     },
   },
+  css: {
+    postcss: {},
+  },
 })
