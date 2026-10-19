@@ -23,7 +23,9 @@ import {
   ChevronDown,
   User,
   ShoppingBag,
-  LogOut
+  LogOut,
+  Lock,
+  Award
 } from 'lucide-react';
 import { UpgradeModal } from './components/Modals/UpgradeModal';
 import { DoubtSolverModal } from './components/Modals/DoubtSolverModal';
@@ -36,7 +38,6 @@ import { PurchasesModal } from './components/Modals/PurchasesModal';
 import { PurchasesView } from './components/PurchasesView';
 import { PiView } from './components/PiView';
 import { TestSeriesView } from './components/TestSeriesView';
-import { ArenaView } from './components/ArenaView';
 import { AiMentorView } from './components/AiMentorView';
 import { BookDoubtSessionView } from './components/askYourDoubt';
 import { BookmarksView } from './components/BookmarksView';
@@ -44,6 +45,7 @@ import { EBookLibraryView } from './components/EBookLibraryView';
 import { useAuth } from './AuthGate';
 import { CoursesHub } from './components/Courses/CoursesHub';
 import { MentorshipHub } from './components/Mentorship/MentorshipHub';
+import { CourseTestSeriesView } from './components/CourseTestSeriesView';
 import { VaultResource, NotificationItem } from './types';
 
 export function App() {
@@ -52,7 +54,7 @@ export function App() {
   const initials = session.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'ST';
 
   // Navigation States
-  const [activeNav, setActiveNav] = useState<'study-central' | 'pi' | 'library' | 'courses' | 'test-series' | 'arena' | 'profile'>('study-central');
+  const [activeNav, setActiveNav] = useState<'study-central' | 'pi' | 'library' | 'courses' | 'test-series' | 'profile'>('study-central');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState('12th - IIT JEE');
@@ -68,6 +70,7 @@ export function App() {
   const [isBookDoubtSessionOpen, setIsBookDoubtSessionOpen] = useState(false);
   const [isBookmarksPageOpen, setIsBookmarksPageOpen] = useState(false);
   const [isEbookLibraryOpen, setIsEbookLibraryOpen] = useState(false);
+  const [isCourseTestsOpen, setIsCourseTestsOpen] = useState(false);
 
   const [isMyCoursesOpen, setIsMyCoursesOpen] = useState(false);
   const [isPurchasesPageOpen, setIsPurchasesPageOpen] = useState(false);
@@ -128,6 +131,7 @@ export function App() {
     setIsMyCoursesOpen(false);
     setIsPurchasesPageOpen(false);
     setIsMentorshipOpen(false);
+    setIsCourseTestsOpen(false);
   };
 
   const syncRouteFromUrl = () => {
@@ -137,12 +141,13 @@ export function App() {
     setSearchQuery('');
     if (path.endsWith('/courses')) {
       setActiveNav('courses');
-    } else if (path.endsWith('/pi')) {
+    } else if (path.endsWith('/daily-doubts') || path.endsWith('/daily-drop') || path.endsWith('/pi')) {
       setActiveNav('pi');
     } else if (path.endsWith('/test-series')) {
       setActiveNav('test-series');
     } else if (path.endsWith('/arena')) {
-      setActiveNav('arena');
+      setIsCourseTestsOpen(true);
+      setActiveNav('study-central');
     } else if (path.endsWith('/profile')) {
       setActiveNav('profile');
     } else if (path.endsWith('/library')) {
@@ -153,7 +158,7 @@ export function App() {
       setIsBookmarksPageOpen(true);
     } else if (path.endsWith('/doubts')) {
       setIsBookDoubtSessionOpen(true);
-    } else if (path.endsWith('/ai-mentor')) {
+    } else if (path.endsWith('/ai-mentor') || path.endsWith('/edu-ai')) {
       setIsAiMentorPageOpen(true);
     } else if (path.endsWith('/my-courses')) {
       setIsMyCoursesOpen(true);
@@ -161,6 +166,8 @@ export function App() {
       setIsPurchasesPageOpen(true);
     } else if (path.endsWith('/mentorship')) {
       setIsMentorshipOpen(true);
+    } else if (path.endsWith('/batch-tests') || path.endsWith('/course-tests')) {
+      setIsCourseTestsOpen(true);
     } else {
       setActiveNav('study-central');
     }
@@ -171,7 +178,7 @@ export function App() {
     setSearchQuery('');
     setActiveNav(nav);
     if (typeof window !== 'undefined') {
-      const slug = customSlug !== undefined ? customSlug : (nav === 'study-central' ? '' : nav);
+      const slug = customSlug !== undefined ? customSlug : (nav === 'study-central' ? '' : nav === 'pi' ? 'daily-doubts' : nav);
       const url = `/study/${slug ? slug : ''}`;
       if (window.location.pathname !== url) {
         window.history.pushState(null, '', url);
@@ -179,7 +186,7 @@ export function App() {
     }
   };
 
-  const openSubView = (type: 'ebooks' | 'bookmarks' | 'doubts' | 'ai-mentor' | 'my-courses' | 'purchases' | 'mentorship') => {
+  const openSubView = (type: 'ebooks' | 'bookmarks' | 'doubts' | 'ai-mentor' | 'my-courses' | 'purchases' | 'mentorship' | 'batch-tests') => {
     resetSubViews();
     setSearchQuery('');
     if (type === 'ebooks') setIsEbookLibraryOpen(true);
@@ -189,6 +196,7 @@ export function App() {
     else if (type === 'my-courses') setIsMyCoursesOpen(true);
     else if (type === 'purchases') setIsPurchasesPageOpen(true);
     else if (type === 'mentorship') setIsMentorshipOpen(true);
+    else if (type === 'batch-tests') setIsCourseTestsOpen(true);
     if (typeof window !== 'undefined') {
       const url = `/study/${type}`;
       if (window.location.pathname !== url) {
@@ -208,11 +216,10 @@ export function App() {
 
   const getSearchPlaceholder = () => {
     if (activeNav === 'courses' || isMyCoursesOpen) return 'Search in Courses';
-    if (activeNav === 'pi') return 'Search in Pi';
-    if (activeNav === 'test-series') return 'Search in Test Series';
-    if (activeNav === 'arena') return 'Search in Arena';
+    if (activeNav === 'pi') return 'Search in Daily Drop';
+    if (activeNav === 'test-series') return 'Search in All India Test Pass';
     if (isEbookLibraryOpen) return 'Search in E-Books';
-    if (isAiMentorPageOpen) return 'Search in AI-Mentor';
+    if (isAiMentorPageOpen) return 'Search in EduAI';
     if (isBookmarksPageOpen) return 'Search in Bookmarks';
     return 'Search in Resources';
   };
@@ -225,15 +232,24 @@ export function App() {
   };
 
 
-  const batches = ['12th - IIT JEE', '11th - IIT JEE', 'Dropper - JEE Advanced', 'NEET-UG Premier'];
+  const batches = [
+    '12th - IIT JEE',
+    '11th - IIT JEE',
+    'Dropper - JEE Advanced',
+    '12th - NEET',
+    '11th - NEET',
+    'Dropper - NEET Premier',
+    'Class 10th - Foundation',
+    'Class 9th - Foundation',
+  ];
 
   const vaultItems: VaultResource[] = [
     {
       id: 'vault-physics',
       title: 'Bookmark',
       subject: 'Physics',
-      second_text:'Watch Later',
-      countLabel: '12 PDFs',
+      second_text: 'Watch Later',
+      countLabel: 'saved Items',
       tags: ['Rotational Motion', 'Wave Optics', 'Electrodynamics'],
       iconType: 'book',
       description: 'Comprehensive high-yield notes, derivation sheets, and Irodov problem breakdowns curated by IIT Top 100 rankers.',
@@ -242,10 +258,10 @@ export function App() {
     },
     {
       id: 'vault-chemistry',
-      title: 'Your Class Notes',
+      title: 'Your Class Material',
       subject: 'Chemistry',
-      second_text:'',
-      countLabel: '3 Books',
+      second_text: 'Recorded Lecture',
+      countLabel: 'Lecture Notes',
       tags: ['Reaction Maps', 'Coordination Chem', 'Thermodynamics'],
       iconType: 'archive',
       description: 'Master organic synthesis pathways, NCERT line-by-line highlight maps, and inorganic memorization mnemonics.',
@@ -256,7 +272,7 @@ export function App() {
       id: 'vault-combat',
       title: 'Your Ebook',
       subject: 'Mock Tests',
-      second_text:'',
+      second_text: '',
       countLabel: 'LIVE NOW',
       tags: ['Full Syllabus', 'Real NTA Engine', 'AIR Predictor'],
       iconType: 'combat',
@@ -269,7 +285,7 @@ export function App() {
     {
       id: 'vault-math',
       title: 'Test Series',
-      second_text:'',
+      second_text: '',
       subject: 'Mock Tests',
       countLabel: 'Active Tests',
       tags: ['Full Syllabus', 'Part Tests', 'Real NTA Engine'],
@@ -297,7 +313,7 @@ export function App() {
     },
     {
       id: 'sp3',
-      title: 'AI- MENTOR',
+      title: 'EduAI',
       subtitle: '',
       icon: Bot,
       action: () => openSubView('ai-mentor'),
@@ -333,13 +349,11 @@ export function App() {
             className="flex items-center gap-2 sm:gap-2.5 cursor-pointer"
           >
 
-<div className="w-8 h-8 rounded-lg bg-[#175A67] flex items-center justify-center shadow-md overflow-hidden">
-  <img
-    src={logo}
-    alt="Website Logo"
-    className="w-6 h-6 object-contain"
-  />
-</div>
+            <img
+              src={logo}
+              alt="EduRAIN Logo"
+              className="h-9 sm:h-10 w-auto object-contain transition-transform hover:scale-105"
+            />
             <div className="flex items-center text-lg sm:text-xl font-bold tracking-tight">
               <span className="text-emerald-600 font-bold">Edu</span>
               <span className="text-amber-400 font-black uppercase">RAIN</span>
@@ -391,13 +405,15 @@ export function App() {
             <Search className="w-5 h-5 text-[#175A67]" />
           </button>
 
-          {/* Upgrade CTA */}
+          {/* Upgrade CTA (Hidden for now as requested) */}
+          {/*
           <button
             onClick={() => setIsUpgradeOpen(true)}
             className="bg-[#10B981] hover:bg-[#059669] text-white font-bold text-[11px] sm:text-xs px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1 shrink-0"
           >
             <span>UPGRADE TO PRO</span>
           </button>
+          */}
 
           {/* Bell Notifications */}
           <button
@@ -423,7 +439,7 @@ export function App() {
             >
               <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-[#175A67] to-[#2A707C] p-0.5 shadow-sm">
                 <div className="w-full h-full rounded-full bg-[#EAE3DE] flex items-center justify-center text-xs font-bold text-[#175A67]">
-                {initials}
+                  {initials}
                 </div>
               </div>
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#10B981] ring-2 ring-[#EAE3DE]" />
@@ -499,9 +515,8 @@ export function App() {
 
       {/* 3. SLIDE-OUT MOBILE NAVIGATION DRAWER */}
       <div
-        className={`fixed inset-0 z-50 lg:hidden transition-opacity duration-300 ${
-          isMobileSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
+        className={`fixed inset-0 z-50 lg:hidden transition-opacity duration-300 ${isMobileSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
       >
         {/* Backdrop */}
         <div
@@ -511,17 +526,18 @@ export function App() {
 
         {/* Drawer Panel */}
         <aside
-          className={`relative w-[280px] max-w-[85vw] h-full bg-white/80 backdrop-blur-2xl border-r border-white/80 shadow-2xl flex flex-col justify-between p-5 transform transition-transform duration-300 ease-out ${
-            isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
+          className={`relative w-[280px] max-w-[85vw] h-full bg-white/80 backdrop-blur-2xl border-r border-white/80 shadow-2xl flex flex-col justify-between p-5 transform transition-transform duration-300 ease-out ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}
         >
           <div>
             {/* Drawer Header with Brand & Close */}
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#175A67]/15">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#175A67] flex items-center justify-center text-white shadow-sm">
-                  <Sparkles className="w-4 h-4 fill-white" />
-                </div>
+                <img
+                  src={logo}
+                  alt="EduRAIN Logo"
+                  className="h-8 w-auto object-contain"
+                />
                 <div className="flex items-center text-lg font-bold tracking-tight">
                   <span className="text-emerald-600 font-bold">Edu</span>
                   <span className="text-amber-400 font-black uppercase">RAIN</span>
@@ -570,9 +586,8 @@ export function App() {
                           setSelectedBatch(b);
                           setIsDrawerBatchOpen(false);
                         }}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold ${
-                          selectedBatch === b ? 'bg-[#175A67] text-white' : 'text-[#175A67] hover:bg-white/60'
-                        }`}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold ${selectedBatch === b ? 'bg-[#175A67] text-white' : 'text-[#175A67] hover:bg-white/60'
+                          }`}
                       >
                         {b}
                       </button>
@@ -592,11 +607,10 @@ export function App() {
                   navigateTo('study-central');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
-                    ? 'bg-[#175A67] text-white shadow-sm'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
+                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
+                  ? 'bg-[#175A67] text-white shadow-sm'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
               >
                 <LayoutGrid className="w-4 h-4" />
                 <span>Home</span>
@@ -607,14 +621,13 @@ export function App() {
                   navigateTo('pi');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'pi'
-                    ? 'bg-[#175A67] text-white shadow-sm'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
+                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
+                  ? 'bg-[#175A67] text-white shadow-sm'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
               >
                 <Terminal className="w-4 h-4" />
-                <span>PI</span>
+                <span>Daily Drop</span>
               </button>
 
               <button
@@ -622,11 +635,10 @@ export function App() {
                   navigateTo('courses');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'courses' || isMyCoursesOpen
-                    ? 'bg-[#175A67] text-white shadow-sm'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
+                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'courses' || isMyCoursesOpen
+                  ? 'bg-[#175A67] text-white shadow-sm'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
               >
                 <BookOpen className="w-4 h-4" />
                 <span>COURSES</span>
@@ -637,34 +649,22 @@ export function App() {
                   navigateTo('test-series');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'test-series'
-                    ? 'bg-[#175A67] text-white shadow-sm'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
+                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
+                  ? 'bg-[#175A67] text-white shadow-sm'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
               >
-                <FileText className="w-4 h-4" />
-                <span>TEST SERIES</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  navigateTo('arena');
-                  setIsMobileSidebarOpen(false);
-                }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'arena'
-                    ? 'bg-[#175A67] text-white shadow-sm'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
-              >
-                <Swords className="w-4 h-4" />
-                <span>ARENA</span>
+                <div className="flex items-center gap-3">
+                  <Award className="w-4 h-4" />
+                  <span>ALL INDIA TEST PASS</span>
+                </div>
+                <Lock className="w-3.5 h-3.5 opacity-70" />
               </button>
             </div>
           </div>
 
-          {/* Drawer Footer CTA */}
+          {/* Drawer Footer CTA (Hidden for now as requested) */}
+          {/*
           <div className="pt-4 border-t border-[#175A67]/15">
             <button
               onClick={() => {
@@ -677,6 +677,7 @@ export function App() {
               <span>UPGRADE TO PRO</span>
             </button>
           </div>
+          */}
         </aside>
       </div>
 
@@ -692,11 +693,10 @@ export function App() {
             <div className="space-y-1">
               <button
                 onClick={() => navigateTo('study-central')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
-                    ? 'bg-[#175A67] text-white shadow-md'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
+                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
+                  ? 'bg-[#175A67] text-white shadow-md'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
               >
                 <LayoutGrid className="w-4 h-4" />
                 <span>Home</span>
@@ -704,23 +704,21 @@ export function App() {
 
               <button
                 onClick={() => navigateTo('pi')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'pi'
-                    ? 'bg-[#175A67] text-white shadow-md'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
+                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
+                  ? 'bg-[#175A67] text-white shadow-md'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
               >
                 <Terminal className="w-4 h-4" />
-                <span>PI</span>
+                <span>Daily Drop</span>
               </button>
 
               <button
                 onClick={() => navigateTo('courses')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'courses' || isMyCoursesOpen
-                    ? 'bg-[#175A67] text-white shadow-md'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
+                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'courses' || isMyCoursesOpen
+                  ? 'bg-[#175A67] text-white shadow-md'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
               >
                 <BookOpen className="w-4 h-4" />
                 <span>COURSES</span>
@@ -728,31 +726,22 @@ export function App() {
 
               <button
                 onClick={() => navigateTo('test-series')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'test-series'
-                    ? 'bg-[#175A67] text-white shadow-md'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
+                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
+                  ? 'bg-[#175A67] text-white shadow-md'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
               >
-                <FileText className="w-4 h-4" />
-                <span>TEST SERIES</span>
-              </button>
-
-              <button
-                onClick={() => navigateTo('arena')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'arena'
-                    ? 'bg-[#175A67] text-white shadow-md'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
-              >
-                <Swords className="w-4 h-4" />
-                <span>ARENA</span>
+                <div className="flex items-center gap-3">
+                  <Award className="w-4 h-4" />
+                  <span>ALL INDIA TEST PASS</span>
+                </div>
+                <Lock className="w-3.5 h-3.5 opacity-70" />
               </button>
             </div>
           </div>
 
-          {/* Bottom CTA */}
+          {/* Bottom CTA (Hidden for now as requested) */}
+          {/*
           <div className="pt-4">
             <button
               onClick={() => setIsUpgradeOpen(true)}
@@ -762,6 +751,7 @@ export function App() {
               <span>UPGRADE TO PRO</span>
             </button>
           </div>
+          */}
         </aside>
 
         {/* 5. MAIN DASHBOARD BODY */}
@@ -813,6 +803,14 @@ export function App() {
               }}
               searchQuery={searchQuery}
             />
+          ) : isCourseTestsOpen ? (
+            <CourseTestSeriesView
+              onBack={() => setIsCourseTestsOpen(false)}
+              selectedBatch={selectedBatch}
+              searchQuery={searchQuery}
+              onOpenUpgrade={() => setIsUpgradeOpen(true)}
+              studentName={session?.name}
+            />
           ) : isMyCoursesOpen ? (
             <PurchasesView
               initialView="enrolled"
@@ -839,18 +837,13 @@ export function App() {
             <CoursesHub
               mode="catalog"
               selectedBatch={selectedBatch}
-             
+
               searchQuery={searchQuery}
-      
+
               onExit={() => navigateTo('study-central')}
             />
           ) : activeNav === 'test-series' ? (
             <TestSeriesView
-              onBack={() => navigateTo('study-central')}
-              onOpenUpgrade={() => setIsUpgradeOpen(true)}
-            />
-          ) : activeNav === 'arena' ? (
-            <ArenaView
               onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
             />
@@ -937,7 +930,7 @@ export function App() {
                           } else if (item.id === 'vault-combat') {
                             openSubView('ebooks');
                           } else if (item.id === 'vault-math') {
-                            navigateTo('test-series');
+                            openSubView('batch-tests');
                           } else {
                             resetSubViews();
                             setSelectedVaultItem(item);
@@ -950,14 +943,12 @@ export function App() {
                         </div>
                         <div className="text-center">
                           <h3 className="font-bold text-[#175A67] text-center text-base sm:text-lg lg:text-[15px] lg:min-w-[200px] lg:leading-normal">{item.title}</h3>
-                          <p className={`text-xs text-center mt-1 ${
-                            item.isLive ? 'text-[#10B981] font-bold' : 'text-[#2A707C]'
-                          }`}>
+                          <p className={`text-xs text-center mt-1 ${item.isLive ? 'text-[#10B981] font-bold' : 'text-[#2A707C]'
+                            }`}>
                             {item.countLabel}
                           </p>
-                          <p className={`text-xs text-center mt-1 ${
-                            item.isLive ? 'text-[#10B981] font-bold' : 'text-[#2A707C]'
-                          }`}>
+                          <p className={`text-xs text-center mt-1 ${item.isLive ? 'text-[#10B981] font-bold' : 'text-[#2A707C]'
+                            }`}>
                             {item.second_text}
                           </p>
                         </div>
@@ -1011,7 +1002,11 @@ export function App() {
         isOpen={isGoalModalOpen}
         onClose={() => setIsGoalModalOpen(false)}
         activeGoal={activeGoal}
-        onConfirm={(goal) => setActiveGoal(goal)}
+        selectedBatch={selectedBatch}
+        onConfirm={(goal, batchLabel) => {
+          setActiveGoal(goal);
+          if (batchLabel) setSelectedBatch(batchLabel);
+        }}
       />
 
     </div>

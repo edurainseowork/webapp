@@ -891,6 +891,10 @@ export function PiView({
       {/* 1. Standardized Back Button + Wallet */}
       <SubPageHeader
         onBack={onBack}
+        crumbs={[
+          { label: 'Home', onClick: onBack },
+          { label: 'Daily Drop' },
+        ]}
         rightElement={
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 bg-white/80 border border-white rounded-full px-3 py-1.5 shadow-sm">
@@ -917,9 +921,8 @@ export function PiView({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-2.5 flex-wrap">
           <h1 className="text-2xl sm:text-3xl font-bold text-[#003441]">
-            PI <span className="font-medium text-[#003441] text-lg sm:text-xl">(Personalized Intelligence)</span>
+            Daily Drop
           </h1>
-          <span className="text-[10px] font-black uppercase bg-amber-200 text-amber-800 px-2.5 py-1 rounded-full">Pro</span>
         </div>
 
         {/* <div className="flex items-center gap-2.5 flex-wrap">

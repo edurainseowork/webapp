@@ -3,10 +3,8 @@ import confetti from 'canvas-confetti';
 import {
   ArrowLeft,
   ArrowRight,
-  Search,
   ChevronDown,
   ChevronRight,
-  GraduationCap,
   Star,
   Clock3,
   Users,
@@ -24,7 +22,6 @@ import {
   BarChart3,
   MonitorSmartphone,
   PhoneCall,
-  Lock,
   CheckCircle2,
   Video,
   Loader2,
@@ -166,6 +163,10 @@ export function CourseDetailView({
 
   // Lessons come from the CMS content tree; the backend only returns them to enrolled students
   const loadSyllabus = useCallback(async () => {
+    if (!isEnrolled) {
+      setSyllabus({ status: 'locked' });
+      return;
+    }
     setSyllabus({ status: 'loading' });
     try {
       const result = await fetchCourseContent(batch.courseId);
@@ -173,7 +174,7 @@ export function CourseDetailView({
     } catch (err) {
       setSyllabus({ status: 'error', message: err instanceof Error ? err.message : 'Could not load the syllabus.' });
     }
-  }, [batch.courseId]);
+  }, [batch.courseId, isEnrolled]);
 
   useEffect(() => {
     void loadSyllabus();
@@ -205,7 +206,13 @@ export function CourseDetailView({
   const handleTab = (tab: TabId) => {
     setActiveTab(tab);
     if (tab === 'description') scrollTo(plansRef.current);
-    else if (tab === 'syllabus') scrollTo(subjectsRef.current);
+    else if (tab === 'syllabus') {
+      if (syllabus.status !== 'locked' && subjectsRef.current) {
+        scrollTo(subjectsRef.current);
+      } else {
+        showToast('Lessons unlock after enrollment.');
+      }
+    }
     else if (tab === 'tests') showToast('Tests unlock with enrolment — preview coming soon.');
     else showToast('Ranker Community opens for enrolled students.');
   };
@@ -237,35 +244,9 @@ export function CourseDetailView({
 
   return (
     <div className="relative w-full rounded-[24px] overflow-hidden flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30] min-h-[calc(100vh-6rem)] shadow-sm">
-      {/* Top bar */}
-      <header className="shrink-0 bg-[#FBF8F5] border-b border-slate-200/70">
-        <div className="h-14 px-3 sm:px-6 flex items-center gap-2 sm:gap-4">
-          <span className="hidden sm:flex items-center gap-1.5 text-[11px] font-semibold bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg shrink-0">
-            <GraduationCap className="w-4 h-4 text-[#175A67]" />
-            <span className="text-[#175A67] font-bold">COHORT</span>
-            {selectedBatch}
-          </span>
-          <div className="flex-1 flex justify-center min-w-0">
-            <div className="relative w-full max-w-lg">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onFocus={() => scrollTo(breakdownRef.current)}
-                placeholder="Search syllabus, lectures, notes..."
-                className="w-full pl-9 pr-3 py-2 rounded-full bg-[#F1EBE5] text-xs placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-4 focus:ring-[#175A67]/10 border border-transparent focus:border-[#175A67] transition-all"
-              />
-            </div>
-          </div>
-          <button
-            onClick={() => handleTab('description')}
-            className="bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-semibold px-3 sm:px-4 py-2 rounded-lg transition-all shrink-0"
-          >
-            Course Details
-          </button>
-        </div>
-
-        <div className="h-11 bg-white border-t border-slate-100 px-3 sm:px-6 flex items-center gap-2 text-xs overflow-x-auto no-scrollbar">
+      {/* Top bar - Breadcrumb & Back */}
+      <header className="shrink-0 bg-white border-b border-slate-200/70">
+        <div className="h-12 px-3 sm:px-6 flex items-center gap-2 text-xs overflow-x-auto no-scrollbar">
           <button onClick={onBack} className="flex items-center gap-1.5 font-semibold text-[#175A67] hover:underline whitespace-nowrap">
             <ArrowLeft className="w-4 h-4" />
             All Courses
@@ -519,92 +500,76 @@ export function CourseDetailView({
             </aside>
           </div>
 
-          {/* Subjects */}
-          <section ref={subjectsRef} className="scroll-mt-16">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#175A67]">Curriculum Framework</p>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight mt-1 mb-5">Subjects &amp; Syllabus Directory</h2>
+          {/* Subjects (rendered when syllabus is available / unlocked) */}
+          {syllabus.status !== 'locked' && (
+            <section ref={subjectsRef} className="scroll-mt-16">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#175A67]">Curriculum Framework</p>
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight mt-1 mb-5">Subjects &amp; Syllabus Directory</h2>
 
-            {syllabus.status === 'loading' ? (
-              <div className="bg-white rounded-2xl py-10 flex items-center justify-center gap-2 text-sm text-slate-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading syllabus…
-              </div>
-            ) : syllabus.status === 'locked' ? (
-              <div className="bg-white rounded-2xl py-10 px-6 flex flex-col items-center text-center">
-                <span className="w-11 h-11 rounded-full bg-[#F6EFE9] flex items-center justify-center mb-3">
-                  <Lock className="w-5 h-5 text-slate-500" />
-                </span>
-                <p className="font-semibold">Lessons unlock after enrollment</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                  Enroll in {batch.title} to watch every video and open all notes and PDFs
-                  {batch.totalLessons ? ` (${batch.totalLessons} lessons)` : ''}.
-                </p>
-                <button
-                  onClick={() => scrollTo(plansRef.current)}
-                  className="mt-4 flex items-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold px-4 py-2 rounded-full"
-                >
-                  View price
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : syllabus.status === 'error' ? (
-              <div className="bg-white rounded-2xl py-10 px-6 flex flex-col items-center text-center">
-                <AlertTriangle className="w-6 h-6 text-amber-500 mb-2" />
-                <p className="font-semibold">Couldn't load the syllabus</p>
-                <p className="text-xs text-slate-500 mt-1">{syllabus.message}</p>
-                <button
-                  onClick={() => void loadSyllabus()}
-                  className="mt-4 flex items-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold px-4 py-2 rounded-full"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Try again
-                </button>
-              </div>
-            ) : subjects.length === 0 ? (
-              <div className="bg-white rounded-2xl py-10 px-6 text-center">
-                <p className="font-semibold">Lessons are being added</p>
-                <p className="text-xs text-slate-500 mt-1">Your teachers are uploading this course's content. Check back soon.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                {subjects.map((s) => {
-                  const active = s.id === subject?.id && !query.trim();
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => {
-                        setActiveSubjectId(s.id);
-                        setQuery('');
-                        scrollTo(breakdownRef.current);
-                      }}
-                      className={`text-left bg-white rounded-2xl p-4 border-2 flex flex-col min-h-[156px] transition-all ${
-                        active ? 'border-[#175A67] shadow-md' : 'border-transparent hover:border-[#175A67]/25'
-                      }`}
-                    >
-                      <span className="w-10 h-10 rounded-xl bg-sky-50 text-[#175A67] flex items-center justify-center">
-                        <s.icon className="w-5 h-5" />
-                      </span>
-                      <span className="flex items-start justify-between gap-1.5 mt-3">
-                        <span className="text-sm font-semibold leading-snug">{s.name}</span>
-                        <span
-                          className={`text-[9px] font-semibold px-1.5 py-0.5 rounded text-center shrink-0 ${
-                            active ? 'bg-sky-100 text-sky-700' : 'bg-sky-50 text-[#175A67]'
-                          }`}
-                        >
-                          {active ? 'Active' : s.badge}
+              {syllabus.status === 'loading' ? (
+                <div className="bg-white rounded-2xl py-10 flex items-center justify-center gap-2 text-sm text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading syllabus…
+                </div>
+              ) : syllabus.status === 'error' ? (
+                <div className="bg-white rounded-2xl py-10 px-6 flex flex-col items-center text-center">
+                  <AlertTriangle className="w-6 h-6 text-amber-500 mb-2" />
+                  <p className="font-semibold">Couldn't load the syllabus</p>
+                  <p className="text-xs text-slate-500 mt-1">{syllabus.message}</p>
+                  <button
+                    onClick={() => void loadSyllabus()}
+                    className="mt-4 flex items-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold px-4 py-2 rounded-full"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Try again
+                  </button>
+                </div>
+              ) : subjects.length === 0 ? (
+                <div className="bg-white rounded-2xl py-10 px-6 text-center">
+                  <p className="font-semibold">Lessons are being added</p>
+                  <p className="text-xs text-slate-500 mt-1">Your teachers are uploading this course's content. Check back soon.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {subjects.map((s) => {
+                    const active = s.id === subject?.id && !query.trim();
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          setActiveSubjectId(s.id);
+                          setQuery('');
+                          scrollTo(breakdownRef.current);
+                        }}
+                        className={`text-left bg-white rounded-2xl p-4 border-2 flex flex-col min-h-[156px] transition-all ${
+                          active ? 'border-[#175A67] shadow-md' : 'border-transparent hover:border-[#175A67]/25'
+                        }`}
+                      >
+                        <span className="w-10 h-10 rounded-xl bg-sky-50 text-[#175A67] flex items-center justify-center">
+                          <s.icon className="w-5 h-5" />
                         </span>
-                      </span>
-                      <span className="text-[10px] text-slate-500 mt-1">{s.stats}</span>
-                      <span className="mt-auto pt-3 flex items-center justify-between text-[11px] font-semibold text-[#175A67]">
-                        View Syllabus
-                        <ArrowRight className="w-4 h-4" />
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+                        <span className="flex items-start justify-between gap-1.5 mt-3">
+                          <span className="text-sm font-semibold leading-snug">{s.name}</span>
+                          <span
+                            className={`text-[9px] font-semibold px-1.5 py-0.5 rounded text-center shrink-0 ${
+                              active ? 'bg-sky-100 text-sky-700' : 'bg-sky-50 text-[#175A67]'
+                            }`}
+                          >
+                            {active ? 'Active' : s.badge}
+                          </span>
+                        </span>
+                        <span className="text-[10px] text-slate-500 mt-1">{s.stats}</span>
+                        <span className="mt-auto pt-3 flex items-center justify-between text-[11px] font-semibold text-[#175A67]">
+                          View Syllabus
+                          <ArrowRight className="w-4 h-4" />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Chapter breakdown / search results */}
           {subject && (
