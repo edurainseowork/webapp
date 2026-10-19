@@ -1,10 +1,9 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
-// Same Firebase project as the mobile app and the CMS. A Firebase web config is public by design;
-// access is controlled by Firebase Auth and the backend, not by hiding these values.
+// Same Firebase project as the mobile app and the CMS. Config values loaded from environment.
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (''),
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'edurain-pvt.firebaseapp.com',
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'edurain-pvt',
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'edurain-pvt.firebasestorage.app',

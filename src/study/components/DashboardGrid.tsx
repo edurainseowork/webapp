@@ -37,7 +37,7 @@ const VAULT_RESOURCES: VaultResource[] = [
     title: 'Physics Intel',
     subject: 'Physics',
     second_text: 'Watch Later',
-    countLabel: '12 PDFs',
+    countLabel: 'Saved Items',
     tags: ['Rotational Motion', 'Wave Optics', 'Electrodynamics'],
     iconType: 'book',
     description: 'Comprehensive high-yield notes, derivation sheets, and Irodov problem breakdowns curated by IIT Top 100 rankers.',

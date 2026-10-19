@@ -12,7 +12,6 @@ import {
   Calendar,
   Check,
   ShieldCheck,
-  FileCheck2,
 } from 'lucide-react';
 import { SubPageHeader } from './SubPageHeader';
 import { EnrolledCoursesView } from './Courses/EnrolledCoursesView';
@@ -361,28 +360,20 @@ export function PurchasesView({
             { label: 'Home', onClick: onBack },
             { label: 'My Purchases' },
           ]}
-          rightElement={
-            <div className="flex items-center gap-2">
-              <div className="bg-white/80 border border-white/80 rounded-xl px-3 py-1.5 shadow-sm text-xs font-semibold text-[#175A67] flex items-center gap-1.5">
-                <Receipt className="w-3.5 h-3.5 text-[#175A67]" />
-                Total Spent: <span className="font-bold text-[#0B1C30]">₹{totalSpent.toLocaleString('en-IN')}</span>
-              </div>
-            </div>
-          }
         />
 
         {/* Page Headline */}
         <div className="mb-7">
           <h1 className="text-2xl sm:text-3xl font-black text-[#0B1C30] tracking-tight">My Purchases</h1>
           <p className="text-xs sm:text-sm text-[#2A707C] font-medium mt-1">
-            Manage your enrolled academic courses and view your complete billing and transaction history.
+            Manage your enrolled academic courses.
           </p>
         </div>
 
         {/* ======================================================== */}
-        {/*  THE TWO MAIN TILES AS INSTRUCTED BY USER                */}
+        {/*  MAIN TILE                                               */}
         {/* ======================================================== */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 mb-8">
+        <div className="max-w-xl mb-8">
           {/* Tile 1: Your Enrolled Courses */}
           <div
             onClick={() => setCurrentView('enrolled')}
@@ -413,39 +404,6 @@ export function PurchasesView({
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
               </span>
               <span className="text-[11px] text-[#70787C] font-semibold">Resume Lectures &gt;</span>
-            </div>
-          </div>
-
-          {/* Tile 2: Transaction History */}
-          <div
-            onClick={() => setCurrentView('transactions')}
-            className="group relative bg-white/75 hover:bg-white/95 backdrop-blur-md border border-white/80 rounded-3xl p-6 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col justify-between active:scale-[0.99]"
-          >
-            <div>
-              <div className="flex items-center justify-between gap-3 mb-5">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#0F3B42] to-[#0A262C] text-white flex items-center justify-center shadow-md">
-                  <Receipt className="w-7 h-7 text-amber-300" />
-                </div>
-                <span className="text-xs font-bold bg-[#175A67]/15 text-[#175A67] px-3.5 py-1 rounded-full border border-[#175A67]/20 flex items-center gap-1.5">
-                  <FileCheck2 className="w-3.5 h-3.5" />
-                  {DEFAULT_PURCHASES.length} Tax Invoices
-                </span>
-              </div>
-
-              <h2 className="text-xl sm:text-2xl font-bold text-[#0B1C30] group-hover:text-[#175A67] transition-colors">
-                Transaction History
-              </h2>
-              <p className="text-xs sm:text-sm text-[#40484B] mt-2 leading-relaxed">
-                Download GST invoices, inspect past order timestamps, track payment success, and review total course spending.
-              </p>
-            </div>
-
-            <div className="mt-7 pt-4 border-t border-[#175A67]/10 flex items-center justify-between">
-              <span className="text-xs font-bold text-[#175A67] group-hover:underline flex items-center gap-1.5">
-                View Transaction History
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-              </span>
-              <span className="text-[11px] text-[#70787C] font-semibold">Download Invoices &gt;</span>
             </div>
           </div>
         </div>
