@@ -13,6 +13,13 @@ export default defineConfig({
             res.end();
             return;
           }
+          if (req.url && req.url.startsWith('/study/') && !req.url.includes('.')) {
+            req.url = '/study/index.html';
+          }
+          // Role desks live outside /study but are the same single-page app
+          if (req.url && /^\/(mentorDesk|teacherAssistantDesk)(\/[^.]*)?(\?.*)?$/i.test(req.url)) {
+            req.url = '/study/index.html';
+          }
           next();
         });
       }

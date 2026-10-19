@@ -1,22 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import logo from "../study/components/photos/EDURAIN_Logo-Photoroom.png";
-import { 
-  Menu, 
-  Search, 
-  Bell, 
-  BookOpen, 
-  Library, 
-  Crosshair, 
-  ChevronRight, 
-  LayoutGrid, 
-  Terminal, 
-  HelpCircle, 
-  Bot, 
-  Users, 
-  Swords, 
-  Cpu, 
-  FileText, 
-  Sparkles, 
+import {
+  Menu,
+  Search,
+  Bell,
+  BookOpen,
+  Library,
+  Crosshair,
+  ChevronRight,
+  LayoutGrid,
+  Terminal,
+  HelpCircle,
+  Bot,
+  Users,
+  Swords,
+  Cpu,
+  FileText,
+  Sparkles,
   X,
   AlignLeft,
   Wifi,
@@ -31,24 +31,35 @@ import { VaultDetailModal } from './components/Modals/VaultDetailModal';
 import { NotificationDrawer } from './components/Modals/NotificationDrawer';
 import { ProfileView } from './components/Profile-section/ProfileView';
 import { LibraryView } from './components/LibraryView';
-import { CohortGoalModal, GoalId } from './components/Modals/CohortGoalModal';
+import { CohortGoalModal } from './components/Modals/CohortGoalModal';
+import { fetchGoal, saveGoal, type StudentGoal } from './lib/goal';
 import { PurchasesModal } from './components/Modals/PurchasesModal';
+import { PurchasesView } from './components/PurchasesView';
 import { PiView } from './components/PiView';
-import { CoursesView } from './components/CoursesView';
 import { TestSeriesView } from './components/TestSeriesView';
 import { ArenaView } from './components/ArenaView';
 import { AiMentorView } from './components/AiMentorView';
-import { BookDoubtSessionView } from './components/BookDoubtSessionView';
+import { BookDoubtSessionView } from './components/askYourDoubt';
+import { BookmarksView } from './components/BookmarksView';
+import { EBookLibraryView } from './components/EBookLibraryView';
+import { useAuth } from './AuthGate';
+import { CoursesHub } from './components/Courses/CoursesHub';
+import { MentorshipHub } from './components/Mentorship/MentorshipHub';
 import { VaultResource, NotificationItem } from './types';
 
 export function App() {
+  // Signed-in student (AuthGate only renders App when there is one)
+  const { session, firstName, logout } = useAuth();
+  const initials = session.name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || 'ST';
+
   // Navigation States
   const [activeNav, setActiveNav] = useState<'study-central' | 'pi' | 'library' | 'courses' | 'test-series' | 'arena' | 'profile'>('study-central');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState('12th - IIT JEE');
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
-  const [activeGoal, setActiveGoal] = useState<GoalId>('iit-jee');
+  // Student's goal = a CMS category, saved on their profile (GET/PUT /api/profile/goal)
+  const [goal, setGoal] = useState<StudentGoal | null>(null);
   const [isDrawerBatchOpen, setIsDrawerBatchOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -57,6 +68,12 @@ export function App() {
   const [isDoubtSolverOpen, setIsDoubtSolverOpen] = useState(false);
   const [isAiMentorPageOpen, setIsAiMentorPageOpen] = useState(false);
   const [isBookDoubtSessionOpen, setIsBookDoubtSessionOpen] = useState(false);
+  const [isBookmarksPageOpen, setIsBookmarksPageOpen] = useState(false);
+  const [isEbookLibraryOpen, setIsEbookLibraryOpen] = useState(false);
+
+  const [isMyCoursesOpen, setIsMyCoursesOpen] = useState(false);
+  const [isPurchasesPageOpen, setIsPurchasesPageOpen] = useState(false);
+  const [isMentorshipOpen, setIsMentorshipOpen] = useState(false);
   const [selectedVaultItem, setSelectedVaultItem] = useState<VaultResource | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -105,11 +122,124 @@ export function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isProfileDropdownOpen]);
 
+  const resetSubViews = () => {
+    setIsAiMentorPageOpen(false);
+    setIsBookDoubtSessionOpen(false);
+    setIsBookmarksPageOpen(false);
+    setIsEbookLibraryOpen(false);
+    setIsMyCoursesOpen(false);
+    setIsPurchasesPageOpen(false);
+    setIsMentorshipOpen(false);
+  };
+
+  const syncRouteFromUrl = () => {
+    if (typeof window === 'undefined') return;
+    const path = window.location.pathname.replace(/\/$/, '');
+    resetSubViews();
+    setSearchQuery('');
+    if (path.endsWith('/courses')) {
+      setActiveNav('courses');
+    } else if (path.endsWith('/pi')) {
+      setActiveNav('pi');
+    } else if (path.endsWith('/test-series')) {
+      setActiveNav('test-series');
+    } else if (path.endsWith('/arena')) {
+      setActiveNav('arena');
+    } else if (path.endsWith('/profile')) {
+      setActiveNav('profile');
+    } else if (path.endsWith('/library')) {
+      setActiveNav('library');
+    } else if (path.endsWith('/ebooks')) {
+      setIsEbookLibraryOpen(true);
+    } else if (path.endsWith('/bookmarks')) {
+      setIsBookmarksPageOpen(true);
+    } else if (path.endsWith('/doubts')) {
+      setIsBookDoubtSessionOpen(true);
+    } else if (path.endsWith('/ai-mentor')) {
+      setIsAiMentorPageOpen(true);
+    } else if (path.endsWith('/my-courses')) {
+      setIsMyCoursesOpen(true);
+    } else if (path.endsWith('/purchases')) {
+      setIsPurchasesPageOpen(true);
+    } else if (path.endsWith('/mentorship')) {
+      setIsMentorshipOpen(true);
+    } else {
+      setActiveNav('study-central');
+    }
+  };
+
+  const navigateTo = (nav: typeof activeNav, customSlug?: string) => {
+    resetSubViews();
+    setSearchQuery('');
+    setActiveNav(nav);
+    if (typeof window !== 'undefined') {
+      const slug = customSlug !== undefined ? customSlug : (nav === 'study-central' ? '' : nav);
+      const url = `/study/${slug ? slug : ''}`;
+      if (window.location.pathname !== url) {
+        window.history.pushState(null, '', url);
+      }
+    }
+  };
+
+  const openSubView = (type: 'ebooks' | 'bookmarks' | 'doubts' | 'ai-mentor' | 'my-courses' | 'purchases' | 'mentorship') => {
+    resetSubViews();
+    setSearchQuery('');
+    if (type === 'ebooks') setIsEbookLibraryOpen(true);
+    else if (type === 'bookmarks') setIsBookmarksPageOpen(true);
+    else if (type === 'doubts') setIsBookDoubtSessionOpen(true);
+    else if (type === 'ai-mentor') setIsAiMentorPageOpen(true);
+    else if (type === 'my-courses') setIsMyCoursesOpen(true);
+    else if (type === 'purchases') setIsPurchasesPageOpen(true);
+    else if (type === 'mentorship') setIsMentorshipOpen(true);
+    if (typeof window !== 'undefined') {
+      const url = `/study/${type}`;
+      if (window.location.pathname !== url) {
+        window.history.pushState(null, '', url);
+      }
+    }
+  };
+  // After login: load the saved goal once; students who haven't picked one yet get the goal popup.
+  // Returning students with a goal go straight in (they can change it from the top navigation).
+  const goalLoadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (goalLoadedFor.current === session.uid) return;
+    goalLoadedFor.current = session.uid;
+    fetchGoal()
+      .then((saved) => {
+        if (goalLoadedFor.current !== session.uid) return; // signed out meanwhile
+        setGoal(saved);
+        if (!saved) setIsGoalModalOpen(true);
+      })
+      .catch((err) => console.error('Could not load the saved goal', err));
+  }, [session.uid]);
+  useEffect(() => {
+    syncRouteFromUrl();
+    const handlePopState = () => {
+      syncRouteFromUrl();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const getSearchPlaceholder = () => {
+    if (activeNav === 'courses' || isMyCoursesOpen) return 'Search in Courses';
+    if (activeNav === 'pi') return 'Search in Pi';
+    if (activeNav === 'test-series') return 'Search in Test Series';
+    if (activeNav === 'arena') return 'Search in Arena';
+    if (isEbookLibraryOpen) return 'Search in E-Books';
+    if (isAiMentorPageOpen) return 'Search in AI-Mentor';
+    if (isBookmarksPageOpen) return 'Search in Bookmarks';
+    return 'Search in Resources';
+  };
+
   const handleLogout = () => {
     setIsProfileDropdownOpen(false);
-    // TODO: wire this up to your real auth/session teardown
-    console.log('Logging out...');
+    navigateTo('study-central');
+    // Signing out returns AuthGate to the login screen
+    logout().catch((err) => console.error('Logout failed', err));
   };
+
+
   const batches = ['12th - IIT JEE', '11th - IIT JEE', 'Dropper - JEE Advanced', 'NEET-UG Premier'];
 
   const vaultItems: VaultResource[] = [
@@ -155,12 +285,12 @@ export function App() {
       id: 'vault-math',
       title: 'Test Series',
       second_text:'',
-      subject: 'Mathematics',
-      countLabel: 'Starts in 2 hrs',
-      tags: ['Coordinate Geometry', 'Calculus Drill', 'Vectors & 3D'],
+      subject: 'Mock Tests',
+      countLabel: 'Active Tests',
+      tags: ['Full Syllabus', 'Part Tests', 'Real NTA Engine'],
       iconType: 'analytics',
-      description: 'Step-by-step calculus mastery modules, graphical shortcuts, and high-difficulty algebra problem sets.',
-      downloadSize: '32.1 MB',
+      description: 'Live adaptive mock test mirror mimicking actual JEE and NEET CBT interfaces with instant rank analytics.',
+      downloadSize: 'Online CBT',
       rating: 4.9,
     },
   ];
@@ -171,25 +301,25 @@ export function App() {
       title: '1 to 1 MENTORSHIP',
       subtitle: '',
       icon: Users,
-      action: () => setIsUpgradeOpen(true),
+      action: () => openSubView('mentorship'),
     },
     {
       id: 'sp2',
       title: 'ASK YOUR DOUBT',
       subtitle: '',
       icon: HelpCircle,
-      action: () => setIsBookDoubtSessionOpen(true),
+      action: () => openSubView('doubts'),
     },
     {
       id: 'sp3',
       title: 'AI- MENTOR',
       subtitle: '',
       icon: Bot,
-      action: () => setIsAiMentorPageOpen(true),
+      action: () => openSubView('ai-mentor'),
     }
   ];
 
-  const filteredStudyPlans = studyPlans.filter(p => 
+  const filteredStudyPlans = studyPlans.filter(p =>
     !searchQuery || p.title.toLowerCase().includes(searchQuery.toLowerCase()) || p.subtitle.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -197,27 +327,9 @@ export function App() {
     !searchQuery || v.title.toLowerCase().includes(searchQuery.toLowerCase()) || v.subject.toLowerCase().includes(searchQuery.toLowerCase()) || v.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  if (isAiMentorPageOpen) {
-    return (
-      <AiMentorView
-        userName="Abhinav"
-        onBack={() => setIsAiMentorPageOpen(false)}
-      />
-    );
-  }
-
-  if (isBookDoubtSessionOpen) {
-    return (
-      <BookDoubtSessionView
-        onBack={() => setIsBookDoubtSessionOpen(false)}
-        onOpenMySessions={() => setIsPurchasesModalOpen(true)}
-      />
-    );
-  }
-
   return (
     <div className="relative min-h-screen w-full font-sans antialiased text-[#175A67] bg-[#DCEAE3] selection:bg-[#175A67] selection:text-[#EAE3DE] overflow-x-hidden">
-      
+
       {/* 1. SOFT AMBIENT BACKGROUND ACCENTS FOR FROSTED GLASS DEPTH */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute -top-20 -left-20 w-[550px] h-[550px] rounded-full bg-emerald-200/40 blur-[130px]" />
@@ -228,19 +340,11 @@ export function App() {
 
       {/* 2. TOP NAVIGATION BAR */}
       <header className="fixed top-0 left-0 right-0 z-40 h-16 bg-white/60 backdrop-blur-[16px] flex items-center justify-between px-3 sm:px-6 shadow-[0px_1px_2px_0px_#0000000D]">
-        
-        {/* Left: Brand + Hamburger + Desktop Target Selector */}
-        <div className="flex items-center gap-2 sm:gap-4">
-          <button 
-            onClick={() => setIsMobileSidebarOpen(true)}
-            className="lg:hidden bg-[#175A67] hover:bg-[#124853] text-[#EAE3DE] p-2 sm:p-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center active:scale-95"
-            title="Open Mobile Navigation Menu"
-          >
-            <Menu className="w-5 h-5 text-[#EAE3DE]" />
-          </button>
 
-          <div 
-            onClick={() => setActiveNav('study-central')} 
+        {/* Left: Brand + Desktop Target Selector */}
+        <div className="flex items-center gap-2 sm:gap-4">
+          <div
+            onClick={() => navigateTo('study-central')}
             className="flex items-center gap-2 sm:gap-2.5 cursor-pointer"
           >
 
@@ -263,7 +367,7 @@ export function App() {
               onClick={() => setIsGoalModalOpen(true)}
               className="border border-white/80 text-[#175A67] bg-white/60 hover:bg-white/85 backdrop-blur-md rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5"
             >
-              <span>{selectedBatch} &gt;</span>
+              <span>{goal?.name ?? 'Select your Goal'} &gt;</span>
             </button>
           </div>
         </div>
@@ -276,11 +380,11 @@ export function App() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search in Resources"
+              placeholder={getSearchPlaceholder()}
               className="bg-white/60 border border-white/80 text-[#175A67] placeholder-[#2A707C] pl-10 pr-8 py-1.5 rounded-full w-full text-xs sm:text-sm focus:outline-none focus:border-[#175A67] focus:ring-2 focus:ring-[#175A67]/20 transition-all shadow-inner backdrop-blur-md"
             />
             {searchQuery && (
-              <button 
+              <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 text-[#2A707C] hover:text-[#175A67]"
               >
@@ -292,7 +396,7 @@ export function App() {
 
         {/* Right Action: Mobile Search Toggle + CTA Button + Notification + User Badge */}
         <div className="flex items-center gap-2 sm:gap-3">
-          
+
           {/* Mobile Search Toggle Icon */}
           <button
             onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
@@ -325,16 +429,16 @@ export function App() {
           {/* User Avatar */}
           <div className="relative flex items-center gap-2 sm:gap-3 pl-1 sm:pl-3 border-l border-[#175A67]/20" ref={profileMenuRef}>
             <div className="text-right hidden sm:block leading-tight">
-              <span className="text-xs font-bold text-[#175A67] tracking-wide block">Hi, ABHINAV</span>
+              <span className="text-xs font-bold text-[#175A67] tracking-wide block">Hi, {firstName.toUpperCase()}</span>
             </div>
-            <div 
-              className="relative cursor-pointer" 
+            <div
+              className="relative cursor-pointer"
               onClick={() => setIsProfileDropdownOpen((o) => !o)}
-              title="Abhinav - Target JEE 2027"
+              title={session.name}
             >
               <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-[#175A67] to-[#2A707C] p-0.5 shadow-sm">
                 <div className="w-full h-full rounded-full bg-[#EAE3DE] flex items-center justify-center text-xs font-bold text-[#175A67]">
-                  AB
+                {initials}
                 </div>
               </div>
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#10B981] ring-2 ring-[#EAE3DE]" />
@@ -343,13 +447,13 @@ export function App() {
             {isProfileDropdownOpen && (
               <div className="absolute right-0 top-full mt-2 w-52 bg-white/95 backdrop-blur-md border border-[#175A67]/10 rounded-2xl shadow-xl py-1.5 z-50 overflow-hidden">
                 <div className="px-3.5 py-2.5 border-b border-[#175A67]/10">
-                  <p className="text-xs font-bold text-[#175A67]">Abhinav Sharma</p>
-                  <p className="text-[10px] text-[#2A707C] truncate">abhinav.sharma@example.com</p>
+                  <p className="text-xs font-bold text-[#175A67]">{session.name}</p>
+                  <p className="text-[10px] text-[#2A707C] truncate">{session.email}</p>
                 </div>
                 <button
                   onClick={() => {
                     setIsProfileDropdownOpen(false);
-                    setActiveNav('profile');
+                    navigateTo('profile');
                   }}
                   className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-[#175A67] hover:bg-[#175A67]/5 transition-colors"
                 >
@@ -359,7 +463,7 @@ export function App() {
                 <button
                   onClick={() => {
                     setIsProfileDropdownOpen(false);
-                    setIsPurchasesModalOpen(true);
+                    openSubView('purchases');
                   }}
                   className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-[#175A67] hover:bg-[#175A67]/5 transition-colors"
                 >
@@ -392,10 +496,10 @@ export function App() {
               autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search in Resources"
+              placeholder={getSearchPlaceholder()}
               className="bg-white/60 border border-[#175A67]/30 text-[#175A67] placeholder-[#2A707C] pl-10 pr-8 py-2 rounded-xl w-full text-sm focus:outline-none focus:ring-2 focus:ring-[#175A67]/20 shadow-inner"
             />
-            <button 
+            <button
               onClick={() => {
                 setSearchQuery('');
                 setIsMobileSearchOpen(false);
@@ -409,19 +513,19 @@ export function App() {
       )}
 
       {/* 3. SLIDE-OUT MOBILE NAVIGATION DRAWER */}
-      <div 
+      <div
         className={`fixed inset-0 z-50 lg:hidden transition-opacity duration-300 ${
           isMobileSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       >
         {/* Backdrop */}
-        <div 
+        <div
           className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={() => setIsMobileSidebarOpen(false)}
         />
 
         {/* Drawer Panel */}
-        <aside 
+        <aside
           className={`relative w-[280px] max-w-[85vw] h-full bg-white/80 backdrop-blur-2xl border-r border-white/80 shadow-2xl flex flex-col justify-between p-5 transform transition-transform duration-300 ease-out ${
             isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
@@ -456,13 +560,13 @@ export function App() {
               <button
                 onClick={() => {
                   setIsMobileSidebarOpen(false);
-                  setActiveNav('profile');
+                  navigateTo('profile');
                 }}
                 className="text-xs font-bold text-[#175A67] hover:underline"
               >
-                Abhinav Sharma
+                {session.name}
               </button>
-              
+
               {/* Batch Selector inside mobile drawer */}
               <div className="mt-2 relative">
                 <button
@@ -500,11 +604,11 @@ export function App() {
             <div className="space-y-1">
               <button
                 onClick={() => {
-                  setActiveNav('study-central');
+                  navigateTo('study-central');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'study-central'
+                  activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
                     ? 'bg-[#175A67] text-white shadow-sm'
                     : 'text-[#175A67] hover:bg-[#175A67]/10'
                 }`}
@@ -515,7 +619,7 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setActiveNav('pi');
+                  navigateTo('pi');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
@@ -530,32 +634,11 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setActiveNav('library');
+                  navigateTo('courses');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'library'
-                    ? 'bg-[#175A67] text-white shadow-sm'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
-              >
-                <Library className="w-4 h-4" />
-                <span>LIBRARY</span>
-              </button>
-            </div>
-
-            {/* Nav Group: YOUR STUDY */}
-            <div className="text-[11px] font-bold text-[#2A707C] px-2 mt-5 mb-2 tracking-wider uppercase">
-              YOUR STUDY
-            </div>
-            <div className="space-y-1">
-              <button
-                onClick={() => {
-                  setActiveNav('courses');
-                  setIsMobileSidebarOpen(false);
-                }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'courses'
+                  activeNav === 'courses' || isMyCoursesOpen
                     ? 'bg-[#175A67] text-white shadow-sm'
                     : 'text-[#175A67] hover:bg-[#175A67]/10'
                 }`}
@@ -566,7 +649,7 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setActiveNav('test-series');
+                  navigateTo('test-series');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
@@ -581,7 +664,7 @@ export function App() {
 
               <button
                 onClick={() => {
-                  setActiveNav('arena');
+                  navigateTo('arena');
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${
@@ -614,7 +697,7 @@ export function App() {
 
       {/* 4. DESKTOP FIXED SIDEBAR */}
       <div className="pt-16 flex">
-        
+
         <aside className="hidden lg:flex fixed top-16 left-0 bottom-0 w-[250px] backdrop-blur-[16px] bg-white/50 border-r border-[#FFFFFFA6] p-4 z-30 flex-col justify-between overflow-y-auto no-scrollbar shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
           <div>
             {/* Group: MENU */}
@@ -623,9 +706,9 @@ export function App() {
             </div>
             <div className="space-y-1">
               <button
-                onClick={() => setActiveNav('study-central')}
+                onClick={() => navigateTo('study-central')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'study-central'
+                  activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
                     ? 'bg-[#175A67] text-white shadow-md'
                     : 'text-[#175A67] hover:bg-[#175A67]/10'
                 }`}
@@ -635,7 +718,7 @@ export function App() {
               </button>
 
               <button
-                onClick={() => setActiveNav('pi')}
+                onClick={() => navigateTo('pi')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
                   activeNav === 'pi'
                     ? 'bg-[#175A67] text-white shadow-md'
@@ -647,27 +730,9 @@ export function App() {
               </button>
 
               <button
-                onClick={() => setActiveNav('library')}
+                onClick={() => navigateTo('courses')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'library'
-                    ? 'bg-[#175A67] text-white shadow-md'
-                    : 'text-[#175A67] hover:bg-[#175A67]/10'
-                }`}
-              >
-                <Library className="w-4 h-4" />
-                <span>LIBRARY</span>
-              </button>
-            </div>
-
-            {/* Group: YOUR STUDY */}
-            <div className="text-xs font-bold text-[#2A707C] px-3 mt-6 mb-2 tracking-wider uppercase">
-              YOUR STUDY
-            </div>
-            <div className="space-y-1">
-              <button
-                onClick={() => setActiveNav('courses')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
-                  activeNav === 'courses'
+                  activeNav === 'courses' || isMyCoursesOpen
                     ? 'bg-[#175A67] text-white shadow-md'
                     : 'text-[#175A67] hover:bg-[#175A67]/10'
                 }`}
@@ -677,7 +742,7 @@ export function App() {
               </button>
 
               <button
-                onClick={() => setActiveNav('test-series')}
+                onClick={() => navigateTo('test-series')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
                   activeNav === 'test-series'
                     ? 'bg-[#175A67] text-white shadow-md'
@@ -689,7 +754,7 @@ export function App() {
               </button>
 
               <button
-                onClick={() => setActiveNav('arena')}
+                onClick={() => navigateTo('arena')}
                 className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${
                   activeNav === 'arena'
                     ? 'bg-[#175A67] text-white shadow-md'
@@ -716,30 +781,93 @@ export function App() {
 
         {/* 5. MAIN DASHBOARD BODY */}
         <main className="flex-1 lg:ml-[250px] px-4 sm:px-8 py-5 sm:py-6 max-w-[1600px] w-full overflow-hidden">
-          
+
           {/* Active View Switching */}
-          {activeNav === 'profile' ? (
-            <ProfileView onBack={() => setActiveNav('study-central')} />
+          {isPurchasesPageOpen ? (
+            <PurchasesView
+              onBack={() => setIsPurchasesPageOpen(false)}
+              selectedBatch={selectedBatch}
+
+            />
+          ) : isMentorshipOpen ? (
+            <MentorshipHub
+              studentEmail={session.email}
+              onExit={() => setIsMentorshipOpen(false)}
+            />
+          ) : isAiMentorPageOpen ? (
+            <AiMentorView
+              userName={firstName}
+              onBack={() => setIsAiMentorPageOpen(false)}
+            />
+          ) : isBookDoubtSessionOpen ? (
+            <BookDoubtSessionView
+              onBack={() => setIsBookDoubtSessionOpen(false)}
+              onOpenMySessions={() => openSubView('purchases')}
+            />
+          ) : isBookmarksPageOpen ? (
+            <BookmarksView
+              onBack={() => setIsBookmarksPageOpen(false)}
+              onGoLibrary={() => {
+                setIsBookmarksPageOpen(false);
+                navigateTo('study-central');
+              }}
+              searchQuery={searchQuery}
+              onBrowseEbooks={() => openSubView('ebooks')}
+              onWatchVideo={(video) => console.log('Resuming video:', video.title)}
+              onOpenPdfViewer={() => console.log('Opening saved PDF viewer…')}
+              onOpenWatchLater={() => console.log('Opening Watch Later list…')}
+              onAddDocument={() => console.log('Add document to wishlist…')}
+              onClearHistory={() => console.log('Clearing watch history…')}
+            />
+          ) : isEbookLibraryOpen ? (
+            <EBookLibraryView
+              onBack={() => setIsEbookLibraryOpen(false)}
+              onGoLibrary={() => {
+                setIsEbookLibraryOpen(false);
+                navigateTo('study-central');
+              }}
+              searchQuery={searchQuery}
+            />
+          ) : isMyCoursesOpen ? (
+            <PurchasesView
+              initialView="enrolled"
+              onBack={() => setIsMyCoursesOpen(false)}
+              selectedBatch={selectedBatch}
+
+            />
+          ) : activeNav === 'profile' ? (
+            <ProfileView onBack={() => navigateTo('study-central')} />
           ) : activeNav === 'library' ? (
-            <LibraryView onOpenUpgrade={() => setIsUpgradeOpen(true)} />
+            <LibraryView
+              onBack={() => navigateTo('study-central')}
+              searchQuery={searchQuery}
+              onOpenUpgrade={() => setIsUpgradeOpen(true)}
+            />
           ) : activeNav === 'pi' ? (
             <PiView
+              searchQuery={searchQuery}
+              onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
               onOpenDoubtSolver={() => setIsDoubtSolverOpen(true)}
             />
           ) : activeNav === 'courses' ? (
-            <CoursesView 
-              onBack={() => setActiveNav('study-central')}
-              onOpenUpgrade={() => setIsUpgradeOpen(true)}
+            <CoursesHub
+              // A new goal re-opens the catalogue on that goal's tab
+              key={goal?.id ?? 'no-goal'}
+              mode="catalog"
+              selectedBatch={selectedBatch}
+              searchQuery={searchQuery}
+              goalCategoryId={goal?.id ?? null}
+              onExit={() => navigateTo('study-central')}
             />
           ) : activeNav === 'test-series' ? (
-            <TestSeriesView 
-              onBack={() => setActiveNav('study-central')}
+            <TestSeriesView
+              onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
             />
           ) : activeNav === 'arena' ? (
-            <ArenaView 
-              onBack={() => setActiveNav('study-central')}
+            <ArenaView
+              onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
             />
           ) : (
@@ -748,10 +876,14 @@ export function App() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
                 <div>
                   <div className="text-[#175A67] font-semibold text-base sm:text-lg">
-                    Welcome back, <span className="text-[#B8860B]">Gauransh</span> 
+                    Welcome back, <span className="text-[#B8860B]">{firstName}</span>
                   </div>
                   <div className="text-xs text-[#2A707C]">
-                    Target: IIT-JEE Advanced • Current Batch: <span className="font-bold text-[#175A67]">{selectedBatch}</span>
+                    Target:{' '}
+                    <button onClick={() => setIsGoalModalOpen(true)} className="font-bold text-[#175A67] hover:underline">
+                      {goal?.name ?? 'Set your goal'}
+                    </button>{' '}
+                    • Current Batch: <span className="font-bold text-[#175A67]">{selectedBatch}</span>
                   </div>
                 </div>
 
@@ -772,7 +904,7 @@ export function App() {
                   {filteredStudyPlans.map((plan) => {
                     const IconComponent = plan.icon;
                     return (
-                      <div 
+                      <div
                         key={plan.id}
                         onClick={plan.action}
                         className="group bg-white/50 hover:bg-white/70 backdrop-blur-xl border border-white/70 hover:border-white rounded-2xl p-5 sm:p-6 shadow-[0_8px_32px_0_rgba(31,38,135,0.07)] hover:shadow-[0_14px_44px_0_rgba(31,38,135,0.12)] transition-all duration-300 ease-out hover:-translate-y-1 cursor-pointer flex flex-col  min-h-[140px] sm:min-h-[120px] active:scale-[0.98]"
@@ -802,13 +934,6 @@ export function App() {
                     <AlignLeft className="w-5 h-5 text-[#175A67]" />
                     <h2 className="text-lg sm:text-xl font-bold text-[#175A67]">Library</h2>
                   </div>
-                  <button 
-                    onClick={() => setActiveNav('library')}
-                    className="text-xs sm:text-sm font-semibold text-[#175A67] hover:underline flex items-center gap-1"
-                  >
-                    <span>View All Resources</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-4">
@@ -822,9 +947,22 @@ export function App() {
                     const IconComp = iconMap[item.iconType] || BookOpen;
 
                     return (
-                      <div 
+                      <div
                         key={item.id}
-                        onClick={() => setSelectedVaultItem(item)}
+                        onClick={() => {
+                          if (item.id === 'vault-physics') {
+                            openSubView('bookmarks');
+                          } else if (item.id === 'vault-chemistry') {
+                            navigateTo('library');
+                          } else if (item.id === 'vault-combat') {
+                            openSubView('ebooks');
+                          } else if (item.id === 'vault-math') {
+                            navigateTo('test-series');
+                          } else {
+                            resetSubViews();
+                            setSelectedVaultItem(item);
+                          }
+                        }}
                         className="bg-white/60 hover:bg-white/85 backdrop-blur-md border border-white/80 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.05)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.09)] transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col items-center justify-between min-h-[190px] sm:min-h-[220px] active:scale-[0.98]"
                       >
                         <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#175A67] text-white rounded-2xl flex items-center justify-center shadow-md mb-2 sm:mb-3">
@@ -892,8 +1030,13 @@ export function App() {
       <CohortGoalModal
         isOpen={isGoalModalOpen}
         onClose={() => setIsGoalModalOpen(false)}
-        activeGoal={activeGoal}
-        onConfirm={(goal) => setActiveGoal(goal)}
+        activeGoalId={goal?.id ?? null}
+        onConfirm={async (category) => {
+          // Save first; if it fails the popup stays open with the error
+          const saved = await saveGoal(category);
+          setGoal(saved);
+          navigateTo('courses');
+        }}
       />
 
     </div>
