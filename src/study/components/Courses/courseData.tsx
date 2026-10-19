@@ -35,7 +35,7 @@ export interface Batch {
   /** Ribbon on the card header (category) */
   label: string;
   tone: HeaderTone;
-  /** Category slug(s) used by the catalogue filters */
+  /** Category key(s) used by the catalogue tabs (see categoryKey) */
   categories: string[];
   chips: string[];
   status: { text: string; tone: StatusTone };
@@ -108,6 +108,16 @@ export interface CatalogFilter {
 
 const TONES: HeaderTone[] = ['deep', 'teal', 'brown'];
 
+/**
+ * Stable key for a CMS category, used for the catalogue tabs and the student's goal.
+ * Built from the category id, so renaming a category in the CMS doesn't break the mapping.
+ */
+export const categoryKey = (categoryId: number) => `cat-${categoryId}`;
+
+/** Key for a course: its category id, or its category name for courses not linked to a category. */
+const courseCategoryKey = (course: CmsCourse, name: string) =>
+  course.categoryId ? categoryKey(course.categoryId) : `name-${name.toLowerCase()}`;
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 export const paiseToRupees = (paise: number | null | undefined) => Math.round((paise ?? 0) / 100);
@@ -136,7 +146,7 @@ export function toBatch(course: CmsCourse, index: number): Batch {
     name: course.title.toUpperCase(),
     label: category.toUpperCase(),
     tone: TONES[index % TONES.length],
-    categories: [course.categorySlug || category.toLowerCase()],
+    categories: [courseCategoryKey(course, category)],
     chips,
     status:
       price === 0
@@ -160,17 +170,20 @@ export function toBatch(course: CmsCourse, index: number): Batch {
   };
 }
 
-/** Category filter chips: CMS categories that have at least one course, in CMS order. */
-export function catalogFilters(batches: Batch[], categories: CmsCategory[]): CatalogFilter[] {
+/**
+ * Category tabs: CMS categories that have at least one course, in CMS order.
+ * `keepKey` (the student's goal) is always shown, even before it has courses.
+ */
+export function catalogFilters(batches: Batch[], categories: CmsCategory[], keepKey?: string | null): CatalogFilter[] {
   const used = new Map<string, string>();
-  batches.forEach((b) => b.categories.forEach((slug) => used.set(slug, b.category)));
+  batches.forEach((b) => b.categories.forEach((key) => used.set(key, b.category)));
   const ordered = [...categories]
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .filter((c) => used.has(c.slug))
-    .map((c) => ({ id: c.slug, label: c.name }));
-  // Courses whose category isn't in /api/categories still get a chip
-  used.forEach((label, slug) => {
-    if (!ordered.some((f) => f.id === slug)) ordered.push({ id: slug, label });
+    .filter((c) => used.has(categoryKey(c.id)) || categoryKey(c.id) === keepKey)
+    .map((c) => ({ id: categoryKey(c.id), label: c.name }));
+  // Courses whose category isn't in /api/categories still get a tab
+  used.forEach((label, key) => {
+    if (!ordered.some((f) => f.id === key)) ordered.push({ id: key, label });
   });
   return [{ id: 'all', label: 'All Courses' }, ...ordered];
 }
@@ -287,11 +300,22 @@ export function buildSyllabus(items: CmsContentItem[]): Subject[] {
 /* ------------------------------------------------------------------ */
 
 /** Live CMS courses shaped for the course screens, plus what the student owns. */
-export function useCatalog() {
+export function useCatalog(goalKey?: string | null) {
   const { status, error, courses, categories, ownedIds, reload } = useCourses();
 
   return useMemo(() => {
-    const batches = courses.map(toBatch);
+    // Courses without a category id are matched to their CMS category by name or slug,
+    // so each category has exactly one tab
+    const byName = new Map<string, number>();
+    categories.forEach((c) => {
+      byName.set(c.name.trim().toLowerCase(), c.id);
+      byName.set(c.slug.trim().toLowerCase(), c.id);
+    });
+    const batches = courses.map((course, i) => {
+      const batch = toBatch(course, i);
+      const matched = course.categoryId ? null : byName.get(batch.category.trim().toLowerCase());
+      return matched ? { ...batch, categories: [categoryKey(matched)] } : batch;
+    });
     const owned = new Set(ownedIds.map(String));
     const byId = new Map(batches.map((b) => [b.id, b]));
     return {
@@ -299,10 +323,10 @@ export function useCatalog() {
       error,
       reload,
       batches,
-      filters: catalogFilters(batches, categories),
+      filters: catalogFilters(batches, categories, goalKey),
       ownedBatches: batches.filter((b) => owned.has(b.id)),
       getBatch: (id: string) => byId.get(id) ?? null,
       isOwned: (id: string) => owned.has(id),
     };
-  }, [status, error, courses, categories, ownedIds, reload]);
+  }, [status, error, courses, categories, ownedIds, reload, goalKey]);
 }

@@ -162,21 +162,35 @@ export function BatchCard({ batch, onOpen, onBuy }: { batch: Batch; onOpen: () =
 /* ------------------------------------------------------------------ */
 /*  Catalogue grid with optional category filters                       */
 /* ------------------------------------------------------------------ */
-
 interface BatchCatalogProps {
   batches: Batch[];
   /** Category chips (from the CMS); shown when showFilters is set */
   filters?: CatalogFilter[];
   query?: string;
   showFilters?: boolean;
+  /** Selected tab when the parent controls it (e.g. set from the student's goal) */
+  activeFilter?: string;
+  onFilterChange?: (filterId: string) => void;
   onOpenBatch: (batchId: string) => void;
   onBuyBatch: (batchId: string) => void;
 }
 
-export function BatchCatalog({ batches, filters = [], query = '', showFilters = false, onOpenBatch, onBuyBatch }: BatchCatalogProps) {
-  const [filter, setFilter] = useState('all');
+export function BatchCatalog({
+  batches,
+  filters = [],
+  query = '',
+  showFilters = false,
+  activeFilter: controlledFilter,
+  onFilterChange,
+  onOpenBatch,
+  onBuyBatch,
+}: BatchCatalogProps) {
+  const [ownFilter, setOwnFilter] = useState('all');
+  const filter = controlledFilter ?? ownFilter;
+  const setFilter = (id: string) => (onFilterChange ? onFilterChange(id) : setOwnFilter(id));
   // A category can disappear when admins edit courses; fall back to "all"
   const activeFilter = filters.some((f) => f.id === filter) ? filter : 'all';
+  const activeLabel = filters.find((f) => f.id === activeFilter)?.label;
   const q = query.trim().toLowerCase();
 
   const visible = batches.filter((batch) => {
@@ -192,7 +206,7 @@ export function BatchCatalog({ batches, filters = [], query = '', showFilters = 
 
   return (
     <div>
-      {showFilters && filters.length > 2 && (
+      {showFilters && (filters.length > 2 || activeFilter !== 'all') && (
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 mb-5">
           {filters.map((f) => (
             <button
@@ -211,8 +225,17 @@ export function BatchCatalog({ batches, filters = [], query = '', showFilters = 
       {visible.length === 0 ? (
         <div className="bg-white rounded-2xl py-12 px-6 flex flex-col items-center text-center">
           <SearchX className="w-6 h-6 text-slate-400 mb-2" />
-          <p className="font-semibold text-[#0B1C30]">No courses match your search</p>
-          <p className="text-xs text-slate-500 mt-1">Try another course name or category.</p>
+          {!q && activeFilter !== 'all' ? (
+            <>
+              <p className="font-semibold text-[#0B1C30]">No {activeLabel} courses yet</p>
+              <p className="text-xs text-slate-500 mt-1">New courses for this goal will appear here as soon as they are published.</p>
+            </>
+          ) : (
+            <>: src/study/components/Courses/CourseStoreView.tsx
+              <p className="font-semibold text-[#0B1C30]">No courses match your search</p>
+              <p className="text-xs text-slate-500 mt-1">Try another course name or category.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

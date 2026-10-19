@@ -3,18 +3,22 @@ import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { auth } from '../firebase';
 import { apiFetch } from '../api';
 
-export type AllowedRole = 'admin' | 'faculty';
+// 'mentor' accounts only ever see the Mentor Desk (App.tsx); the backend blocks them from every CMS API
+export type AllowedRole = 'admin' | 'faculty' | 'mentor';
 
 export interface RoleGuardProps {
   children: React.ReactNode;
   allowedRoles?: AllowedRole[];
   fallbackLogin?: React.ReactNode;
+    /** Told the detected role (or null when signed out) so the page can pick what to show */
+    onRoleResolved?: (role: string | null) => void;
 }
 
 export function RoleGuard({
   children,
   allowedRoles = ['admin', 'faculty'],
   fallbackLogin,
+  onRoleResolved,
 }: RoleGuardProps) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -48,11 +52,13 @@ export function RoleGuard({
       }
 
       setRole(detectedRole);
+      onRoleResolved?.(detectedRole);
       setError(null);
     } catch (err: any) {
       console.error('[RoleGuard] Error verifying user permissions:', err);
       setError(err.message || 'Failed to verify user permissions');
       setRole('student');
+      onRoleResolved?.('student');
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -66,6 +72,7 @@ export function RoleGuard({
         await checkUserRole(currentUser);
       } else {
         setRole(null);
+        onRoleResolved?.(null);
         setLoading(false);
       }
     });

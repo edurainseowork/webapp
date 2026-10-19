@@ -102,9 +102,22 @@ interface CourseStoreViewProps {
   onOpenBatch: (batchId: string) => void;
   onBuyBatch: (batchId: string) => void;
   searchQuery?: string;
+  /** Category key of the student's goal (its tab is always shown) */
+  goalKey?: string | null;
+  /** Selected category tab, owned by CoursesHub so it follows the student's goal */
+  catalogFilter?: string;
+  onCatalogFilterChange?: (filterId: string) => void;
 }
 
-export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }: CourseStoreViewProps) {
+export function CourseStoreView({
+  onBack,
+  onOpenBatch,
+  onBuyBatch,
+  searchQuery,
+  goalKey,
+  catalogFilter,
+  onCatalogFilterChange,
+}: CourseStoreViewProps) {
   const [query] = useState('');
   const [classId, setClassId] = useState<ClassId>('class11');
   const [exam, setExam] = useState<ExamId>('jee');
@@ -117,7 +130,7 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
   const batchesRef = useRef<HTMLElement>(null);
   useSearchShortcut(searchRef);
 
-  const { status, error, reload, batches, filters } = useCatalog();
+  const { status, error, reload, batches, filters } = useCatalog(goalKey);
   const bestFit = pickBestFit(batches, classId, exam);
   const q = (searchQuery ?? query).trim().toLowerCase();
   // "Try before you enroll": the free courses published in the CMS
@@ -180,6 +193,8 @@ export function CourseStoreView({ onBack, onOpenBatch, onBuyBatch, searchQuery }
               batches={batches}
               filters={filters}
               showFilters
+              activeFilter={catalogFilter}
+              onFilterChange={onCatalogFilterChange}
               query={q}
               onOpenBatch={onOpenBatch}
               onBuyBatch={onBuyBatch}

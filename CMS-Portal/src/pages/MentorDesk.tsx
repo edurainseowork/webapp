@@ -276,8 +276,11 @@ function SessionCard({
 
 interface MentorDeskProps {
   user: User | null
-  /** Leave Mentor Desk and go back to the CMS */
-  onExit: () => void
+  /**
+   * Leave Mentor Desk and go back to the CMS. Only given to admins/faculty previewing the desk;
+   * Mentor accounts get no CMS access, so they see no "Back to CMS" anywhere.
+   */
+  onExit?: () => void
 }
 
 type Menu = 'notifications' | 'profile' | null
@@ -385,7 +388,7 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
       {/* Sidebar                                                     */}
       {/* ---------------------------------------------------------- */}
       <aside className="md-sidebar">
-        <button type="button" className="md-brand" onClick={onExit} title="Back to CMS">
+      <button type="button" className="sidebar-brand md-brand" onClick={onExit} title={onExit ? 'Back to CMS' : 'Mentor Desk'} disabled={!onExit} style={onExit ? undefined : { cursor: 'default' }}>
           <span className="md-brand-icon">
             <VideoIcon size={20} />
           </span>
@@ -432,10 +435,14 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
       {/* ---------------------------------------------------------- */}
       <div className="md-main">
         <header className="md-topbar">
-          <button type="button" className="md-back-pill" onClick={onExit}>
-            <ArrowLeftIcon />
-            Back to CMS
-          </button>
+        {onExit ? (
+            <button type="button" className="btn md-btn md-btn-ghost md-back-pill" onClick={onExit}>
+              <ArrowLeftIcon />
+              Back to CMS
+            </button>
+          ) : (
+            <span />
+          )}
 
           <div className="md-topbar-actions" ref={menuRef}>
             {isSearchOpen ? (
@@ -518,10 +525,12 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
                 <div className="md-popover md-popover-profile">
                   <p className="md-popover-title">{mentorName}</p>
                   {email && <p className="md-popover-sub">{email}</p>}
-                  <button type="button" className="md-menu-item" onClick={onExit}>
-                    <ArrowLeftIcon />
-                    Back to CMS
-                  </button>
+                  {onExit && (
+                    <button type="button" className="md-menu-item" onClick={onExit}>
+                      <ArrowLeftIcon />
+                      Back to CMS
+                    </button>
+                  )}
                   <button type="button" className="md-menu-item is-danger" onClick={handleLogout}>
                     <LogOutIcon />
                     Log out
