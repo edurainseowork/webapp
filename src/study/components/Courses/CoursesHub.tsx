@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useCatalog } from './courseData';
+import { useEffect, useState } from 'react';
+import { categoryKey, useCatalog } from './courseData';
 import { CourseStoreView } from './CourseStoreView';
 import { EnrolledCoursesView } from './EnrolledCoursesView';
 import { CourseDetailView } from './CourseDetailView';
@@ -13,6 +13,8 @@ interface CoursesHubProps {
   mode: HubView;
   selectedBatch: string;
   searchQuery?: string;
+  /** CMS category id of the student's goal: its tab is selected when the courses open */
+  goalCategoryId?: number | null;
   onExit: () => void;
 }
 
@@ -22,11 +24,17 @@ interface CoursesHubProps {
  *  - enrolled → "Your Enrolled Courses"
  *  - clicking any course from either one → course detail page
  */
-export function CoursesHub({ mode, selectedBatch, searchQuery, onExit }: CoursesHubProps) {
+export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, onExit }: CoursesHubProps) {
   const [view, setView] = useState<HubView>(mode);
   const [openBatchId, setOpenBatchId] = useState<string | null>(null);
   const [jumpToPlans, setJumpToPlans] = useState(false);
-  const catalog = useCatalog();
+  const goalKey = goalCategoryId ? categoryKey(goalCategoryId) : null;
+  // Category tab: starts on the student's goal and follows it when the goal changes;
+  // the student can still switch tabs (e.g. "All Courses") while browsing
+  const [catalogFilter, setCatalogFilter] = useState(goalKey ?? 'all');
+  useEffect(() => setCatalogFilter(goalKey ?? 'all'), [goalKey]);
+  const catalog = useCatalog(goalKey);
+  const tabProps = { goalKey, catalogFilter, onCatalogFilterChange: setCatalogFilter };
 
   const openBatch = (batchId: string, toPlans = false) => {
     setJumpToPlans(toPlans);
@@ -61,11 +69,20 @@ export function CoursesHub({ mode, selectedBatch, searchQuery, onExit }: Courses
         onBack={mode === 'catalog' ? () => setView('catalog') : onExit}
         onOpenBatch={(id) => openBatch(id)}
         onBuyBatch={(id) => openBatch(id, true)}
+        {...tabProps}
       />
     );
   }
 
-  return <CourseStoreView searchQuery={searchQuery} onBack={onExit} onOpenBatch={(id) => openBatch(id)} onBuyBatch={(id) => openBatch(id, true)} />;
+  return (
+    <CourseStoreView
+      searchQuery={searchQuery}
+      onBack={onExit}
+      onOpenBatch={(id) => openBatch(id)}
+      onBuyBatch={(id) => openBatch(id, true)}
+      {...tabProps}
+    />
+  );
 }
 
 /** Shown when an opened course is still loading, failed to load, or was unpublished by an admin. */

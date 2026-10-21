@@ -33,7 +33,8 @@ import { VaultDetailModal } from './components/Modals/VaultDetailModal';
 import { NotificationDrawer } from './components/Modals/NotificationDrawer';
 import { ProfileView } from './components/Profile-section/ProfileView';
 import { LibraryView } from './components/LibraryView';
-import { CohortGoalModal, GoalId } from './components/Modals/CohortGoalModal';
+import { CohortGoalModal } from './components/Modals/CohortGoalModal';
+import { fetchGoal, saveGoal, type StudentGoal } from './lib/goal';
 import { PurchasesModal } from './components/Modals/PurchasesModal';
 import { PurchasesView } from './components/PurchasesView';
 import { PiView } from './components/PiView';
@@ -59,7 +60,8 @@ export function App() {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState('12th - IIT JEE');
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
-  const [activeGoal, setActiveGoal] = useState<GoalId>('iit-jee');
+  // Student's goal = a CMS category, saved on their profile
+  const [goal, setGoal] = useState<StudentGoal | null>(null);
   const [isDrawerBatchOpen, setIsDrawerBatchOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -214,6 +216,21 @@ export function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // After login: load the saved goal once; students who haven't picked one yet get the goal popup.
+  // Returning students with a goal go straight in (they can change it from the top navigation).
+  const goalLoadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (goalLoadedFor.current === session.uid) return;
+    goalLoadedFor.current = session.uid;
+    fetchGoal()
+      .then((saved) => {
+        if (goalLoadedFor.current !== session.uid) return; // signed out meanwhile
+        setGoal(saved);
+        if (!saved) setIsGoalModalOpen(true);
+      })
+      .catch((err) => console.error('Could not load the saved goal', err));
+  }, [session.uid]);
+
   const getSearchPlaceholder = () => {
     if (activeNav === 'courses' || isMyCoursesOpen) return 'Search in Courses';
     if (activeNav === 'pi') return 'Search in Daily Drop';
@@ -366,7 +383,7 @@ export function App() {
               onClick={() => setIsGoalModalOpen(true)}
               className="border border-white/80 text-[#175A67] bg-white/60 hover:bg-white/85 backdrop-blur-md rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5"
             >
-              <span>{selectedBatch} &gt;</span>
+              <span>{goal?.name ?? selectedBatch} &gt;</span>
             </button>
           </div>
         </div>
@@ -835,11 +852,12 @@ export function App() {
             />
           ) : activeNav === 'courses' ? (
             <CoursesHub
+              // A new goal re-opens the catalogue on that goal's tab
+              key={goal?.id ?? 'no-goal'}
               mode="catalog"
               selectedBatch={selectedBatch}
-
               searchQuery={searchQuery}
-
+              goalCategoryId={goal?.id ?? null}
               onExit={() => navigateTo('study-central')}
             />
           ) : activeNav === 'test-series' ? (
@@ -856,7 +874,11 @@ export function App() {
                     Welcome back, <span className="text-[#B8860B]">{firstName}</span>
                   </div>
                   <div className="text-xs text-[#2A707C]">
-                    Target: IIT-JEE Advanced • Current Batch: <span className="font-bold text-[#175A67]">{selectedBatch}</span>
+                    Target:{' '}
+                    <button onClick={() => setIsGoalModalOpen(true)} className="font-bold text-[#175A67] hover:underline">
+                      {goal?.name ?? 'Set your goal'}
+                    </button>{' '}
+                    • Current Batch: <span className="font-bold text-[#175A67]">{selectedBatch}</span>
                   </div>
                 </div>
 
@@ -1001,11 +1023,13 @@ export function App() {
       <CohortGoalModal
         isOpen={isGoalModalOpen}
         onClose={() => setIsGoalModalOpen(false)}
-        activeGoal={activeGoal}
-        selectedBatch={selectedBatch}
-        onConfirm={(goal, batchLabel) => {
-          setActiveGoal(goal);
-          if (batchLabel) setSelectedBatch(batchLabel);
+        activeGoalId={goal?.id ?? null}
+        onConfirm={async (category) => {
+          // Save first; if it fails the popup stays open with the error
+          const saved = await saveGoal(category);
+          setGoal(saved);
+          setSelectedBatch(category.name);
+          navigateTo('courses');
         }}
       />
 

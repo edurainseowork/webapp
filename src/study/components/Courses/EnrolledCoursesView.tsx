@@ -29,22 +29,32 @@ const pickPromos = (batches: Batch[], isOwned: (id: string) => boolean): Batch[]
 /* ------------------------------------------------------------------ */
 /*  Main view                                                           */
 /* ------------------------------------------------------------------ */
-
 interface EnrolledCoursesViewProps {
   selectedBatch: string;
   onBack: () => void;
   onOpenBatch: (batchId: string) => void;
   onBuyBatch: (batchId: string) => void;
   crumbs?: BreadcrumbCrumb[];
+  goalKey?: string | null;
+  catalogFilter?: string;
+  onCatalogFilterChange?: (filterId: string) => void;
 }
 
-export function EnrolledCoursesView({ onBack, onOpenBatch, onBuyBatch, crumbs }: EnrolledCoursesViewProps) {
+export function EnrolledCoursesView({
+  onBack,
+  onOpenBatch,
+  onBuyBatch,
+  crumbs,
+  goalKey,
+  catalogFilter,
+  onCatalogFilterChange,
+}: EnrolledCoursesViewProps) {
   const [query] = useState('');
   const [promoIndex, setPromoIndex] = useState(0);
   const catalogRef = useRef<HTMLElement>(null);
   const countdown = useCountdown(daysHoursMinutes(3, 14, 22));
 
-  const { status, error, reload, batches, filters, ownedBatches, isOwned } = useCatalog();
+  const { status, error, reload, batches, filters, ownedBatches, isOwned } = useCatalog(goalKey);
   const promos = pickPromos(batches, isOwned);
 
   // Rotate the hero promo; restarts whenever the student picks a slide
@@ -275,6 +285,8 @@ export function EnrolledCoursesView({ onBack, onOpenBatch, onBuyBatch, crumbs }:
               onRetry={reload}
               batches={batches}
               filters={filters}
+              activeFilter={catalogFilter}
+              onFilterChange={onCatalogFilterChange}
               query={query}
               showFilters
               onOpenBatch={onOpenBatch}

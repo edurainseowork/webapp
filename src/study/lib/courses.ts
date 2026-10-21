@@ -53,13 +53,14 @@ export interface CoursesState {
   error: string | null;
   courses: CmsCourse[];
   categories: CmsCategory[];
+  categoriesError: string | null;
   /** Ids of the courses the signed-in student owns */
   ownedIds: number[];
 }
 
 const REFRESH_MS = 60_000;
 
-let state: CoursesState = { status: 'loading', error: null, courses: [], categories: [], ownedIds: [] };
+let state: CoursesState = { status: 'loading', error: null, courses: [], categories: [], categoriesError: null, ownedIds: [] };
 let inFlight: Promise<void> | null = null;
 let lastLoadedAt = 0;
 const listeners = new Set<() => void>();
@@ -90,19 +91,25 @@ export function refreshCourses(): Promise<void> {
 
   inFlight = (async () => {
     try {
-      const [courses, categories, ownedIds] = await Promise.all([
-        apiFetch<CmsCourse[]>('/courses'),
-        apiFetch<CmsCategory[]>('/categories').catch(() => state.categories),
-        fetchOwnedIds(),
-      ]);
-      lastLoadedAt = Date.now();
-      setState({
-        status: 'ready',
-        error: null,
-        courses: Array.isArray(courses) ? courses : [],
-        categories: Array.isArray(categories) ? categories : [],
-        ownedIds,
-      });
+        let categoriesError: string | null = null;
+        const [courses, categories, ownedIds] = await Promise.all([
+          apiFetch<CmsCourse[]>('/courses'),
+          apiFetch<CmsCategory[]>('/categories').catch((err) => {
+            // Keep the last good list on a background refresh; only report when there is nothing to show
+            if (state.categories.length === 0) categoriesError = errorMessage(err, 'Could not load categories.');
+            return state.categories;
+          }),
+          fetchOwnedIds(),
+        ]);
+        lastLoadedAt = Date.now();
+        setState({
+          status: 'ready',
+          error: null,
+          courses: Array.isArray(courses) ? courses : [],
+          categories: Array.isArray(categories) ? categories : [],
+          categoriesError,
+          ownedIds,
+        });
     } catch (err) {
       // Keep showing what we already have if a background refresh fails
       if (firstLoad) setState({ status: 'error', error: errorMessage(err, 'Could not load courses.') });
