@@ -42,7 +42,7 @@ authRouter.get('/me', authenticateToken, async (req: Request, res: Response): Pr
  * session) can sign them in without a second login. The role is read from the verified token and
  * the database, never from the request. Mentors still only get the Mentor Desk in the CMS.
  */
-const CMS_HANDOFF_ROLES = new Set(['admin', 'faculty', 'mentor']);
+const CMS_HANDOFF_ROLES = new Set(['admin', 'faculty', 'mentor', 'teacher_assistant']);
 authRouter.post('/cms-handoff', rateLimit({ windowMs: 60_000, max: 10 }), authenticateToken, async (req: Request, res: Response): Promise<any> => {
   const role = extractUserRole(req);
   if (!CMS_HANDOFF_ROLES.has(role)) {

@@ -33,9 +33,9 @@ const ROLES: Record<StaffRole, { label: string; plural: string; hint: string; co
   admin: { label: 'Admin', plural: 'Admins', hint: 'Full access to this CMS.', color: 'rgba(79,70,229,0.8)' },
   mentor: { label: 'Mentor', plural: 'Mentors', hint: 'Signs in to this CMS and only sees the Mentor Desk.', color: 'rgba(14,116,144,0.85)' },
   teacher_assistant: {
-    label: 'Teacher Assistance',
-    plural: 'Teacher Assistance',
-    hint: 'Signs in on the study website and only sees the Teacher Assistance Desk.',
+    label: 'Teacher Assistant',
+    plural: 'Teacher Assistants',
+    hint: 'Signs in to this CMS and only sees the Teacher Assistant Desk.',
     color: 'rgba(180,83,9,0.85)',
   },
 }
@@ -54,7 +54,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // mentors and teacher assistance to the study website's login page.
 const STUDY_URL = (import.meta.env.VITE_STUDY_URL || 'http://localhost:5173/study/').trim()
 const continueUrlFor = (role: StaffRole) =>
-  role === 'admin' ? window.location.origin : role === 'mentor' ? `${window.location.origin}/mentorDesk` : STUDY_URL
+  role === 'admin' ? window.location.origin : role === 'mentor' ? `${window.location.origin}/mentorDesk` : role === 'teacher_assistant' ? `${window.location.origin}/teacherAssistant` : STUDY_URL
 // Firebase sends the "set your password" email (its Password reset template). The link is a
 // one-time code that expires; the password is stored by Firebase Auth, never by us.
 const sendSetPasswordEmail = async (email: string, role: StaffRole) => {
@@ -212,7 +212,7 @@ function ManageAdmins({ showToast, openCreate, onCreateOpened }: ManageAdminsPro
         <div>
           <h3>Users ({admins.length})</h3>
           <p style={{ ...mutedText, marginTop: '4px' }}>
-          Admins share the same CMS access. Mentors only see the Mentor Desk here; Teacher Assistance only use their desk on the study website. Only you can add or remove users.
+          Admins share the same CMS access. Mentors only see the Mentor Desk here; Teacher Assistants only see the Teacher Assistant Desk here. Only you can add or remove users.
           </p>
         </div>
         <button type="button" className="btn" onClick={() => openCreateModal(roleFilter === 'all' ? 'admin' : roleFilter)}>+ Invite User</button>
@@ -274,7 +274,7 @@ function ManageAdmins({ showToast, openCreate, onCreateOpened }: ManageAdminsPro
       {showCreate && (
         <Modal
           title={`Invite ${ROLES[newRole].label}`}
-          subtitle={`They get an email from Firebase to set their password, then sign in ${newRole === 'teacher_assistant' ? 'on the study website' : 'here'}.`}
+          subtitle="They get an email from Firebase to set their password, then sign in here."
           onClose={() => !creating && setShowCreate(false)}
           width={480}
           footer={

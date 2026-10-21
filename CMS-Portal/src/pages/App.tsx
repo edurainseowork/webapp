@@ -146,10 +146,10 @@ function App() {
     await fetchMe();
     if (!auth.currentUser.emailVerified) showToast('Email not verified yet — open the link in the verification email first', 'error');
   };
-  // Keep the address bar in sync: /mentorDesk for Mentor Desk, / for the other CMS tabs
+  // Keep the address bar in sync: /mentorDesk for Mentor Desk, /teacherAssistant for Teacher Assistant, / for the other CMS tabs
   useEffect(() => {
-    if (activeTab !== 'mentorDesk') lastCmsTab.current = activeTab;
-    const path = activeTab === 'mentorDesk' ? MENTOR_DESK_PATH : '/';
+    if (activeTab !== 'mentorDesk' && activeTab !== 'teacherAssistant') lastCmsTab.current = activeTab;
+    const path = activeTab === 'mentorDesk' ? MENTOR_DESK_PATH : activeTab === 'teacherAssistant' ? TEACHER_ASSISTANT_PATH : '/';
     if (window.location.pathname !== path) {
       const url = path + window.location.search;
       if (isFirstUrlSync.current) window.history.replaceState(null, '', url);
@@ -162,10 +162,19 @@ function App() {
     if (isMentor && activeTab !== 'mentorDesk') setActiveTab('mentorDesk');
   }, [isMentor, activeTab]);
 
+  // Teacher Assistant accounts only ever see the Teacher Assistant Desk: whatever URL or Back button, they stay on /teacherAssistant
+  useEffect(() => {
+    if (isTeacherAssistant && activeTab !== 'teacherAssistant') setActiveTab('teacherAssistant');
+  }, [isTeacherAssistant, activeTab]);
+
   // Browser back / forward buttons
   useEffect(() => {
     const onPopState = () =>
-      setActiveTab((prev) => (isMentorDeskPath() ? 'mentorDesk' : prev === 'mentorDesk' ? lastCmsTab.current : prev));
+      setActiveTab((prev) => (
+        isMentorDeskPath() ? 'mentorDesk' :
+        isTeacherAssistantPath() ? 'teacherAssistant' :
+        (prev === 'mentorDesk' || prev === 'teacherAssistant') ? lastCmsTab.current : prev
+      ));
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -393,6 +402,9 @@ function App() {
           )}
           <div className={`nav-link ${activeTab === 'mentorDesk' ? 'active' : ''}`} onClick={() => setActiveTab('mentorDesk')}>
             Mentor Desk
+          </div>
+          <div className={`nav-link ${activeTab === 'teacherAssistant' ? 'active' : ''}`} onClick={() => setActiveTab('teacherAssistant')}>
+            Teacher Assistant Desk
           </div>
         </nav>
       </aside>

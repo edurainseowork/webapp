@@ -112,6 +112,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
         if (run === current) window.location.replace(target);
         return;
       }
+      // Teacher Assistants work in the CMS Teacher Assistant Desk (they have no other CMS access)
+      if (next.role === 'teacher_assistant' && CMS_URL) {
+        setPhase('redirecting');
+        const target = await cmsUrlWithHandoff('/teacherAssistant');
+        if (run === current) window.location.replace(target);
+        return;
+      }
       // Role-based landing page: desk accounts always end up on their desk, everyone else
       // is moved off desk URLs (typed in by hand or left over from a previous sign-in)
       if (isDeskRole(next.role)) {

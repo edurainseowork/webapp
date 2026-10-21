@@ -1,6 +1,6 @@
 export const DESK_HOME = {
     mentor: '/mentorDesk',
-    teacher_assistant: '/teacherAssistantDesk',
+    teacher_assistant: '/teacherAssistant',
   } as const;
   
   export type DeskRole = keyof typeof DESK_HOME;
