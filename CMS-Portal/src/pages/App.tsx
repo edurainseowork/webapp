@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut, type User } from 'firebase/auth'
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, sendEmailVerification, type User } from 'firebase/auth'
 import { auth } from '../firebase'
 import { apiFetch, uploadFile, API_BASE_URL, type AdminCourse } from '../api'
 import CourseManager from './CourseManager'
@@ -10,21 +10,32 @@ import Coupons from './Coupons'
 import GoLive from './GoLive'
 import Notifications from './Notifications'
 import Tests from './Tests'
+import ManageAdmins from './ManageAdmins'
 import MentorDesk from './MentorDesk'
+import { handoffError } from '../handoff'
+
 import '../index.css'
 
 // Mentor Desk has its own URL: /mentorDesk
 const MENTOR_DESK_PATH = '/mentorDesk';
 const isMentorDeskPath = () => window.location.pathname.replace(/\/+$/, '').toLowerCase() === MENTOR_DESK_PATH.toLowerCase();
-
+type MeInfo = { isSuperAdmin: boolean; superAdminEmailUnverified: boolean }
 function App() {
+    // Whether to show Super Admin controls. Decided by the backend from the verified token;
+  // every admin-management API checks it again on its own.
+  const [me, setMe] = useState<MeInfo>({ isSuperAdmin: false, superAdminEmailUnverified: false });
+  const [openCreateAdmin, setOpenCreateAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState(() => (isMentorDeskPath() ? 'mentorDesk' : 'courses'));
+    // Role detected by RoleGuard from the verified Firebase token / backend (never from the URL)
+    const [cmsRole, setCmsRole] = useState<string | null>(null);
+    const isMentor = cmsRole === 'mentor';
+    const isStaff = cmsRole === 'admin' || cmsRole === 'faculty';
   const lastCmsTab = useRef('courses');
   const isFirstUrlSync = useRef(true);
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
+  const [loginError, setLoginError] = useState(handoffError);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [activeStudents, setActiveStudents] = useState(0);
 
@@ -85,7 +96,42 @@ function App() {
       console.error("Failed to fetch stats", e);
     }
   };
+  const fetchMe = async () => {
+    try {
+      const data = await apiFetch<{ user?: Partial<MeInfo> }>('/auth/me');
+      setMe({ isSuperAdmin: data.user?.isSuperAdmin === true, superAdminEmailUnverified: data.user?.superAdminEmailUnverified === true });
+    } catch {
+      setMe({ isSuperAdmin: false, superAdminEmailUnverified: false });
+    }
+  };
 
+  useEffect(() => {
+    if (user) fetchMe();
+    else setMe({ isSuperAdmin: false, superAdminEmailUnverified: false });
+  }, [user]);
+
+  // Leave the admin page if the signed-in account is not the Super Admin
+  useEffect(() => {
+    if (activeTab === 'admins' && !me.isSuperAdmin) setActiveTab('dashboard');
+  }, [activeTab, me.isSuperAdmin]);
+
+  const handleSendVerification = async () => {
+    if (!auth.currentUser) return;
+    try {
+      await sendEmailVerification(auth.currentUser);
+      showToast(`Verification email sent to ${auth.currentUser.email}`, 'success');
+    } catch (e: any) {
+      showToast('Could not send the verification email: ' + (e?.message || e?.code), 'error');
+    }
+  };
+
+  const handleVerifiedCheck = async () => {
+    if (!auth.currentUser) return;
+    await auth.currentUser.reload();
+    await auth.currentUser.getIdToken(true);
+    await fetchMe();
+    if (!auth.currentUser.emailVerified) showToast('Email not verified yet — open the link in the verification email first', 'error');
+  };
   // Keep the address bar in sync: /mentorDesk for Mentor Desk, / for the other CMS tabs
   useEffect(() => {
     if (activeTab !== 'mentorDesk') lastCmsTab.current = activeTab;
@@ -97,6 +143,10 @@ function App() {
     }
     isFirstUrlSync.current = false;
   }, [activeTab]);
+  // Mentor accounts only ever see the Mentor Desk: whatever URL or Back button, they stay on /mentorDesk
+  useEffect(() => {
+    if (isMentor && activeTab !== 'mentorDesk') setActiveTab('mentorDesk');
+  }, [isMentor, activeTab]);
 
   // Browser back / forward buttons
   useEffect(() => {
@@ -106,7 +156,9 @@ function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  // CMS data is only loaded for admins and faculty (mentors have no access to it)
   useEffect(() => {
+    if (!isStaff) return;
     if (user && (activeTab === 'courses' || activeTab === 'dashboard' || activeTab === 'content')) {
       fetchCourses();
       if (activeTab === 'dashboard') {
@@ -116,7 +168,7 @@ function App() {
     if (user && activeTab === 'banners') {
       fetchBanners();
     }
-  }, [activeTab, user]);
+  }, [activeTab, user, isStaff]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,17 +276,26 @@ function App() {
     </div>
   );
 
-  // Mentor Desk is a full page with its own sidebar
+  // Mentor accounts: the Mentor Desk only, with no "Back to CMS" (the backend refuses them every CMS API too)
+  if (isMentor) {
+    return (
+      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
+        <MentorDesk user={user} />
+      </RoleGuard>
+    );
+  }
+
+  // Mentor Desk is a full page with its own sidebar (admins / faculty can preview it and go back)
   if (activeTab === 'mentorDesk') {
     return (
-      <RoleGuard allowedRoles={['admin', 'faculty']} fallbackLogin={loginForm}>
+      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
         <MentorDesk user={user} onExit={() => setActiveTab(lastCmsTab.current)} />
       </RoleGuard>
     );
   }
 
   return (
-    <RoleGuard allowedRoles={['admin', 'faculty']} fallbackLogin={loginForm}>
+    <RoleGuard allowedRoles={['admin', 'faculty', 'mentor']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
       <div className="layout">
       {/* Toast Notification */}
       {toast && (
@@ -296,6 +357,11 @@ function App() {
           <div className={`nav-link ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => setActiveTab('tests')}>
             Tests
           </div>
+          {me.isSuperAdmin && (
+            <div className={`nav-link ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
+              Manage Users
+            </div>
+          )}
           <div className={`nav-link ${activeTab === 'mentorDesk' ? 'active' : ''}`} onClick={() => setActiveTab('mentorDesk')}>
             Mentor Desk
           </div>
@@ -315,13 +381,33 @@ function App() {
             {activeTab === 'golive' && 'Live Classes'}
             {activeTab === 'notifications' && 'Notifications'}
             {activeTab === 'tests' && 'Test Management'}
+            {activeTab === 'admins' && 'Manage Users'}
           </h1>
           <div className="user-profile" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+          {me.isSuperAdmin && (
+              <button
+                onClick={() => { setActiveTab('admins'); setOpenCreateAdmin(true); }}
+                className="btn"
+                style={{ padding: '6px 12px' }}
+              >
+                + Invite User
+              </button>
+            )}
             <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{user?.email}</span>
             <button onClick={() => signOut(auth)} className="btn" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px' }}>Logout</button>
           </div>
         </header>
-
+        {me.superAdminEmailUnverified && (
+          <div className="glass-card" role="status" style={{ marginBottom: 'var(--space-lg)', border: '1px solid rgba(214,158,46,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <p style={{ color: 'white', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              Verify your email address to unlock user management (inviting Admins, Mentors and Teacher Assistance).
+            </p>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button className="btn" style={{ padding: '6px 12px' }} onClick={handleSendVerification}>Send Verification Email</button>
+              <button className="btn" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px' }} onClick={handleVerifiedCheck}>I've Verified</button>
+            </div>
+          </div>
+        )}
         {activeTab === 'dashboard' && (
           <>
             <div className="dashboard-grid">
@@ -446,6 +532,13 @@ function App() {
 
         {activeTab === 'tests' && (
           <Tests showToast={showToast} />
+        )}
+                {activeTab === 'admins' && me.isSuperAdmin && (
+          <ManageAdmins
+            showToast={showToast}
+            openCreate={openCreateAdmin}
+            onCreateOpened={() => setOpenCreateAdmin(false)}
+          />
         )}
       </main>
     </div>

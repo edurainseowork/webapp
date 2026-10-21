@@ -1,9 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth } from './lib/firebase';
-import { apiFetch } from './lib/api';
+import { apiFetch, ApiError } from './lib/api';
 import { AuthFlow } from './components/Auth/AuthFlow';
 import { authService } from './components/Auth/authService';
+import { MentorDesk } from './components/Desk/MentorDesk';
+import { TeacherAssistantDesk } from './components/Desk/TeacherAssistantDesk';
+import { DESK_HOME, STUDY_HOME, isCmsRole, isDeskPath, isDeskRole, isWithin, replacePath } from './lib/roles';
 
 // Admins and faculty work in the CMS portal; students stay on the study page
 const CMS_URL = (import.meta.env.VITE_CMS_URL || '').trim();
@@ -40,18 +43,30 @@ async function loadSession(user: User): Promise<Session> {
     const me = await apiFetch<{ user?: { name?: string; role?: string } }>('/auth/me');
     return { ...base, name: me.user?.name || base.name, role: (me.user?.role || 'student').toLowerCase() };
   } catch {
-    // Backend unreachable: let the student in; nothing on the study page depends on the role
-    return { ...base, role: 'student' };
+    // Backend unreachable: fall back to the role claim in the Firebase token (only the backend can
+    // set it), so a Mentor / Teacher Assistance account never lands in the student app
+    try {
+      const { claims } = await user.getIdTokenResult();
+      const claimRole = typeof claims.role === 'string' ? claims.role.toLowerCase() : claims.admin === true ? 'admin' : 'student';
+      return { ...base, role: claimRole };
+    } catch {
+      return { ...base, role: 'student' };
+    }
   }
 }
-// CMS address with a one-time sign-in handover, so the admin arrives in the CMS already signed in.
-// If the handover can't be created, the plain CMS address still works (the admin logs in there).
-async function cmsUrlWithHandoff(): Promise<string> {
+// CMS address with a one-time sign-in handover, so the admin / mentor arrives in the CMS already
+// signed in. If the handover can't be created, the plain CMS address still works (they log in there).
+async function cmsUrlWithHandoff(path = ''): Promise<string> {
+  const target = `${CMS_URL.replace(/\/+$/, '')}${path}`;
   try {
     const { token } = await apiFetch<{ token: string }>('/auth/cms-handoff', { method: 'POST' });
-    return `${CMS_URL}#handoff=${encodeURIComponent(token)}`;
-  } catch {
-    return CMS_URL;
+    if (!token) throw new Error('The backend returned no sign-in token');
+    return `${target}#handoff=${encodeURIComponent(token)}`;
+  } catch (err) {
+    const status = err instanceof ApiError ? ` (HTTP ${err.status})` : '';
+    const reason = `${err instanceof Error && err.message ? err.message : 'Unknown error'}${status}`;
+    console.error('[cms-handoff] could not sign you in to the CMS automatically:', reason);
+    return `${target}#handoff_error=${encodeURIComponent(reason)}`;
   }
 }
 
@@ -84,27 +99,73 @@ export function AuthGate({ children }: { children: ReactNode }) {
       if (run !== current) return; // a newer sign-in/out happened meanwhile
       setSession(next);
       // An email or phone that belongs to a CMS admin/faculty account goes to the CMS
-      if ((next.role === 'admin' || next.role === 'faculty') && CMS_URL) {
+      if (isCmsRole(next.role) && CMS_URL) {
         setPhase('redirecting');
         const target = await cmsUrlWithHandoff();
         if (run === current) window.location.replace(target);
         return;
+      }
+      // Mentors work in the CMS Mentor Desk (they have no other CMS access)
+      if (next.role === 'mentor' && CMS_URL) {
+        setPhase('redirecting');
+        const target = await cmsUrlWithHandoff('/mentorDesk');
+        if (run === current) window.location.replace(target);
+        return;
+      }
+      // Role-based landing page: desk accounts always end up on their desk, everyone else
+      // is moved off desk URLs (typed in by hand or left over from a previous sign-in)
+      if (isDeskRole(next.role)) {
+        if (!isWithin(window.location.pathname, DESK_HOME[next.role])) replacePath(DESK_HOME[next.role]);
+      } else if (isDeskPath(window.location.pathname)) {
+        replacePath(STUDY_HOME);
       }
       setPhase('signed-in');
     });
     return () => unsubscribe();
   }, []);
 
+  // Desk accounts can't navigate away with Back/Forward either: any other URL snaps back to their desk
+  const deskRole = phase === 'signed-in' && isDeskRole(session?.role) ? session!.role : null;
+  useEffect(() => {
+    if (!isDeskRole(deskRole)) return;
+    const home = DESK_HOME[deskRole];
+    const keepOnDesk = () => {
+      if (!isWithin(window.location.pathname, home)) replacePath(home);
+    };
+    window.addEventListener('popstate', keepOnDesk);
+    return () => window.removeEventListener('popstate', keepOnDesk);
+  }, [deskRole]);
+
   if (phase === 'checking') return <FullScreenMessage>Checking your session…</FullScreenMessage>;
-  if (phase === 'redirecting') return <FullScreenMessage>Opening the admin CMS…</FullScreenMessage>;
+  if (phase === 'redirecting') return <FullScreenMessage>Opening the CMS portal…</FullScreenMessage>;
   // Signing in triggers onAuthStateChanged above, which moves the gate on; nothing to do here
   if (phase === 'signed-out' || !session) return <AuthFlow onAuthenticated={() => {}} />;
 
   const value: AuthContextValue = {
     session,
     firstName: session.name.split(' ')[0] || session.name,
-    logout: () => authService.logout(),
+    logout: async () => {
+      await authService.logout();
+      // The next person signs in from the normal study address
+      replacePath(STUDY_HOME);
+    },
   };
+
+  // Mentor / Teacher Assistance only ever get their desk; the study app is never rendered for them
+  if (session.role === 'mentor') {
+    return (
+      <AuthContext.Provider value={value}>
+        <MentorDesk />
+      </AuthContext.Provider>
+    );
+  }
+  if (session.role === 'teacher_assistant') {
+    return (
+      <AuthContext.Provider value={value}>
+        <TeacherAssistantDesk />
+      </AuthContext.Provider>
+    );
+  }
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
