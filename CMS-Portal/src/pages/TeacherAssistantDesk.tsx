@@ -1,3 +1,4 @@
+import edurainLogo from '../assets/logo.webp'
 import { useState, useEffect, useRef, useMemo, type ChangeEvent, type FormEvent } from 'react';
 import type { User } from 'firebase/auth';
 import {
@@ -213,11 +214,7 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
         {/* Brand */}
         <div className="ta-brand">
           <div className="ta-brand-logo">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
+            <img src={edurainLogo} alt="EduRain Logo" style={{ width: '26px', height: '26px', objectFit: 'contain' }} />
           </div>
           <div className="ta-brand-text">
             <span className="ta-brand-name">EDURAIN</span>

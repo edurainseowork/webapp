@@ -1,3 +1,4 @@
+import edurainLogo from '../assets/logo.webp'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { signOut, type User } from 'firebase/auth'
 import { auth } from '../firebase'
@@ -390,7 +391,7 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
       <aside className="md-sidebar">
       <button type="button" className="sidebar-brand md-brand" onClick={onExit} title={onExit ? 'Back to CMS' : 'Mentor Desk'} disabled={!onExit} style={onExit ? undefined : { cursor: 'default' }}>
           <span className="md-brand-icon">
-            <VideoIcon size={20} />
+            <img src={edurainLogo} alt="EduRain Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
           </span>
           <span>
             Mentor<span className="md-accent">Desk</span>
