@@ -633,38 +633,21 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
                 {/* Tab 2: Student Info */}
                 {activeDetailTab === 'studentInfo' && (
                   <div className="ta-student-grid">
-                    <div className="ta-info-card">
-                      <span className="ta-info-label">Full Name</span>
-                      <span className="ta-info-val">{activeTicket.studentName}</span>
-                    </div>
-                    <div className="ta-info-card">
-                      <span className="ta-info-label">Class / Batch</span>
-                      <span className="ta-info-val">{activeTicket.studentClass}</span>
-                    </div>
-                    <div className="ta-info-card">
-                      <span className="ta-info-label">Email Address</span>
-                      <span className="ta-info-val">{activeTicket.studentInfo.email}</span>
-                    </div>
-                    <div className="ta-info-card">
-                      <span className="ta-info-label">Phone</span>
-                      <span className="ta-info-val">{activeTicket.studentInfo.phone}</span>
-                    </div>
-                    <div className="ta-info-card">
-                      <span className="ta-info-label">Target Exam</span>
-                      <span className="ta-info-val">{activeTicket.studentInfo.targetExam}</span>
-                    </div>
-                    <div className="ta-info-card">
-                      <span className="ta-info-label">Total Doubts Solved</span>
-                      <span className="ta-info-val">{activeTicket.studentInfo.doubtsSolved}</span>
-                    </div>
-                    <div className="ta-info-card">
-                      <span className="ta-info-label">Live Attendance</span>
-                      <span className="ta-info-val" style={{ color: '#22c55e' }}>{activeTicket.studentInfo.attendance}</span>
-                    </div>
-                    <div className="ta-info-card">
-                      <span className="ta-info-label">Recent Test Score</span>
-                      <span className="ta-info-val" style={{ color: '#60a5fa' }}>{activeTicket.studentInfo.recentTestScore}</span>
-                    </div>
+                    {[
+                      ['Full Name', activeTicket.studentName],
+                      ['Class / Batch', activeTicket.studentClass],
+                      ['Email Address', activeTicket.studentInfo.email],
+                      ['Phone', activeTicket.studentInfo.phone],
+                      ['Target Exam', activeTicket.studentInfo.targetExam],
+                      ['Total Doubts Solved', activeTicket.studentInfo.doubtsSolved],
+                      ['Live Attendance', activeTicket.studentInfo.attendance, '#22c55e'],
+                      ['Recent Test Score', activeTicket.studentInfo.recentTestScore, '#60a5fa'],
+                    ].map(([label, val, color]) => (
+                      <div key={label} className="ta-info-card">
+                        <span className="ta-info-label">{label}</span>
+                        <span className="ta-info-val" style={color ? { color: color as string } : undefined}>{val}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
 

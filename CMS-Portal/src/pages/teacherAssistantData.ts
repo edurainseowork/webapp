@@ -49,365 +49,162 @@ export interface DoubtTicket {
 
 export interface TAProfile {
   name: string;
-  role: string;
   email: string;
+  role: string;
   avatarUrl: string;
-  status: 'Online' | 'Away' | 'Busy';
-  department: string;
+  status: 'Active' | 'Away' | 'In Doubts';
+  doubtsResolvedToday: number;
+  avgResponseTime: string;
+  rating: number;
 }
-
-const STORAGE_PROFILE_KEY = 'edurain_ta_profile_v1';
-const STORAGE_TICKETS_KEY = 'edurain_ta_tickets_v1';
 
 export const DEFAULT_PROFILE: TAProfile = {
   name: 'Dr. Arjun Mehta',
-  role: 'Teacher Assistant',
   email: 'arjun.mehta@edurain.in',
+  role: 'Senior Teacher Assistant',
   avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-  status: 'Online',
-  department: 'Physics & STEM Faculty',
+  status: 'Active',
+  doubtsResolvedToday: 18,
+  avgResponseTime: '2.4 mins',
+  rating: 4.9,
 };
 
-// SVG Diagram for TK-1024 (Rotational Motion on Incline)
-export const DIAGRAM_ROTATIONAL_INCLINE = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 360" width="100%" height="100%">
-  <rect width="100%" height="100%" fill="%23f5ede0" rx="12" />
-  <rect x="6" y="6" width="688" height="348" fill="none" stroke="%23dfd4c4" stroke-width="2" rx="8" />
-  
-  <text x="30" y="42" font-family="'Courier New', monospace, serif" font-size="19" font-weight="600" fill="%231e293b">
-    A solid cylinder of mass M and radius R rolls without slipping
-  </text>
-  <text x="30" y="68" font-family="'Courier New', monospace, serif" font-size="19" font-weight="600" fill="%231e293b">
-    on an inclined plane of angle θ. Find its acceleration.
-  </text>
-  
-  <polygon points="60,280 440,280 440,140" fill="%23e2d8c9" stroke="%231e293b" stroke-width="3" stroke-linejoin="round" />
-  
-  <path d="M 120,280 A 60,60 0 0,0 114,258" fill="none" stroke="%231e293b" stroke-width="2" />
-  <text x="135" y="272" font-family="serif" font-size="22" font-style="italic" fill="%231e293b">θ</text>
-  
-  <circle cx="280" cy="155" r="44" fill="%23faf8f5" stroke="%231e293b" stroke-width="3" />
-  <circle cx="280" cy="155" r="4" fill="%231e293b" />
-  
-  <line x1="280" y1="155" x2="318" y2="175" stroke="%231e293b" stroke-width="2" stroke-dasharray="3,3" />
-  <text x="290" y="145" font-family="serif" font-size="18" font-weight="bold" fill="%231e293b">M, R</text>
-  
-  <rect x="490" y="150" width="180" height="110" rx="6" fill="%23ece3d4" stroke="%2394a3b8" stroke-dasharray="4,4" />
-  <text x="505" y="180" font-family="sans-serif" font-size="16" font-weight="bold" fill="%23334155">Given:</text>
-  <text x="505" y="210" font-family="serif" font-size="18" font-style="italic" fill="%230f172a">I<tspan font-size="12">cm</tspan> = ½ MR²</text>
-  <text x="505" y="240" font-family="sans-serif" font-size="13" fill="%23475569">(rolling without slipping)</text>
-</svg>`;
+const makeStudent = (name: string, exam = 'JEE Advanced 2026', doubts = 42, att = '94%', acc = '87%', score = '198 / 300 (Rank 48)'): StudentInfo => ({
+  email: `${name.toLowerCase().replace(/\s+/g, '.')}@edurain.student`,
+  phone: '+91 98765 43210',
+  targetExam: exam,
+  doubtsSolved: doubts,
+  attendance: att,
+  accuracy: acc,
+  recentTestScore: score,
+});
 
-export const DIAGRAM_PARTIAL_FRACTIONS = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 320" width="100%" height="100%">
-  <rect width="100%" height="100%" fill="%23f5ede0" rx="12" />
-  <rect x="6" y="6" width="688" height="308" fill="none" stroke="%23dfd4c4" stroke-width="2" rx="8" />
-  <text x="30" y="45" font-family="'Courier New', monospace" font-size="19" font-weight="bold" fill="%231e293b">
-    Evaluate the indefinite integral:
-  </text>
-  <text x="60" y="130" font-family="serif" font-size="34" font-style="italic" fill="%230f172a">
-    ∫ <tspan font-size="28" font-family="sans-serif">[ (5x - 6) / ( (x - 1)² (x + 2) ) ] dx</tspan>
-  </text>
-  <text x="60" y="190" font-family="sans-serif" font-size="16" fill="%23475569">
-    Decomposition: A/(x-1) + B/(x-1)² + C/(x+2)
-  </text>
-</svg>`;
-
-export const DIAGRAM_CHEMISTRY_SN = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 320" width="100%" height="100%">
-  <rect width="100%" height="100%" fill="%23f5ede0" rx="12" />
-  <rect x="6" y="6" width="688" height="308" fill="none" stroke="%23dfd4c4" stroke-width="2" rx="8" />
-  <text x="30" y="45" font-family="'Courier New', monospace" font-size="19" font-weight="bold" fill="%231e293b">
-    Substrate Reaction Kinetics & Stereochemistry:
-  </text>
-  <text x="50" y="120" font-family="sans-serif" font-size="20" font-weight="600" fill="%237c3aed">
-    (CH₃)₃C—Br + OH⁻  (in 80% aqueous acetone) ➔ (CH₃)₃C—OH + Br⁻
-  </text>
-  <text x="50" y="175" font-family="sans-serif" font-size="15" fill="%23334155">
-    • Bulky 3° alkyl halide inhibits SN2 backside attack.
-  </text>
-  <text x="50" y="210" font-family="sans-serif" font-size="15" fill="%23334155">
-    • Ionizes first into stable planar carbocation intermediate (SN1 mechanism).
-  </text>
-</svg>`;
-
-export const DIAGRAM_WAVE_INTERFERENCE = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 320" width="100%" height="100%">
-  <rect width="100%" height="100%" fill="%23f5ede0" rx="12" />
-  <rect x="6" y="6" width="688" height="308" fill="none" stroke="%23dfd4c4" stroke-width="2" rx="8" />
-  <text x="30" y="45" font-family="'Courier New', monospace" font-size="19" font-weight="bold" fill="%231e293b">
-    Wave Interference: Coherent Source Superposition
-  </text>
-  <path d="M 50,140 Q 110,60 170,140 T 290,140 T 410,140 T 530,140 T 650,140" fill="none" stroke="%232563eb" stroke-width="3" />
-  <path d="M 50,140 Q 110,90 170,140 T 290,140 T 410,140 T 530,140 T 650,140" fill="none" stroke="%23dc2626" stroke-width="2.5" stroke-dasharray="4,4" />
-  <text x="50" y="240" font-family="sans-serif" font-size="16" fill="%231e293b">
-    Path Difference: Δx = d sin θ = nλ  (Constructive Interference)
-  </text>
-</svg>`;
+const defaultChats = (subj: string): PreviousChat[] => [
+  { id: 'pc-1', date: '19 Oct 2026', subject: subj, title: `Advanced numerical problem in ${subj}`, resolvedBy: 'Dr. Arjun Mehta', rating: 5 },
+  { id: 'pc-2', date: '15 Oct 2026', subject: subj, title: 'Concept clarity doubt session', resolvedBy: 'Priya Sharma', rating: 4 },
+];
 
 export const INITIAL_TICKETS: DoubtTicket[] = [
   {
-    id: 'tk-1024',
-    ticketNumber: '#TK-1024',
-    title: 'Rotational Motion: Moment of Inertia on Incline',
+    id: 't-101',
+    ticketNumber: 'TKT-1082',
+    title: 'Rotational Dynamics: Parallel Axis Theorem on Inclined Plane',
     subject: 'Physics',
-    examTag: 'IIT-JEE Advanced',
+    examTag: 'JEE Advanced',
     studentName: 'Aarav Sharma',
-    studentClass: 'Class 12 Lakshya JEE',
-    studentAvatar: 'AS',
-    submittedAt: 'Today, 10:24 AM',
+    studentClass: 'Class 12th',
+    studentAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=128&q=80',
+    submittedAt: '10 mins ago',
     urgency: 'Urgent',
     status: 'queue',
-    questionSnippet: 'Hi mentor, I am unable to understand how to apply the parallel axis theorem in this inclined plane situation. Could you please explain the approach?',
-    questionFull: 'Hi mentor, I am unable to understand how to apply the parallel axis theorem in this inclined plane situation. Could you please explain the approach?',
-    diagramUrl: DIAGRAM_ROTATIONAL_INCLINE,
+    questionSnippet: 'Unable to understand how to apply parallel axis theorem in this inclined plane situation.',
+    questionFull: 'In the diagram attached, a uniform circular cylinder of mass M and radius R rolls without slipping down an inclined plane with angle theta. Please explain the torque balance about the contact axis vs the center of mass.',
+    diagramUrl: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=1200&q=80',
     messages: [
-      {
-        id: 'm1',
-        sender: 'student',
-        senderName: 'Aarav Sharma',
-        text: "I'm particularly confused about whether to take torque about COM or point of contact?",
-        time: '10:24 AM',
-        avatar: 'AS',
-      },
-      {
-        id: 'm2',
-        sender: 'ta',
-        senderName: 'Dr. Arjun Mehta',
-        text: "Good question! For rolling motion, it's usually simplest to take torque about the point of contact. Let me walk you through it: taking torque about the contact point eliminates the torque due to friction, which simplifies the equation of motion directly!",
-        time: '10:26 AM',
-        avatar: DEFAULT_PROFILE.avatarUrl,
-      },
+      { id: 'm-1', sender: 'student', senderName: 'Aarav Sharma', text: 'Hi sir, I tried finding torque about contact point P, but why does friction torque vanish?', time: '10:14 AM' },
+      { id: 'm-2', sender: 'ta', senderName: 'Dr. Arjun Mehta', text: 'Because line of friction passes directly through point P, its lever arm is zero.', time: '10:17 AM' },
     ],
-    studentInfo: {
-      email: 'aarav.sharma@gmail.com',
-      phone: '+91 98765 43210',
-      targetExam: 'JEE Advanced 2026',
-      doubtsSolved: 34,
-      attendance: '96%',
-      accuracy: '84%',
-      recentTestScore: '242/300 (AIR 148)',
-    },
-    previousChats: [
-      {
-        id: 'pc1',
-        date: '18 Oct 2026',
-        subject: 'Physics',
-        title: 'Rigid Body Dynamics: Pure Rolling on Frictionless Surface',
-        resolvedBy: 'Dr. Arjun Mehta',
-        rating: 5,
-      },
-      {
-        id: 'pc2',
-        date: '12 Oct 2026',
-        subject: 'Physics',
-        title: 'Collision of Rod with Point Mass',
-        resolvedBy: 'Er. Priya Nair',
-        rating: 5,
-      },
-    ],
+    studentInfo: makeStudent('Aarav Sharma', 'JEE Advanced 2026', 48, '96%', '89%', '214 / 300'),
+    previousChats: defaultChats('Physics'),
   },
   {
-    id: 'tk-1025',
-    ticketNumber: '#TK-1025',
-    title: 'Integration using Partial Fractions',
+    id: 't-102',
+    ticketNumber: 'TKT-1085',
+    title: 'Definite Integration with Periodic Functions & King Rule',
     subject: 'Mathematics',
-    examTag: 'IIT-JEE Advanced',
-    studentName: 'Riya Malhotra',
-    studentClass: 'Class 12 Lakshya JEE',
-    studentAvatar: 'RM',
-    submittedAt: 'Today, 09:17 AM',
+    examTag: 'JEE Mains',
+    studentName: 'Diya Patel',
+    studentClass: 'Class 12th',
+    studentAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&q=80',
+    submittedAt: '25 mins ago',
     urgency: 'Normal',
     status: 'queue',
-    questionSnippet: 'Getting wrong answer when decomposing repeated quadratic factors in denominator.',
-    questionFull: 'When I split the denominator with (x - 1)^2 (x + 2), my coefficient B is coming out negative whereas book shows positive. How do we set up the equation for repeated linear factor?',
-    diagramUrl: DIAGRAM_PARTIAL_FRACTIONS,
+    questionSnippet: 'Evaluating integral from 0 to 2pi of x*sin(x)/(1+cos^2(x)) dx using substitution.',
+    questionFull: 'Evaluating integral from 0 to 2pi of x*sin(x)/(1+cos^2(x)) dx using substitution. Should I split at pi or directly apply f(a+b-x)?',
     messages: [
-      {
-        id: 'm1',
-        sender: 'student',
-        senderName: 'Riya Malhotra',
-        text: 'Sir, I equated coefficients of x^2 and x but I am still getting a mismatch for constant term.',
-        time: '09:17 AM',
-        avatar: 'RM',
-      },
+      { id: 'm-201', sender: 'student', senderName: 'Diya Patel', text: 'Does King rule cancel out the numerator x when applying f(2pi - x)?', time: '09:55 AM' },
     ],
-    studentInfo: {
-      email: 'riya.malhotra@yahoo.com',
-      phone: '+91 98112 34567',
-      targetExam: 'JEE Advanced 2026',
-      doubtsSolved: 28,
-      attendance: '92%',
-      accuracy: '79%',
-      recentTestScore: '218/300 (AIR 412)',
-    },
-    previousChats: [
-      {
-        id: 'pc1',
-        date: '16 Oct 2026',
-        subject: 'Mathematics',
-        title: 'Definite Integration King Property Application',
-        resolvedBy: 'Dr. Arjun Mehta',
-        rating: 5,
-      },
-    ],
+    studentInfo: makeStudent('Diya Patel', 'JEE Mains 2026', 31, '91%', '82%', '176 / 300'),
+    previousChats: defaultChats('Mathematics'),
   },
   {
-    id: 'tk-1026',
-    ticketNumber: '#TK-1026',
-    title: 'Why is this reaction SN1 and not SN2?',
+    id: 't-103',
+    ticketNumber: 'TKT-1088',
+    title: 'Coordination Chemistry: Crystal Field Splitting in d4 High Spin',
     subject: 'Chemistry',
-    examTag: 'Class 12 Pratigya',
-    studentName: 'Kunal Verma',
-    studentClass: 'Class 12 Pratigya',
-    studentAvatar: 'KV',
-    submittedAt: 'Today, 08:46 AM',
-    urgency: 'Normal',
+    examTag: 'NEET 2026',
+    studentName: 'Rohan Verma',
+    studentClass: 'Class 11th',
+    studentAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=128&q=80',
+    submittedAt: '40 mins ago',
+    urgency: 'Urgent',
     status: 'queue',
-    questionSnippet: 'Why does polar protic solvent favor tertiary carbocation in nucleophilic substitution?',
-    questionFull: 'Sir, both aqueous acetone and ethanolic KOH are mentioned in NCERT. Why does acetone with water promote carbocation ionization instead of direct displacement?',
-    diagramUrl: DIAGRAM_CHEMISTRY_SN,
+    questionSnippet: 'Calculating CFSE in octahedral d4 high spin complex with weak field ligand.',
+    questionFull: 'In [Cr(H2O)6]2+ complex, Cr is +2 with 3d4 configuration. Weak ligand means high spin (t2g3 eg1). How do we calculate total CFSE in terms of delta_o?',
+    diagramUrl: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=1200&q=80',
     messages: [
-      {
-        id: 'm1',
-        sender: 'student',
-        senderName: 'Kunal Verma',
-        text: 'I always get confused between polar protic and polar aprotic solvents and how they solvate nucleophiles.',
-        time: '08:46 AM',
-        avatar: 'KV',
-      },
+      { id: 'm-301', sender: 'student', senderName: 'Rohan Verma', text: 'Is CFSE = (-0.4 * 3 + 0.6 * 1) * delta_o = -0.6 delta_o?', time: '09:35 AM' },
     ],
-    studentInfo: {
-      email: 'kunal.verma@outlook.com',
-      phone: '+91 97234 56789',
-      targetExam: 'NEET / JEE 2026',
-      doubtsSolved: 19,
-      attendance: '88%',
-      accuracy: '76%',
-      recentTestScore: '185/300',
-    },
-    previousChats: [],
+    studentInfo: makeStudent('Rohan Verma', 'NEET 2026', 56, '98%', '91%', '645 / 720'),
+    previousChats: defaultChats('Chemistry'),
   },
   {
-    id: 'tk-1027',
-    ticketNumber: '#TK-1027',
-    title: 'Wave Interference: Phase Difference',
+    id: 't-104',
+    ticketNumber: 'TKT-1070',
+    title: 'Thermodynamics: Entropy change in adiabatic free expansion',
     subject: 'Physics',
-    examTag: 'Class 11 Udaan',
-    studentName: 'Sneha Iyer',
-    studentClass: 'Class 11 Udaan',
-    studentAvatar: 'SI',
-    submittedAt: 'Today, 08:12 AM',
-    urgency: 'Normal',
-    status: 'queue',
-    questionSnippet: 'Formula for resultant intensity when initial phase difference is pi/3.',
-    questionFull: 'Two waves with amplitudes A1 and A2 and phase difference delta phi meet at a point. If A1 = 2A2, what is the ratio of I_max to I_min?',
-    diagramUrl: DIAGRAM_WAVE_INTERFERENCE,
-    messages: [
-      {
-        id: 'm1',
-        sender: 'student',
-        senderName: 'Sneha Iyer',
-        text: 'Hello sir, does intensity ratio depend on initial phase or only on amplitudes?',
-        time: '08:12 AM',
-        avatar: 'SI',
-      },
-    ],
-    studentInfo: {
-      email: 'sneha.iyer@gmail.com',
-      phone: '+91 99887 66554',
-      targetExam: 'JEE Main 2027',
-      doubtsSolved: 42,
-      attendance: '98%',
-      accuracy: '91%',
-      recentTestScore: '265/300 (AIR 82)',
-    },
-    previousChats: [
-      {
-        id: 'pc1',
-        date: '15 Oct 2026',
-        subject: 'Physics',
-        title: 'Simple Harmonic Motion Phase Constants',
-        resolvedBy: 'Dr. Arjun Mehta',
-        rating: 5,
-      },
-    ],
-  },
-  {
-    id: 'tk-1020',
-    ticketNumber: '#TK-1020',
-    title: 'Thermodynamics Carnot Engine Efficiency Limit',
-    subject: 'Physics',
-    examTag: 'IIT-JEE Advanced',
-    studentName: 'Rohan Gupta',
-    studentClass: 'Class 12 Lakshya JEE',
-    studentAvatar: 'RG',
-    submittedAt: 'Yesterday, 04:30 PM',
+    examTag: 'JEE Advanced',
+    studentName: 'Ananya Deshmukh',
+    studentClass: 'Class 12th',
+    studentAvatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=128&q=80',
+    submittedAt: '1 hour ago',
     urgency: 'Normal',
     status: 'resolved',
-    questionSnippet: 'Second law of thermodynamics: why efficiency cannot reach 100% even with zero friction.',
-    questionFull: 'Can we achieve 100% Carnot efficiency if sink is at 0 Kelvin or does third law forbid reaching absolute zero?',
-    diagramUrl: DIAGRAM_ROTATIONAL_INCLINE,
+    questionSnippet: 'Why is delta S universe > 0 when q = 0 in free expansion of ideal gas?',
+    questionFull: 'Why is delta S universe > 0 when q = 0 in free expansion of ideal gas? Since q_rev is used to define entropy, how do we construct the reversible path?',
     messages: [
-      {
-        id: 'm1',
-        sender: 'student',
-        senderName: 'Rohan Gupta',
-        text: 'Sir, is reaching 0K impossible because of finite number of cycles?',
-        time: '04:30 PM',
-        avatar: 'RG',
-      },
-      {
-        id: 'm2',
-        sender: 'ta',
-        senderName: 'Dr. Arjun Mehta',
-        text: 'Exactly! By the Nernst Heat Theorem (Third Law), it requires infinite isothermal and adiabatic steps to reach absolute zero, so efficiency eta = 1 - T2/T1 is strictly less than 1 in practice.',
-        time: '04:38 PM',
-        avatar: DEFAULT_PROFILE.avatarUrl,
-      },
+      { id: 'm-401', sender: 'student', senderName: 'Ananya Deshmukh', text: 'Understood sir! Reversible isothermal expansion path gives nR*ln(V2/V1). Thanks!', time: '08:45 AM' },
     ],
-    studentInfo: {
-      email: 'rohan.gupta@gmail.com',
-      phone: '+91 98450 12345',
-      targetExam: 'JEE Advanced 2026',
-      doubtsSolved: 50,
-      attendance: '95%',
-      accuracy: '88%',
-      recentTestScore: '254/300',
-    },
-    previousChats: [],
+    studentInfo: makeStudent('Ananya Deshmukh', 'JEE Advanced 2026', 64, '95%', '93%', '232 / 300'),
+    previousChats: defaultChats('Physics'),
   },
 ];
 
+const STORAGE_KEY_TICKETS = 'edurain_ta_tickets_v1';
+const STORAGE_KEY_PROFILE = 'edurain_ta_profile_v1';
+
 export function getStoredTickets(): DoubtTicket[] {
   try {
-    const raw = localStorage.getItem(STORAGE_TICKETS_KEY);
-    if (!raw) return INITIAL_TICKETS;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_TICKETS;
-  } catch {
-    return INITIAL_TICKETS;
+    const raw = localStorage.getItem(STORAGE_KEY_TICKETS);
+    if (raw) return JSON.parse(raw);
+  } catch (err) {
+    console.error('Failed to parse stored tickets', err);
   }
+  return INITIAL_TICKETS;
 }
 
 export function saveStoredTickets(tickets: DoubtTicket[]): void {
   try {
-    localStorage.setItem(STORAGE_TICKETS_KEY, JSON.stringify(tickets));
-  } catch (e) {
-    console.error('Failed to save tickets to localStorage', e);
+    localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(tickets));
+  } catch (err) {
+    console.error('Failed to save tickets', err);
   }
 }
 
 export function getStoredProfile(): TAProfile {
   try {
-    const raw = localStorage.getItem(STORAGE_PROFILE_KEY);
-    if (!raw) return DEFAULT_PROFILE;
-    return { ...DEFAULT_PROFILE, ...JSON.parse(raw) };
-  } catch {
-    return DEFAULT_PROFILE;
+    const raw = localStorage.getItem(STORAGE_KEY_PROFILE);
+    if (raw) return JSON.parse(raw);
+  } catch (err) {
+    console.error('Failed to parse stored profile', err);
   }
+  return DEFAULT_PROFILE;
 }
 
 export function saveStoredProfile(profile: TAProfile): void {
   try {
-    localStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(profile));
-  } catch (e) {
-    console.error('Failed to save profile to localStorage', e);
+    localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify(profile));
+  } catch (err) {
+    console.error('Failed to save profile', err);
   }
 }
