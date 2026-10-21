@@ -12,6 +12,7 @@ import Notifications from './Notifications'
 import Tests from './Tests'
 import ManageAdmins from './ManageAdmins'
 import MentorDesk from './MentorDesk'
+import TeacherAssistantDesk from './TeacherAssistantDesk'
 import { handoffError } from '../handoff'
 
 import '../index.css'
@@ -19,16 +20,28 @@ import '../index.css'
 // Mentor Desk has its own URL: /mentorDesk
 const MENTOR_DESK_PATH = '/mentorDesk';
 const isMentorDeskPath = () => window.location.pathname.replace(/\/+$/, '').toLowerCase() === MENTOR_DESK_PATH.toLowerCase();
+
+// Teacher Assistant Desk has its own URL: /teacherAssistant
+const TEACHER_ASSISTANT_PATH = '/teacherAssistant';
+const isTeacherAssistantPath = () => {
+  const p = window.location.pathname.replace(/\/+$/, '').toLowerCase();
+  return p === TEACHER_ASSISTANT_PATH.toLowerCase() || p === '/teacherassistantdesk' || p === '/teacher-assistant';
+};
 type MeInfo = { isSuperAdmin: boolean; superAdminEmailUnverified: boolean }
 function App() {
     // Whether to show Super Admin controls. Decided by the backend from the verified token;
   // every admin-management API checks it again on its own.
   const [me, setMe] = useState<MeInfo>({ isSuperAdmin: false, superAdminEmailUnverified: false });
   const [openCreateAdmin, setOpenCreateAdmin] = useState(false);
-  const [activeTab, setActiveTab] = useState(() => (isMentorDeskPath() ? 'mentorDesk' : 'courses'));
+  const [activeTab, setActiveTab] = useState(() => {
+    if (isMentorDeskPath()) return 'mentorDesk';
+    if (isTeacherAssistantPath()) return 'teacherAssistant';
+    return 'courses';
+  });
     // Role detected by RoleGuard from the verified Firebase token / backend (never from the URL)
     const [cmsRole, setCmsRole] = useState<string | null>(null);
     const isMentor = cmsRole === 'mentor';
+    const isTeacherAssistant = cmsRole === 'teacher_assistant';
     const isStaff = cmsRole === 'admin' || cmsRole === 'faculty';
   const lastCmsTab = useRef('courses');
   const isFirstUrlSync = useRef(true);
@@ -279,7 +292,7 @@ function App() {
   // Mentor accounts: the Mentor Desk only, with no "Back to CMS" (the backend refuses them every CMS API too)
   if (isMentor) {
     return (
-      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
+      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
         <MentorDesk user={user} />
       </RoleGuard>
     );
@@ -288,14 +301,33 @@ function App() {
   // Mentor Desk is a full page with its own sidebar (admins / faculty can preview it and go back)
   if (activeTab === 'mentorDesk') {
     return (
-      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
+      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
         <MentorDesk user={user} onExit={() => setActiveTab(lastCmsTab.current)} />
       </RoleGuard>
     );
   }
 
+
+  // Teacher Assistant accounts: the Teacher Assistant Desk only, with no "Back to CMS"
+  if (isTeacherAssistant) {
+    return (
+      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
+        <TeacherAssistantDesk user={user} />
+      </RoleGuard>
+    );
+  }
+
+  // Teacher Assistant Desk is a full page with its own sidebar (admins / faculty can preview it and go back)
+  if (activeTab === 'teacherAssistant') {
+    return (
+      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
+        <TeacherAssistantDesk user={user} onExit={() => setActiveTab(lastCmsTab.current)} />
+      </RoleGuard>
+    );
+  }
+
   return (
-    <RoleGuard allowedRoles={['admin', 'faculty', 'mentor']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
+    <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
       <div className="layout">
       {/* Toast Notification */}
       {toast && (

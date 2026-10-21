@@ -4,7 +4,7 @@ import { auth } from '../firebase';
 import { apiFetch } from '../api';
 
 // 'mentor' accounts only ever see the Mentor Desk (App.tsx); the backend blocks them from every CMS API
-export type AllowedRole = 'admin' | 'faculty' | 'mentor';
+export type AllowedRole = 'admin' | 'faculty' | 'mentor' | 'teacher_assistant';
 
 export interface RoleGuardProps {
   children: React.ReactNode;
