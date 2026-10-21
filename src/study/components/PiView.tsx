@@ -26,6 +26,7 @@ import {
   Target,
   Activity,
 } from 'lucide-react';
+import { SubPageHeader } from './SubPageHeader';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -77,6 +78,8 @@ interface GameDef {
 interface PiViewProps {
   onOpenUpgrade: () => void;
   onOpenDoubtSolver: () => void;
+  onBack?: () => void;
+  searchQuery?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -817,9 +820,13 @@ function ConvertPanel({
 /*  Main view                                                          */
 /* ------------------------------------------------------------------ */
 
-export function PiView({ onOpenUpgrade, onOpenDoubtSolver }: PiViewProps) {
+export function PiView({
+  onOpenUpgrade,
+  onOpenDoubtSolver,
+  onBack,
+  searchQuery = '',
+}: PiViewProps) {
   const [activeCategory, setActiveCategory] = useState<Category>('IIT-JEE');
-  const [searchQuery, setSearchQuery] = useState('');
   const [points, setPoints] = useState(240);
   const [inrBalance, setInrBalance] = useState(0);
   const [ownedCourses, setOwnedCourses] = useState<string[]>([]);
@@ -881,55 +888,41 @@ export function PiView({ onOpenUpgrade, onOpenDoubtSolver }: PiViewProps) {
 
   return (
     <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 relative">
-      {/* Top meta row */}
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
-        <div className="flex items-center gap-2 text-[11px] sm:text-xs font-bold text-[#175A67]">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#175A67] opacity-50" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#175A67]" />
-          </span>
-          <span className="text-[#003441] bg-[#DCE9FF] uppercase tracking-wide">Real-Time Diagnostic Core</span>
-          <span className="text-[#2A707C] font-medium">· Updated 4m ago</span>
-        </div>
-
-        {/* Wallet strip */}
-        <div className="flex items-center gap-2">
-          <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#2A707C] pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`Search ${activeCategory} content`}
-              className="w-44 lg:w-56 bg-white/80 border border-white text-[#175A67] placeholder-[#2A707C]/70 pl-8 pr-3 py-1.5 rounded-full text-xs focus:outline-none focus:ring-2 focus:ring-[#175A67]/20 transition-all shadow-sm"
-            />
+      {/* 1. Standardized Back Button + Wallet */}
+      <SubPageHeader
+        onBack={onBack}
+        crumbs={[
+          { label: 'Home', onClick: onBack },
+          { label: 'Daily Drop' },
+        ]}
+        rightElement={
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-white/80 border border-white rounded-full px-3 py-1.5 shadow-sm">
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs font-bold text-[#175A67]">{points} pts</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-white/80 border border-white rounded-full px-3 py-1.5 shadow-sm">
+              <Wallet className="w-3.5 h-3.5 text-[#10B981]" />
+              <span className="text-xs font-bold text-[#175A67] flex items-center">
+                <IndianRupee className="w-3 h-3" />{inrBalance}
+              </span>
+            </div>
+            <button
+              onClick={() => setShowConvert(true)}
+              className="text-[11px] font-bold bg-[#175A67] hover:bg-[#124853] text-white px-3.5 py-1.5 rounded-full transition-all active:scale-95 shadow-sm"
+            >
+              Convert
+            </button>
           </div>
-          <div className="flex items-center gap-1.5 bg-white/80 border border-white rounded-full px-3 py-1.5 shadow-sm">
-            <Trophy className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-xs font-bold text-[#175A67]">{points} pts</span>
-          </div>
-          <div className="flex items-center gap-1.5 bg-white/80 border border-white rounded-full px-3 py-1.5 shadow-sm">
-            <Wallet className="w-3.5 h-3.5 text-[#10B981]" />
-            <span className="text-xs font-bold text-[#175A67] flex items-center">
-              <IndianRupee className="w-3 h-3" />{inrBalance}
-            </span>
-          </div>
-          <button
-            onClick={() => setShowConvert(true)}
-            className="text-[11px] font-bold bg-[#175A67] hover:bg-[#124853] text-white px-3.5 py-1.5 rounded-full transition-all active:scale-95 shadow-sm"
-          >
-            Convert
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Title + category tabs + Ask Doubt */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-2.5 flex-wrap">
           <h1 className="text-2xl sm:text-3xl font-bold text-[#003441]">
-            PI <span className="font-medium text-[#003441] text-lg sm:text-xl">(Personalized Intelligence)</span>
+            Daily Drop
           </h1>
-          <span className="text-[10px] font-black uppercase bg-amber-200 text-amber-800 px-2.5 py-1 rounded-full">Pro</span>
         </div>
 
         {/* <div className="flex items-center gap-2.5 flex-wrap">

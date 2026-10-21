@@ -5,12 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:backend": "npm --prefix Backend run dev",
+    "dev:cms": "npm --prefix CMS-Portal run dev",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
+    "firebase": "^12.19.0",
     "lucide-react": "^0.475.0",
     "mp4box": "^0.5.2",
     "react": "^18.3.1",
