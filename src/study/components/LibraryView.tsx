@@ -18,7 +18,7 @@ import {
   AlertCircle,
   Eye,
 } from 'lucide-react';
-import { SubPageHeader } from './SubPageHeader';
+import { SubPageHeader, type BreadcrumbCrumb } from './SubPageHeader';
 import { apiFetch, ApiError } from '../lib/api';
 
 export type ContentType = 'folder' | 'video' | 'pdf' | 'note' | 'quiz';
@@ -221,7 +221,7 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: Lib
 
   // Build breadcrumbs for header
   const crumbs = useMemo(() => {
-    const list = [
+    const list: BreadcrumbCrumb[] = [
       { label: 'Home', onClick: onBack },
       { label: 'Library', onClick: onBack },
       {

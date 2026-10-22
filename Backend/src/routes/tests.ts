@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { coursesTable, testSubmissionsTable, testsTable, userCoursesTable, type TestQuestion, type TestSubmission } from "@workspace/db/schema";
 import { SubmitTestBody, TestViolationBody } from "@workspace/api-zod";
-import { canAccessCourse, findDbUserId, requireAuth } from "../middlewares/auth.js";
+import { canAccessCourse, findDbUserId, isAdminOrFaculty, requireAuth } from "../middlewares/auth.js";
 import { HttpError, parseId } from "../lib/http-error";
 import { logger } from "../lib/logger";
 import { SUBMIT_GRACE_MS, checkAnswers, closeExpiredAttempts, dbNow, finalizeAttempt, loadQuestions, questionCountSql, testStatusSql } from "../lib/testAttempts";
@@ -89,9 +89,23 @@ const studentQuestion = (question: TestQuestion, defaults: { marksPositive: numb
 router.get("/", async (req, res) => {
   const userId = await studentId(req);
   await closeExpiredAttempts({ userId });
+  const isAdmin = isAdminOrFaculty(req.auth!);
+  const isFree = process.env.ALLOW_FREE_ENROLLMENT === "true";
   const owned = (await db.selectDistinct({ courseId: userCoursesTable.courseId }).from(userCoursesTable).where(eq(userCoursesTable.userId, userId))).map((row) => row.courseId);
   const courseId = req.query.courseId ? parseId(req.query.courseId) : null;
-  const courseIds = courseId ? owned.filter((id) => id === courseId) : owned;
+  let courseIds: number[] = [];
+
+  if (courseId) {
+    if (isAdmin || isFree || owned.includes(courseId)) {
+      courseIds = [courseId];
+    }
+  } else if (isAdmin || isFree || owned.length === 0) {
+    const allCourses = await db.select({ id: coursesTable.id }).from(coursesTable);
+    courseIds = allCourses.map((c) => c.id);
+  } else {
+    courseIds = owned;
+  }
+
   if (courseIds.length === 0) {
     res.json({ success: true, data: [] });
     return;
