@@ -2,6 +2,7 @@ import edurainLogo from '../assets/logo.webp'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { signOut, type User } from 'firebase/auth'
 import { auth } from '../firebase'
+import { apiFetch } from '../api'
 import {
   formatSessionTime,
   formatStartClock,
@@ -16,6 +17,7 @@ import {
   type SessionFilter,
   type SessionStatus,
 } from './mentorDeskData'
+import MentorAvailability from './MentorAvailability'
 import './MentorDesk.css'
 
 /* ------------------------------------------------------------------ */
@@ -295,6 +297,9 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
   const [query, setQuery] = useState('')
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [menu, setMenu] = useState<Menu>(null)
+    // Sessions students booked, or the times this mentor opens for booking
+    const [view, setView] = useState<'sessions' | 'availability'>('sessions')
+    const [openSlots, setOpenSlots] = useState<number | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [now, setNow] = useState(() => new Date())
   const menuRef = useRef<HTMLDivElement>(null)
@@ -302,6 +307,19 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
   const email = user?.email ?? ''
   const mentorName = user?.displayName || (email ? nameFromEmail(email) : 'Mentor')
 
+  // "About Mentor", written by the Super Admin when inviting this mentor (GET /api/mentor-desk/me).
+  // Admins previewing the desk (onExit) are not mentors, so there is nothing to load for them.
+  const [about, setAbout] = useState<string | null>(null)
+  useEffect(() => {
+    if (onExit || !user) return
+    let active = true
+    apiFetch<{ data?: { about?: string | null } }>('/mentor-desk/me')
+      .then((res) => active && setAbout(res?.data?.about?.trim() || null))
+      .catch(() => active && setAbout(null))
+    return () => {
+      active = false
+    }
+  }, [user?.uid, onExit])
   const fetchSessions = useCallback(
     () =>
       loadMentorSessions()
@@ -405,6 +423,11 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
               {mentorName}
             </span>
           </div>
+          {about && (
+            <p className="md-profile-about" title={about}>
+              {about}
+            </p>
+          )}
           <p className="md-profile-meta">
             <span className="md-dot" />
             Today&apos;s Sessions: {counts.today} Scheduled
@@ -413,11 +436,26 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
 
         <p className="md-section-label">Mentor Workspace</p>
         <nav>
-          <button type="button" className="md-nav-item is-active" onClick={() => setFilter('all')}>
+          <button
+            type="button"
+            className={`md-nav-item ${view === 'sessions' ? 'is-active' : ''}`}
+            onClick={() => {
+              setView('sessions')
+              setFilter('all')
+              if (view !== 'sessions') sync()
+            }}
+          >
             <CalendarIcon />
             Upcoming Sessions
             <span className="md-nav-badge">{counts.all}</span>
           </button>
+          {!onExit && (
+            <button type="button" className={`md-nav-item ${view === 'availability' ? 'is-active' : ''}`} onClick={() => setView('availability')}>
+              <ShieldCheckIcon />
+              My Availability
+              {openSlots !== null && <span className="md-nav-badge">{openSlots}</span>}
+            </button>
+          )}
         </nav>
 
         <div className="md-sidebar-footer">
@@ -526,6 +564,7 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
                 <div className="md-popover md-popover-profile">
                   <p className="md-popover-title">{mentorName}</p>
                   {email && <p className="md-popover-sub">{email}</p>}
+                  {about && <p className="md-popover-about">{about}</p>}
                   {onExit && (
                     <button type="button" className="md-menu-item" onClick={onExit}>
                       <ArrowLeftIcon />
@@ -541,7 +580,11 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
             </div>
           </div>
         </header>
-
+        {view === 'availability' ? (
+          <main className="md-content">
+            <MentorAvailability onChanged={setOpenSlots} />
+          </main>
+        ) : (
         <main className="md-content">
           <h1 className="md-title">My Upcoming Mentoring Sessions</h1>
 
@@ -628,6 +671,7 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
             </div>
           )}
         </main>
+                )}
       </div>
     </div>
   )

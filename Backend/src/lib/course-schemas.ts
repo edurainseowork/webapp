@@ -43,6 +43,8 @@ const mentor = z
     name: z.string().trim().min(1, "Mentor name is required").max(80),
     experience: optionalText(120).default(null),
     photo: mentorPhoto.default(null),
+    // Invited mentor (Firebase uid) picked in the CMS; checked against the users table on save
+    uid: z.string().trim().regex(/^[\w-]{1,128}$/, "Invalid mentor").nullable().default(null),
   })
   .strict();
 
@@ -54,7 +56,10 @@ const courseFields = {
   thumbnail,
   categoryId: z.number().int().positive(),
   isPublished: z.boolean(),
-  mentors: z.array(mentor).max(10),
+  mentors: z
+    .array(mentor)
+    .max(10)
+    .refine((list) => new Set(list.filter((m) => m.uid).map((m) => m.uid)).size === list.filter((m) => m.uid).length, "A mentor is selected twice"),
   studentsEnrolled: optionalCount,
   duration: optionalText(40),
   totalLessons: optionalCount,

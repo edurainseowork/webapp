@@ -9,6 +9,8 @@ import { logger } from "../lib/logger";
 import { SUPER_ADMIN_EMAIL, hasPrivilegedClaims, isSuperAdminEmail } from "../lib/superAdmin";
 import { requireSuperAdmin } from "../middlewares/auth";
 import { INVITABLE_ROLES, ROLE_LABELS, deskRoleFromClaims, isDeskRole, type InvitableRole } from "../lib/deskRoles";
+import { ABOUT_MAX_LENGTH, getStaffProfiles, setStaffAbout, updateStaffProfile, type StaffProfile } from "../lib/staffProfiles";
+import { toPublicUrl } from "../lib/media";
 
 // /api/cms/admins — Super Admin only (requireSuperAdmin). Invites and removes staff accounts:
 //  - admin: users.role = 'admin' plus the Firebase `admin` claim, exactly like admins set up with
@@ -23,6 +25,13 @@ const CreateAdminBody = z.object({
   // Optional for backward compatibility: older CMS builds send only { email } for admins
   role: z.enum(INVITABLE_ROLES).default("admin"),
   name: z.string().trim().max(80, "Name is too long").optional().transform((v) => (v ? v : undefined)),
+    // "About Mentor" (optional, mentors only): experience, subjects, qualifications, achievements
+    about: z
+    .string()
+    .trim()
+    .max(ABOUT_MAX_LENGTH, `About Mentor is too long (max ${ABOUT_MAX_LENGTH} characters)`)
+    .optional()
+    .transform((v) => (v ? v : undefined)),
 });
 
 /** The staff role an account has now (from the database row and Firebase claims), if any. */
@@ -60,6 +69,11 @@ router.get("/", async (req, res) => {
     .from(usersTable)
     .where(sql`lower(${usersTable.role}) in ('admin', 'mentor', 'teacher_assistant')`)
     .orderBy(usersTable.createdAt);
+  // Mentor profiles ("About Mentor", headline, institute…); a failure here must not hide the list
+  const profiles = await getStaffProfiles(rows.filter((r) => r.role?.toLowerCase() === "mentor").map((r) => r.uid)).catch((err) => {
+    logger.error({ err }, "Could not load staff profiles");
+    return new Map<string, StaffProfile>();
+  });
 
   // Firebase account details (disabled, created, last sign-in) in batches of 100
   const records = new Map<string, UserRecord>();
@@ -78,6 +92,11 @@ router.get("/", async (req, res) => {
       email,
       name: record?.displayName ?? row.name,
       role: (row.role ?? "admin").toLowerCase(),
+      about: profiles.get(row.uid)?.about ?? null,
+      profile: (() => {
+        const p = profiles.get(row.uid);
+        return p ? { ...p, photo: p.photo ? toPublicUrl(p.photo, req) : null } : null;
+      })(),
       status: !record ? "NO_ACCOUNT" : record.disabled ? "DISABLED" : record.metadata.lastSignInTime ? "ACTIVE" : "INVITED",
       isSuperAdmin: superAdmin,
       isSelf: self,
@@ -95,7 +114,7 @@ router.get("/", async (req, res) => {
 // Creates the Firebase account when it does not exist yet (no password; the CMS then has
 // Firebase email a "set your password" link), sets the role claim and the users.role.
 router.post("/", async (req, res) => {
-  const { email, role, name } = CreateAdminBody.parse(req.body);
+  const { email, role, name, about } = CreateAdminBody.parse(req.body);
   if (isSuperAdminEmail(email)) throw new HttpError(400, "This email already belongs to the Super Admin");
 
   let record = await getFirebaseUser(() => firebaseAuth.getUserByEmail(email));
@@ -142,8 +161,69 @@ router.post("/", async (req, res) => {
     await db.insert(usersTable).values({ firebaseUid: record.uid, email, name: name || record.displayName || email.split("@")[0], role });
   }
 
+  // Saved against the same Firebase uid, so it is never a second record. Left as it is when the
+  // field is empty (a re-invite without a description keeps the earlier one).
+  let aboutSaved = true;
+  if (role === "mentor" && about) {
+    try {
+      await setStaffAbout(record.uid, about);
+    } catch (err) {
+      // The account is already invited; report it instead of failing the whole invite
+      aboutSaved = false;
+      logger.error({ err, uid: record.uid }, "Could not save About Mentor");
+    }
+  }
+
   logger.info({ uid: record.uid, role, created, by: req.auth?.uid }, "Staff account invited");
-  res.status(201).json({ data: { uid: record.uid, email, role, createdAccount: created } });
+  res.status(201).json({ data: { uid: record.uid, email, role, createdAccount: created, about: role === "mentor" ? about ?? null : null, aboutSaved } });
+});
+// Same rule as course photos: our own uploads ("/uploads/<file>", also sent back as absolute
+// URLs) or an https URL
+const OWN_UPLOAD_URL_RE = /^https?:\/\/[^/]+(\/uploads\/[A-Za-z0-9-]+\.(?:png|jpe?g|webp))$/;
+const photoField = z.preprocess(
+  (v) => (typeof v === "string" ? v.trim().replace(OWN_UPLOAD_URL_RE, "$1") : v),
+  z
+    .string()
+    .max(500)
+    .refine((v) => /^\/uploads\/[A-Za-z0-9-]+\.(?:png|jpe?g|webp)$/.test(v) || /^https:\/\/\S+$/.test(v), "Invalid photo")
+    .nullable(),
+);
+const text = (max: number, label: string) =>
+  z
+    .string()
+    .trim()
+    .max(max, `${label} is too long (max ${max} characters)`)
+    .nullable()
+    .transform((v) => (v ? v : null));
+
+const MentorProfileBody = z
+  .object({
+    headline: text(120, "Short description"),
+    about: text(ABOUT_MAX_LENGTH, "About Mentor"),
+    institute: text(120, "College / institute"),
+    achievement: text(120, "Achievement"),
+    languages: text(80, "Languages"),
+    photo: photoField,
+    sessionMinutes: z.number().int().min(15).max(120),
+    verified: z.boolean(),
+    active: z.boolean(),
+  })
+  .partial()
+  .strict();
+
+// PATCH /api/cms/admins/:uid/profile — edit a mentor's public profile (Super Admin only).
+// "verified" and "active" can only be set here, never by the mentor.
+router.patch("/:uid/profile", async (req, res) => {
+  const uid = String(req.params.uid ?? "");
+  if (!/^[\w-]{1,128}$/.test(uid)) throw new HttpError(400, "Invalid user id");
+  const patch = MentorProfileBody.parse(req.body);
+  const [row] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.firebaseUid, uid)).limit(1);
+  if (row?.role?.toLowerCase() !== "mentor") throw new HttpError(404, "Mentor not found");
+
+  await updateStaffProfile(uid, patch);
+  const profile = (await getStaffProfiles([uid])).get(uid)!;
+  logger.info({ uid, fields: Object.keys(patch), by: req.auth?.uid }, "Mentor profile updated");
+  res.json({ data: { uid, profile: { ...profile, photo: profile.photo ? toPublicUrl(profile.photo, req) : null } } });
 });
 
 // DELETE /api/cms/admins/:uid — remove an admin's, mentor's or teacher assistance's access.

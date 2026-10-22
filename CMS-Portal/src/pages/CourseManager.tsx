@@ -10,7 +10,7 @@ import {
   type Category,
   type CourseMentor,
 } from '../api'
-
+import MentorPicker, { type MentorOption } from '../components/MentorPicker'
 const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' };
 const labelStyle: React.CSSProperties = { display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' };
 
@@ -41,11 +41,23 @@ const emptyForm: FormState = {
 };
 
 // One editable mentor row: `photo` is the saved URL, `photoFile` a newly picked image
-type MentorRow = { key: number; name: string; experience: string; photo: string | null; photoFile: File | null; photoPreview: string | null };
+// `uid` links the row to an invited mentor account; null for mentors typed in by hand earlier
+type MentorRow = { key: number; uid: string | null; name: string; experience: string; photo: string | null; photoFile: File | null; photoPreview: string | null };
+
+const MAX_MENTORS = 10;
+
+/** One line for the course page, taken from the mentor's "About Mentor" (max 120 characters). */
+const experienceFromAbout = (about: string | null) => {
+  const line = (about ?? '').split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? '';
+  if (line.length <= 120) return line;
+  const cut = line.slice(0, 119);
+  return `${cut.slice(0, cut.lastIndexOf(' ') > 80 ? cut.lastIndexOf(' ') : 119)}…`;
+};
 
 let mentorKey = 0;
 const newMentorRow = (m?: CourseMentor): MentorRow => ({
   key: ++mentorKey,
+  uid: m?.uid ?? null,
   name: m?.name ?? '',
   experience: m?.experience ?? '',
   photo: m?.photo ?? null,
@@ -67,6 +79,9 @@ export default function CourseManager({ courses, reloadCourses, showToast, onMan
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const [mentors, setMentors] = useState<MentorRow[]>([]);
+    // Invited mentors (Manage Users) to pick from
+    const [mentorOptions, setMentorOptions] = useState<MentorOption[] | null>(null);
+    const [mentorOptionsError, setMentorOptionsError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [busyCourseId, setBusyCourseId] = useState<number | null>(null);
 
@@ -74,6 +89,9 @@ export default function CourseManager({ courses, reloadCourses, showToast, onMan
     apiFetch<{ data: Category[] }>('/admin/categories')
       .then((res) => setCategories(res.data))
       .catch((e) => showToast('Failed to load categories: ' + e.message, 'error'));
+      apiFetch<{ data: MentorOption[] }>('/admin/mentors')
+      .then((res) => setMentorOptions(res.data))
+      .catch((e) => setMentorOptionsError('Could not load mentors: ' + e.message));
   }, []);
 
   useEffect(() => {
@@ -95,6 +113,14 @@ export default function CourseManager({ courses, reloadCourses, showToast, onMan
       if (row?.photoPreview) URL.revokeObjectURL(row.photoPreview);
       return rows.filter((r) => r.key !== key);
     });
+  // Tick = add the mentor to the course (name from their account, experience from "About Mentor");
+  // untick = remove them
+  const toggleMentor = (option: MentorOption) => {
+    const existing = mentors.find((m) => m.uid === option.uid);
+    if (existing) return removeMentor(existing.key);
+    if (mentors.length >= MAX_MENTORS) return;
+    setMentors((rows) => [...rows, newMentorRow({ uid: option.uid, name: option.name, experience: experienceFromAbout(option.about) || null, photo: null })]);
+  };
 
   const clearMentors = () =>
     setMentors((rows) => {
@@ -200,6 +226,7 @@ export default function CourseManager({ courses, reloadCourses, showToast, onMan
       for (const m of mentors) {
         if (!m.name.trim()) continue; // blank rows are ignored
         mentorList.push({
+          uid: m.uid,
           name: m.name.trim(),
           experience: m.experience.trim() || null,
           photo: m.photoFile ? await uploadFile(m.photoFile) : m.photo,
@@ -397,7 +424,7 @@ export default function CourseManager({ courses, reloadCourses, showToast, onMan
           </div>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 'var(--space-md)' }}>
             <h4 style={{ marginBottom: '4px' }}>Mentors</h4>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>Shown under "Your Mentor" on the course page, in this order. Photo is optional (square, max 500 KB).</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>Select from the mentors invited in Manage Users. Shown under "Your Mentor" on the course page, in this order. Photo is optional (square, max 500 KB).</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
               {mentors.map((mentor, index) => (
                 <div key={mentor.key} style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'flex-start', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -410,9 +437,14 @@ export default function CourseManager({ courses, reloadCourses, showToast, onMan
                   </div>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                      <input type="text" maxLength={80} value={mentor.name} onChange={e => updateMentor(mentor.key, { name: e.target.value })} placeholder={`Mentor ${index + 1} name`} className="input-field" style={{ ...inputStyle, flex: 1 }} />
+                    <input type="text" maxLength={80} value={mentor.name} readOnly={!!mentor.uid} title={mentor.uid ? 'Name comes from the mentor\'s account (Manage Users)' : undefined} onChange={e => updateMentor(mentor.key, { name: e.target.value })} placeholder={`Mentor ${index + 1} name`} className="input-field" style={{ ...inputStyle, flex: 1, ...(mentor.uid ? { opacity: 0.85, cursor: 'default' } : {}) }} />
                       <input type="text" maxLength={120} value={mentor.experience} onChange={e => updateMentor(mentor.key, { experience: e.target.value })} placeholder="Experience (one line), e.g. 15+ years teaching JEE Maths" className="input-field" style={{ ...inputStyle, flex: 2 }} />
                     </div>
+                    {mentor.uid && mentorOptions && !mentorOptions.some((o) => o.uid === mentor.uid) ? (
+                   <p role="alert" style={{ color: '#ff8a8a', fontSize: '0.75rem' }}>This account is no longer a mentor. Remove it before saving.</p>
+                 ) : !mentor.uid ? (
+                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Added by hand earlier (not linked to a mentor account). You can remove it and select the mentor from the list.</p>
+                 ) : null}
                     <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
                       <input type="file" accept="image/png, image/jpeg, image/webp" onChange={e => { pickMentorPhoto(mentor, e.target.files?.[0] || null); e.target.value = ''; }} className="input-field" style={{ ...inputStyle, padding: '7px', cursor: 'pointer', flex: 1 }} />
                       {(mentor.photoPreview || mentor.photo) && (
@@ -423,11 +455,13 @@ export default function CourseManager({ courses, reloadCourses, showToast, onMan
                   </div>
                 </div>
               ))}
-              {mentors.length < 10 && (
-                <button type="button" onClick={() => setMentors((rows) => [...rows, newMentorRow()])} className="btn" style={{ alignSelf: 'flex-start', background: 'transparent', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', padding: '6px 14px' }}>
-                  + Add mentor
-                </button>
-              )}
+              <MentorPicker
+                options={mentorOptions}
+                error={mentorOptionsError}
+                selected={mentors.filter((m) => m.uid).map((m) => m.uid!)}
+                onToggle={toggleMentor}
+                max={MAX_MENTORS}
+              />
             </div>
           </div>
           {!editing && (

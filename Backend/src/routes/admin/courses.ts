@@ -12,7 +12,7 @@ import {
 import { HttpError, parseId } from "../../lib/http-error";
 import { deleteLocalUpload } from "../../lib/media";
 import { logger } from "../../lib/logger";
-
+import { resolveCourseMentors } from "../../lib/courseMentors";
 // Mounted behind requireAdmin in routes/admin/index.ts.
 const router = Router();
 
@@ -89,7 +89,7 @@ router.post("/", async (req, res) => {
       category: category.name,
       isPublished: input.isPublished,
       publishedAt: input.isPublished ? now : null,
-            mentors: input.mentors,
+                  mentors: await resolveCourseMentors(input.mentors),
       studentsEnrolled: input.studentsEnrolled ?? null,
       duration: input.duration ?? null,
       totalLessons: input.totalLessons ?? null,
@@ -133,7 +133,7 @@ router.patch("/:id", async (req, res) => {
     if (input.price !== undefined) patch.price = input.price;
     if (input.originalPrice !== undefined) patch.originalPrice = input.originalPrice;
     if (input.thumbnail !== undefined) patch.thumbnail = input.thumbnail;
-            if (input.mentors !== undefined) patch.mentors = input.mentors;
+                if (input.mentors !== undefined) patch.mentors = await resolveCourseMentors(input.mentors);
     if (input.studentsEnrolled !== undefined) patch.studentsEnrolled = input.studentsEnrolled;
     if (input.duration !== undefined) patch.duration = input.duration;
     if (input.totalLessons !== undefined) patch.totalLessons = input.totalLessons;

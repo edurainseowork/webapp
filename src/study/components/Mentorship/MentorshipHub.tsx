@@ -1,48 +1,45 @@
 import { useState } from 'react';
 import { MentorsView } from './MentorsView';
-import { BookMentorView, type MentorBooking } from './BookMentorView';
-import { INITIAL_FAVORITES, getMentor } from './mentorData';
+import { BookMentorView } from './BookMentorView';
+import type { Mentor } from './mentorData';
 
 interface MentorshipHubProps {
   /** Shown on the confirmation screen ("Meet link will be sent to …") */
   studentEmail: string;
+  /** Student's goal (CMS category): mentors come from that goal's courses */
+  goalId: number | null;
+  goalName: string | null;
+  /** Opens the goal popup */
+  onChangeGoal: () => void;
   /** Close mentorship and go back to the home page */
   onExit: () => void;
 }
 
 /**
  * 1-on-1 Mentorship flow:
- *   Design 1 → MentorsView (all mentors)
- *   Design 2 → BookMentorView (book a session with the selected mentor)
+ *   MentorsView     → course mentors for the student's goal (from the backend)
+ *   BookMentorView  → the mentor's real open slots, then a booking
  */
-export function MentorshipHub({ studentEmail, onExit }: MentorshipHubProps) {
-  const [favorites, setFavorites] = useState<string[]>(INITIAL_FAVORITES);
-  const [selectedMentorId, setSelectedMentorId] = useState<string | null>(null);
-  const [, setBookings] = useState<MentorBooking[]>([]);
-
-  const toggleFavorite = (mentorId: string) =>
-    setFavorites((prev) => (prev.includes(mentorId) ? prev.filter((id) => id !== mentorId) : [...prev, mentorId]));
+export function MentorshipHub({ studentEmail, goalId, goalName, onChangeGoal, onExit }: MentorshipHubProps) {
+  const [selected, setSelected] = useState<Mentor | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   return (
     <>
       {/* Mentors list stays mounted so search / filters are kept when coming back */}
-      <div className={selectedMentorId ? 'hidden' : ''}>
-        <MentorsView
-          favorites={favorites}
-          onToggleFavorite={toggleFavorite}
-          onBack={onExit}
-          onOpenMentor={setSelectedMentorId}
-        />
+      <div className={selected ? 'hidden' : ''}>
+        <MentorsView goalId={goalId} goalName={goalName} onChangeGoal={onChangeGoal} onBack={onExit} onOpenMentor={setSelected} refreshKey={refreshKey} />
       </div>
 
-      {selectedMentorId && (
+      {selected && (
         <BookMentorView
-          key={selectedMentorId}
-          mentor={getMentor(selectedMentorId)}
+          key={selected.id}
+          mentorId={selected.id}
+          initial={selected}
           studentEmail={studentEmail}
-          onBack={() => setSelectedMentorId(null)}
+          onBack={() => setSelected(null)}
           onExit={onExit}
-          onBooked={(booking) => setBookings((prev) => [...prev, booking])}
+          onBooked={() => setRefreshKey((k) => k + 1)}
         />
       )}
     </>
