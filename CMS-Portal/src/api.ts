@@ -59,6 +59,8 @@ export type CourseMentor = {
   name: string;
   experience: string | null;
   photo: string | null; // absolute URL
+    /** Invited mentor account (Manage Users) this entry was picked from; null if typed in by hand */
+    uid?: string | null;
 };
 
 export type AdminCourse = {

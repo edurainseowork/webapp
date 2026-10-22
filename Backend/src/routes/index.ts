@@ -21,6 +21,8 @@ import cmsTestsRouter from "./cmsTests.js";
 import testsRouter from "./tests.js";
 import cmsAdminsRouter from "./cmsAdmins.js";
 import { mentorDeskRouter, teacherAssistantDeskRouter } from "./desks.js";
+import studentGoalRouter from "./studentGoal.js";
+import mentorshipRouter from "./mentorship.js";
 import { restrictDeskRoles } from "../middleware/auth.js";
 const router = Router();
 
@@ -40,6 +42,9 @@ router.use("/banners", bannersRouter);
 router.use("/auth", authRouter);
 // The signed-in student's own profile, photo and day streak
 router.use("/profile", profileRouter);
+// The signed-in student's goal (exam / cohort) and 1:1 mentorship
+router.use("/me/goal", studentGoalRouter);
+router.use("/mentorship", mentorshipRouter);
 router.use("/stats", statsRouter);
 router.use("/enrollments", enrollmentsRouter);
 router.use("/cms/tests", cmsTestsRouter);

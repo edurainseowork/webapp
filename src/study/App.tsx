@@ -217,7 +217,7 @@ export function App() {
   }, []);
 
   // After login: load the saved goal once; students who haven't picked one yet get the goal popup.
-  // Returning students with a goal go straight in (they can change it from the top navigation).
+  // Returning students with a goal land on Daily Drop (they can change the goal from the top navigation).
   const goalLoadedFor = useRef<string | null>(null);
   useEffect(() => {
     if (goalLoadedFor.current === session.uid) return;
@@ -226,7 +226,16 @@ export function App() {
       .then((saved) => {
         if (goalLoadedFor.current !== session.uid) return; // signed out meanwhile
         setGoal(saved);
-        if (!saved) setIsGoalModalOpen(true);
+        if (!saved) {
+          setIsGoalModalOpen(true);
+          return;
+        }
+        // Opened on the home address (e.g. right after login): go to Daily Drop. A direct link or a
+        // refresh of another page (/study/courses, /study/mentorship…) stays where it is.
+        if (window.location.pathname.replace(/\/+$/, '') === '/study') {
+          setActiveNav('pi');
+          window.history.replaceState(null, '', '/study/daily-doubts');
+        }
       })
       .catch((err) => console.error('Could not load the saved goal', err));
   }, [session.uid]);
@@ -784,8 +793,12 @@ export function App() {
           ) : isMentorshipOpen ? (
             <MentorshipHub
               studentEmail={session.email}
+              goalId={goal?.id ?? null}
+              goalName={goal?.name ?? null}
+              onChangeGoal={() => setIsGoalModalOpen(true)}
               onExit={() => setIsMentorshipOpen(false)}
             />
+
           ) : isAiMentorPageOpen ? (
             <AiMentorView
               userName={firstName}
@@ -1029,7 +1042,9 @@ export function App() {
           const saved = await saveGoal(category);
           setGoal(saved);
           setSelectedBatch(category.name);
-          navigateTo('courses');
+          // Changed from the Mentorship page: stay there (its mentors follow the new goal);
+          // otherwise go to Daily Drop for the new goal
+          if (!isMentorshipOpen) navigateTo('pi');
         }}
       />
 
