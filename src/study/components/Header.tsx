@@ -206,7 +206,8 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Gold CTA, Notifications & User Profile */}
         <div className="flex items-center gap-3 lg:gap-4 flex-shrink-0">
-          {/* Gold CTA Button */}
+          {/* Gold CTA Button (Hidden for now as requested) */}
+          {/*
           <button
             onClick={onOpenUpgrade}
             className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-extrabold text-xs uppercase tracking-wider px-4 py-2 rounded-lg shadow-[0_0_20px_rgba(245,158,11,0.35)] hover:shadow-[0_0_25px_rgba(245,158,11,0.6)] hover:brightness-105 active:scale-95 transition-all"
@@ -214,6 +215,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Crown className="w-3.5 h-3.5 fill-slate-950" />
             <span>UPGRADE TO PRO</span>
           </button>
+          */}
 
           {/* Notification Bell */}
           <button

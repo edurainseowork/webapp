@@ -1,0 +1,212 @@
+import { Router, Request, Response } from 'express';
+import axios from 'axios';
+import { getAuth } from '../lib/firebaseAdmin.js';
+import type { UserRecord } from 'firebase-admin/auth';
+import { authenticateToken, extractUserRole, requireAdminOrFaculty } from '../middleware/auth';
+import { firebaseAuth } from '../lib/firebase-admin';
+import { rateLimit } from '../middlewares/security';
+import { hasPrivilegedClaims, isSuperAdminEmail, isSuperAdminToken } from '../lib/superAdmin';
+import { deskRoleFromClaims } from '../lib/deskRoles';
+
+export const authRouter = Router();
+
+// Staff accounts (Super Admin, admins, faculty, mentors, teacher assistance) can't be taken over by app sign-up
+const isPrivilegedAccount = (user: UserRecord) =>
+  hasPrivilegedClaims(user.customClaims) || !!deskRoleFromClaims(user.customClaims) || isSuperAdminEmail(user.email);
+const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
+
+/**
+ * GET /api/auth/me — Return authenticated user profile and resolved RBAC role
+ */
+authRouter.get('/me', authenticateToken, async (req: Request, res: Response): Promise<any> => {
+  const role = extractUserRole(req);
+  res.json({
+    success: true,
+    user: {
+      id: req.user?.id,
+      firebaseUid: req.firebaseUid || req.auth?.uid,
+      email: req.user?.email || req.auth?.email,
+      name: req.user?.name || req.auth?.name,
+      role,
+      isAdminOrFaculty: role === 'admin' || role === 'faculty',
+      // Decided here from the verified token; the CMS only uses it to show or hide controls
+      isSuperAdmin: isSuperAdminToken(req.auth),
+      superAdminEmailUnverified: isSuperAdminEmail(req.auth?.email) && req.auth?.email_verified !== true,
+    },
+  });
+});
+
+/**
+ * POST /api/auth/cms-handoff — an admin, faculty member or mentor who signed in on the study website
+ * gets a short-lived Firebase custom token, so the CMS (a different site, with its own Firebase
+ * session) can sign them in without a second login. The role is read from the verified token and
+ * the database, never from the request. Mentors still only get the Mentor Desk in the CMS.
+ */
+const CMS_HANDOFF_ROLES = new Set(['admin', 'faculty', 'mentor', 'teacher_assistant']);
+authRouter.post('/cms-handoff', rateLimit({ windowMs: 60_000, max: 10 }), authenticateToken, async (req: Request, res: Response): Promise<any> => {
+  const role = extractUserRole(req);
+  if (!CMS_HANDOFF_ROLES.has(role)) {
+    return res.status(403).json({ error: 'This account has no CMS access' });
+  }
+  const token = await firebaseAuth.createCustomToken(req.auth!.uid);
+  res.json({ token });
+});
+// Backend is fully stateless for AWS Lambda. 
+// We will send reqId to the frontend and expect it back during verification.
+
+authRouter.post('/verify-otp-and-signup', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { name, email, password, phone, accessToken } = req.body;
+    if (!phone || !accessToken || !email || !password || !name) {
+      return res.status(400).json({ error: 'All fields (name, email, password, phone, accessToken) are required' });
+    }
+
+    // Verify via MSG91 verifyAccessToken API
+    try {
+      const verifyResponse = await axios.post(
+        'https://control.msg91.com/api/v5/widget/verifyAccessToken',
+        {
+          authkey: MSG91_AUTH_KEY,
+          "access-token": accessToken
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          timeout: 4000
+        }
+      );
+
+      if (verifyResponse.data?.type === 'error') {
+        return res.status(400).json({ error: verifyResponse.data.message || 'Invalid Access Token' });
+      }
+    } catch (msg91Error: any) {
+      console.error('MSG91 Verify Error:', msg91Error?.response?.data || msg91Error.message);
+      return res.status(400).json({ error: 'Failed to verify OTP with MSG91' });
+    }
+    // App sign-up must never take over a CMS account (Super Admin, admins, faculty)
+    if (isSuperAdminEmail(email)) {
+      return res.status(409).json({ error: 'An account with this email already exists. Please log in.' });
+    }
+
+    // Create or Update user in Firebase with Email, Password, and Phone Number
+    const phoneWithCode = phone.startsWith('+') ? phone : `+91${phone}`;
+    try {
+      await getAuth().createUser({
+        email: email.trim(),
+        password: password,
+        phoneNumber: phoneWithCode,
+        displayName: name.trim()
+      });
+    } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use' || error.code === 'auth/phone-number-already-exists') {
+        try {
+          const existingUser = await getAuth().getUserByEmail(email.trim());
+          if (isPrivilegedAccount(existingUser)) {
+            return res.status(409).json({ error: 'An account with this email already exists. Please log in.' });
+          }
+          await getAuth().updateUser(existingUser.uid, {
+            password: password,
+            phoneNumber: phoneWithCode,
+            displayName: name.trim()
+          });
+        } catch (updateErr) {
+          try {
+            const existingUserByPhone = await getAuth().getUserByPhoneNumber(phoneWithCode);
+            if (isPrivilegedAccount(existingUserByPhone)) {
+              return res.status(409).json({ error: 'An account with this phone number already exists. Please log in.' });
+            }
+            await getAuth().updateUser(existingUserByPhone.uid, {
+              email: email.trim(),
+              password: password,
+              displayName: name.trim()
+            });
+          } catch (e) {
+            console.error('Failed to update existing user:', e);
+          }
+        }
+      } else {
+        return res.status(400).json({ error: error.message || 'Failed to create user in Firebase' });
+      }
+    }
+
+    res.json({ success: true, message: 'User created successfully' });
+  } catch (error: any) {
+    console.error('Error verifying OTP and signing up:', error.message);
+    res.status(500).json({ error: 'Failed to sign up' });
+  }
+});
+
+authRouter.post('/get-email-by-phone', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+
+    const phoneWithCode = `+91${phone}`;
+    const userRecord = await getAuth().getUserByPhoneNumber(phoneWithCode);
+
+    if (userRecord.email) {
+      res.json({ success: true, email: userRecord.email });
+    } else {
+      res.status(404).json({ error: 'No email associated with this phone number' });
+    }
+  } catch (error: any) {
+    if (error.code === 'auth/user-not-found') {
+      res.status(404).json({ error: 'No account found with this phone number' });
+    } else {
+      console.error('Error fetching user by phone:', error.message);
+      res.status(500).json({ error: 'Failed to fetch user' });
+    }
+  }
+});
+
+authRouter.post('/send-password-reset', async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    // Fetch user name from Firebase
+    let userName = "Student";
+    try {
+      const userRecord = await getAuth().getUserByEmail(email);
+      if (userRecord.displayName) {
+        userName = userRecord.displayName;
+      }
+    } catch (e) {
+      console.error('User not found by email for name resolution:', e);
+    }
+
+    // Generate Firebase Password Reset Link
+    const actionCodeSettings = { url: 'https://edurain-pvt.web.app/login' };
+    const link = await getAuth().generatePasswordResetLink(email, actionCodeSettings);
+
+    // Send `link` to user via MSG91 Email API
+    const emailPayload = {
+      from: { email: "support@edurain.in", name: "Edurain" },
+      domain: "edurain.in",
+      template_id: "password_3",
+      recipients: [
+        {
+          to: [{ email: email, name: userName }],
+          variables: {
+            "reset_link": link,
+            "user_name": userName
+          }
+        }
+      ]
+    };
+
+    await axios.post('https://control.msg91.com/api/v5/email/send', emailPayload, {
+      headers: {
+        'authkey': MSG91_AUTH_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+
+    res.json({ success: true, message: 'Password reset link sent to email' });
+  } catch (error: any) {
+    console.error('Error sending reset email:', error?.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to send reset link via email' });
+  }
+});

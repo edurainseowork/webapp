@@ -1,0 +1,354 @@
+import React, { useEffect, useState } from 'react';
+import {
+  Bookmark,
+  History,
+  RotateCcw,
+  Play,
+  Clock3,
+  ArrowRight,
+  FolderOpen,
+  Files,
+  ExternalLink,
+  FilePlus2,
+  BookOpen,
+  Heart,
+  BookMarked,
+} from 'lucide-react';
+import { SubPageHeader } from './SubPageHeader';
+import { EBook } from './EBookLibraryView';
+import { getBookmarkedBooks, removeBookmark, onBookmarksChange } from '../utils/bookmarkStorage';
+
+/* ------------------------------------------------------------------ */
+/*  Types & mock data                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface HistoryVideo {
+  id: string;
+  badge: string;
+  badgeColor: string;
+  title: string;
+  duration: string;
+}
+
+const HISTORY_VIDEOS: HistoryVideo[] = [
+  {
+    id: 'h1',
+    badge: 'Physics • 12th',
+    badgeColor: 'bg-amber-100 text-amber-800',
+    title: "Electrostatics – Gauss's Law Applications",
+    duration: '45:10',
+  },
+  {
+    id: 'h2',
+    badge: 'Biology • 11th',
+    badgeColor: 'bg-amber-100 text-amber-800',
+    title: 'Human Physiology: Chemical Coordination',
+    duration: '32:00',
+  },
+  {
+    id: 'h3',
+    badge: 'Dropper Special',
+    badgeColor: 'bg-orange-100 text-orange-800',
+    title: 'Thermodynamics & Heat Transfer PYQs',
+    duration: '58:15',
+  },
+];
+
+interface BookmarksViewProps {
+  onBack: () => void;
+  onGoLibrary?: () => void;
+  searchQuery?: string;
+  onClearHistory?: () => void;
+  onWatchVideo?: (video: HistoryVideo) => void;
+  onOpenPdfViewer?: () => void;
+  onOpenWatchLater?: () => void;
+  onAddDocument?: () => void;
+  onOpenEbook?: (book: EBook) => void;
+  onBrowseEbooks?: () => void;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main view                                                           */
+/* ------------------------------------------------------------------ */
+
+export function BookmarksView({
+  onBack,
+  onGoLibrary,
+  searchQuery = '',
+  onClearHistory,
+  onWatchVideo,
+  onOpenPdfViewer,
+  onOpenWatchLater,
+  onAddDocument,
+  onOpenEbook,
+  onBrowseEbooks,
+}: BookmarksViewProps) {
+  const [bookmarkedBooks, setBookmarkedBooks] = useState<EBook[]>([]);
+
+  useEffect(() => {
+    setBookmarkedBooks(getBookmarkedBooks());
+    const unsubscribe = onBookmarksChange(() => {
+      setBookmarkedBooks(getBookmarkedBooks());
+    });
+    return unsubscribe;
+  }, []);
+
+  const q = searchQuery.trim().toLowerCase();
+
+  const filteredVideos = HISTORY_VIDEOS.filter(
+    (v) => !q || v.title.toLowerCase().includes(q) || v.badge.toLowerCase().includes(q)
+  );
+
+  const filteredBooks = bookmarkedBooks.filter(
+    (b) =>
+      !q ||
+      b.title.toLowerCase().includes(q) ||
+      b.subject.toLowerCase().includes(q)
+  );
+
+  return (
+    <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 pb-10 relative space-y-6">
+      {/* 1. Standardized Back Button + Breadcrumb */}
+      <SubPageHeader
+        onBack={onBack}
+        crumbs={[
+          { label: 'Home', onClick: onBack },
+          { label: 'Library', onClick: onGoLibrary || onBack },
+          { label: 'Bookmark' },
+        ]}
+      />
+
+      {/* Page title card */}
+      <div className="bg-white/80 backdrop-blur-md border border-white/80 rounded-2xl p-5 sm:p-6 shadow-[0_6px_24px_rgb(0,0,0,0.05)] flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-[#0F3B42] text-white flex items-center justify-center shadow-md shrink-0">
+            <Bookmark className="w-5 h-5 fill-white/20" />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-[#0B1C30]">Bookmark</h1>
+            <p className="text-xs text-[#2A707C] mt-0.5">
+              Your saved revision videos, bookmarked e-books, and study material
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Bookmarked E-Books Section (Linked to Heart Selection) */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <BookMarked className="w-5 h-5 text-[#175A67]" />
+            <h2 className="text-base sm:text-lg font-bold text-[#0B1C30]">Saved E-Books</h2>
+            <span className="text-xs font-bold bg-[#175A67]/10 text-[#175A67] px-2.5 py-0.5 rounded-full">
+              {bookmarkedBooks.length}
+            </span>
+          </div>
+          {onBrowseEbooks && (
+            <button
+              onClick={onBrowseEbooks}
+              className="text-xs sm:text-sm font-semibold text-[#175A67] hover:underline flex items-center gap-1"
+            >
+              Browse Library
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {filteredBooks.length === 0 ? (
+          <div className="bg-white/70 backdrop-blur-md border border-white/80 rounded-2xl p-6 sm:p-8 text-center shadow-sm">
+            <div className="w-12 h-12 rounded-2xl bg-[#175A67]/10 text-[#175A67] flex items-center justify-center mx-auto mb-3">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <h3 className="font-semibold text-sm sm:text-base text-[#0B1C30]">
+              {q ? 'No saved e-books match your search' : 'No saved e-books yet'}
+            </h3>
+            <p className="text-xs text-[#2A707C] mt-1 max-w-md mx-auto">
+              {q
+                ? 'Try a different search term in the top header search bar.'
+                : 'Click the heart icon on any e-book in the E-Book Library to pin it here for quick access!'}
+            </p>
+            {onBrowseEbooks && !q && (
+              <button
+                onClick={onBrowseEbooks}
+                className="mt-4 px-4 py-2 rounded-xl bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-bold transition-all shadow-sm active:scale-95 inline-flex items-center gap-1.5"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                Explore E-Books
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredBooks.map((book) => {
+              const pct = book.totalPages > 0 ? Math.round((book.pagesRead / book.totalPages) * 100) : 0;
+              return (
+                <div
+                  key={book.id}
+                  className="bg-white rounded-2xl border border-white/80 p-5 shadow-[0_6px_24px_rgb(0,0,0,0.05)] hover:shadow-[0_10px_30px_rgb(0,0,0,0.08)] transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-[#175A67]/10 text-[#175A67] px-2.5 py-1 rounded-md">
+                        {book.subject}
+                      </span>
+                      <button
+                        onClick={() => removeBookmark(book.id)}
+                        title="Remove from bookmarks"
+                        className="p-1 rounded-full hover:bg-red-50 text-red-500 transition-colors"
+                      >
+                        <Heart className="w-4 h-4 fill-red-500" />
+                      </button>
+                    </div>
+
+                    <h3 className="font-bold text-[#0B1C30] text-sm sm:text-base leading-snug line-clamp-2 min-h-[2.6rem]">
+                      {book.title}
+                    </h3>
+
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-[#2A707C] mb-1">
+                        <span>{pct}% Read</span>
+                        <span>
+                          {book.pagesRead} / {book.totalPages} pgs
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-emerald-600 transition-all duration-300"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => onOpenEbook?.(book)}
+                    className="mt-4 w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95 shadow-sm"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Read Now
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* 4. History (Videos) */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <History className="w-4.5 h-4.5 text-[#175A67]" />
+            <h2 className="text-base sm:text-lg font-bold text-[#0B1C30]">History</h2>
+          </div>
+          <button
+            onClick={onClearHistory}
+            className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#175A67] hover:underline"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Clear All
+          </button>
+        </div>
+
+        {filteredVideos.length === 0 ? (
+          <div className="bg-white/70 rounded-2xl p-6 text-center text-xs text-[#2A707C]">
+            No video history matching your search.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredVideos.map((video) => (
+              <div key={video.id} className="bg-white rounded-2xl overflow-hidden shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-white/80">
+                <button
+                  onClick={() => onWatchVideo?.(video)}
+                  className="relative w-full aspect-video bg-gradient-to-br from-[#0f2e2c] to-[#03110d] flex items-center justify-center group"
+                >
+                  <span className={`absolute top-3 left-3 text-[10px] font-bold px-2.5 py-1 rounded-full ${video.badgeColor}`}>
+                    {video.badge}
+                  </span>
+                  <span className="w-11 h-11 rounded-full bg-white/90 group-hover:bg-white flex items-center justify-center transition-all group-hover:scale-105 shadow-md">
+                    <Play className="w-4.5 h-4.5 text-[#0F3B42] fill-[#0F3B42] ml-0.5" />
+                  </span>
+                  <span className="absolute bottom-3 right-3 flex items-center gap-1 text-[10px] font-semibold text-white bg-black/40 px-2 py-1 rounded-md">
+                    <Clock3 className="w-3 h-3" />
+                    {video.duration}
+                  </span>
+                </button>
+
+                <div className="p-4">
+                  <h3 className="text-sm font-bold text-[#0B1C30] leading-snug min-h-[2.5rem]">{video.title}</h3>
+                  <button
+                    onClick={() => onWatchVideo?.(video)}
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95"
+                  >
+                    Watch Now
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 5. Wishlist */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-4.5 h-4.5 text-[#175A67]" />
+            <h2 className="text-base sm:text-lg font-bold text-[#0B1C30]">Wishlist</h2>
+          </div>
+          <button
+            onClick={onAddDocument}
+            className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#175A67] hover:underline"
+          >
+            <FilePlus2 className="w-3.5 h-3.5" />
+            Add Document
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="bg-white rounded-2xl p-5 shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-white/80">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] text-[#175A67] flex items-center justify-center shrink-0">
+                <Files className="w-4.5 h-4.5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#0B1C30]">Your Saved PDF</h3>
+                <p className="text-[11px] text-[#2A707C]">Downloaded notes &amp; formula sheets</p>
+              </div>
+            </div>
+            <button
+              onClick={onOpenPdfViewer}
+              className="w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open PDF Viewer
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-white/80">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] text-[#175A67] flex items-center justify-center shrink-0">
+                <Play className="w-4.5 h-4.5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#0B1C30]">Watch Later</h3>
+                <p className="text-[11px] text-[#2A707C]">Lectures queued for weekend revision</p>
+              </div>
+            </div>
+            <button
+              onClick={onOpenWatchLater}
+              className="w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View Queue
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default BookmarksView;

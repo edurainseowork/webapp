@@ -13,6 +13,13 @@ export default defineConfig({
             res.end();
             return;
           }
+          if (req.url && req.url.startsWith('/study/') && !req.url.includes('.')) {
+            req.url = '/study/index.html';
+          }
+          // Role desks live outside /study but are the same single-page app
+          if (req.url && /^\/(mentorDesk|teacherAssistantDesk)(\/[^.]*)?(\?.*)?$/i.test(req.url)) {
+            req.url = '/study/index.html';
+          }
           next();
         });
       }
@@ -21,5 +28,12 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: 'study/index.html',
+      },
+    },
   },
 });

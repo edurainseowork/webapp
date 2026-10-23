@@ -11,11 +11,13 @@ import {
   ChevronRight, 
   HardDriveDownload,
   X,
-  Target
+  Target,
+  Lock,
+  Award
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
-export type NavTabId = 'study-central' | 'pi' | 'the-vault' | 'courses' | 'test-series' | 'arena';
+export type NavTabId = 'study-central' | 'pi' | 'the-vault' | 'courses' | 'test-series';
 
 interface SidebarProps {
   activeTab: NavTabId;
@@ -47,9 +49,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'pi' as NavTabId,
-      label: 'PI (AI Mentor)',
+      label: 'Daily Drop',
       icon: Sparkles,
-      badge: 'GPT-4o Live',
+      badge: 'Daily',
       badgeColor: 'text-amber-300 bg-amber-950/60 border-amber-500/30',
       action: onOpenDoubtSolver,
     },
@@ -62,7 +64,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  const yourStudyItems = [
+  const yourStudyItems: Array<{
+    id: NavTabId;
+    label: string;
+    icon: any;
+    badge?: string;
+    badgeColor?: string;
+    locked?: boolean;
+    highlight?: boolean;
+    pulse?: boolean;
+  }> = [
     {
       id: 'courses' as NavTabId,
       label: 'Courses',
@@ -71,17 +82,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'test-series' as NavTabId,
-      label: 'Test Series',
-      icon: FileText,
-      badge: 'JEE Adv Mock',
-      highlight: true,
-    },
-    {
-      id: 'arena' as NavTabId,
-      label: 'Arena',
-      icon: Swords,
-      badge: 'LIVE PvP',
-      pulse: true,
+      label: 'All India Test Pass',
+      icon: Award,
+      badge: 'Coming Soon',
+      badgeColor: 'text-amber-300 bg-amber-950/60 border-amber-500/40',
+      locked: true,
+      highlight: false,
     },
   ];
 
@@ -160,18 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
               );
             })}
-          </nav>
-        </div>
-
-        {/* SECTION: YOUR STUDY */}
-        <div>
-          <div className="px-3 mb-2 text-[11px] font-bold text-emerald-400/80 uppercase tracking-wider flex items-center justify-between">
-            <span>YOUR STUDY</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/40" />
-          </div>
-
-          <nav className="space-y-1">
-            {yourStudyItems.map((item) => {
+          {yourStudyItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
 
@@ -203,11 +198,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {item.locked && (
+                      <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                    )}
                     {item.badge && (
                       <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium flex items-center gap-1 ${
                         item.pulse 
                           ? 'bg-red-950/70 border-red-500/40 text-red-300 animate-pulse'
-                          : 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
+                          : item.badgeColor || 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
                       }`}>
                         {item.pulse && <span className="w-1.5 h-1.5 rounded-full bg-red-400" />}
                         {item.badge}
@@ -260,7 +258,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       </div>
 
-      {/* Bottom Sidebar CTA: Full-width Gold Button */}
+      {/* Bottom Sidebar CTA: Full-width Gold Button (Hidden for now as requested) */}
+      {/*
       <div className="pt-4 border-t border-emerald-500/20">
         <button
           onClick={onOpenUpgrade}
@@ -272,6 +271,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <ChevronRight className="w-3.5 h-3.5 ml-auto text-slate-950/70 group-hover:translate-x-0.5 transition-transform" />
         </button>
       </div>
+      */}
     </div>
   );
 

@@ -1,0 +1,50 @@
+service: edurain-api
+useDotenv: true
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ap-south-1
+  environment:
+    DATABASE_URL: ${env:DATABASE_URL, ''}
+    RAZORPAY_KEY_ID: ${env:RAZORPAY_KEY_ID, ''}
+    RAZORPAY_KEY_SECRET: ${env:RAZORPAY_KEY_SECRET, ''}
+    NODE_ENV: production
+    CORS_ORIGINS: ${env:CORS_ORIGINS, ''}
+    PUBLIC_BASE_URL: ${env:PUBLIC_BASE_URL, ''}
+    FIREBASE_SERVICE_ACCOUNT: ${env:FIREBASE_SERVICE_ACCOUNT, ''}
+    AWS_S3_BUCKET_NAME: ${env:AWS_S3_BUCKET_NAME, ''}
+    BUNNY_STREAM_LIBRARY_ID: ${env:BUNNY_STREAM_LIBRARY_ID, ''}
+    BUNNY_STREAM_API_KEY: ${env:BUNNY_STREAM_API_KEY, ''}
+    BUNNY_STREAM_CDN_HOSTNAME: ${env:BUNNY_STREAM_CDN_HOSTNAME, ''}
+    GOOGLE_PLAY_PACKAGE_NAME: ${env:GOOGLE_PLAY_PACKAGE_NAME, 'com.edurainindia.app'}
+    GOOGLE_PLAY_SERVICE_ACCOUNT: ${env:GOOGLE_PLAY_SERVICE_ACCOUNT, ''}
+    MSG91_AUTH_KEY: ${env:MSG91_AUTH_KEY, ''}
+  vpc:
+    securityGroupIds:
+      - sg-0c07d868d37903d36
+    subnetIds:
+      - subnet-075e2e2d787f424a9
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+            - s3:DeleteObject
+          Resource: "arn:aws:s3:::edurain-media-v2/*"
+
+
+package:
+  patterns:
+    - '!**'
+    - 'dist/**'
+    - '.env'
+    - 'firebase-service-account.json'
+
+functions:
+  api:
+    handler: dist/lambda.handler
+    events:
+      - httpApi: '*'

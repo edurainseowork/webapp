@@ -1,178 +1,132 @@
 import React, { useState } from 'react';
-import { FileText, Clock, Trophy, Award, CheckCircle, Play, ArrowLeft, Swords } from 'lucide-react';
-import confetti from 'canvas-confetti';
+import { Lock, Sparkles, Bell, ArrowLeft, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { SubPageHeader } from './SubPageHeader';
 
 interface TestSeriesViewProps {
   onBack: () => void;
-  onOpenUpgrade: () => void;
+  onOpenUpgrade?: () => void;
 }
 
-export const TestSeriesView: React.FC<TestSeriesViewProps> = ({ onBack, onOpenUpgrade }) => {
-  const [activeTab, setActiveTab] = useState<'all' | 'live' | 'completed'>('all');
+export const TestSeriesView: React.FC<TestSeriesViewProps> = ({ onBack }) => {
+  const [notified, setNotified] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const tests = [
-    {
-      id: 't1',
-      title: 'EduRain All-India JEE Advanced Major Test 04',
-      type: 'Full Syllabus CBT',
-      duration: '3 Hours',
-      questions: 54,
-      totalMarks: 180,
-      status: 'LIVE NOW',
-      live: true,
-      attempts: '14,280 Aspirants',
-      difficulty: 'Hard (JEE Adv Level)'
-    },
-    {
-      id: 't2',
-      title: 'Physics Sectional: Electromagnetism & Optics Drill',
-      type: 'Subject Test',
-      duration: '60 Mins',
-      questions: 18,
-      totalMarks: 60,
-      status: 'Available',
-      attempts: '8,420 Aspirants',
-      difficulty: 'Moderate-Hard'
-    },
-    {
-      id: 't3',
-      title: 'Mathematics Sectional: Integral Calculus Marathon',
-      type: 'Subject Test',
-      duration: '60 Mins',
-      questions: 18,
-      totalMarks: 60,
-      status: 'Available',
-      attempts: '7,190 Aspirants',
-      difficulty: 'JEE Advanced'
-    },
-    {
-      id: 't4',
-      title: 'Chemistry Sectional: Organic Synthesis Speed Test',
-      type: 'Subject Test',
-      duration: '45 Mins',
-      questions: 20,
-      totalMarks: 60,
-      status: 'Available',
-      attempts: '9,340 Aspirants',
-      difficulty: 'Speed & Accuracy'
-    }
-  ];
-
-  const handleStartTest = (title: string) => {
-    confetti({
-      particleCount: 80,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#10B981', '#175A67', '#F59E0B']
-    });
-    alert(`Launching Real-Time CBT Simulation: "${title}". Initializing secure exam sandbox...`);
+  const handleNotify = () => {
+    setNotified(true);
+    setToast('You will be notified as soon as All India Test Pass is unlocked!');
+    setTimeout(() => setToast(null), 3000);
   };
 
-  const filteredTests = tests.filter(t => {
-    if (activeTab === 'live') return t.live;
-    if (activeTab === 'completed') return false;
-    return true;
-  });
-
   return (
-    <div className="space-y-6 pb-20 animate-fadeIn">
-      {/* Banner */}
-      <div className="rounded-2xl bg-white/60 backdrop-blur-md border border-white/80 p-5 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.05)]">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="p-2 rounded-xl bg-white/60 hover:bg-white/90 border border-white/80 text-[#175A67] transition-all shadow-sm"
-              title="Back to Study Central"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold text-[#175A67]">All-India CBT Test Series</h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#059669] border border-[#10B981]/30 text-[10px] font-bold">
-                  NTA ENGINE READY
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-[#2A707C] mt-0.5 font-medium">
-                Simulate authentic CBT conditions with instant percentile rank & weak point diagnostic.
-              </p>
+    <div className="space-y-6 pb-20 animate-fadeIn max-w-4xl mx-auto">
+      {/* 1. Standardized Back Button + Breadcrumb */}
+      <SubPageHeader
+        onBack={onBack}
+        crumbs={[
+          { label: 'Home', onClick: onBack },
+          { label: 'All India Test Pass' },
+        ]}
+      />
+
+      {/* Locked Coming Soon Card */}
+      <div className="relative overflow-hidden rounded-3xl bg-white p-8 sm:p-12 shadow-[0_12px_40px_rgb(0,0,0,0.06)] border border-[#175A67]/15 text-center">
+        {/* Subtle decorative background glow */}
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 bg-amber-400/15 rounded-full blur-[90px] pointer-events-none" />
+
+        {/* Lock Icon */}
+        <div className="relative inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-amber-50 border border-amber-200/80 text-amber-600 shadow-md mb-6">
+          <Lock className="w-10 h-10" />
+          <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#0F3B42] text-white flex items-center justify-center text-[10px] font-bold">
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+          </span>
+        </div>
+
+        {/* Badges */}
+        <div className="flex items-center justify-center gap-2 mb-3">
+          <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold tracking-wider uppercase border border-amber-200">
+            Feature Locked
+          </span>
+          <span className="px-3 py-1 rounded-full bg-[#EAF3F1] text-[#175A67] text-[11px] font-bold tracking-wider uppercase border border-[#175A67]/20">
+            Coming Soon
+          </span>
+        </div>
+
+        {/* Heading */}
+        <h1 className="text-2xl sm:text-4xl font-black text-[#0B1C30] tracking-tight">
+          All India Test Pass
+        </h1>
+        <p className="text-xs sm:text-base text-slate-600 max-w-xl mx-auto mt-3 leading-relaxed">
+          The authentic All-India Computer Based Test (CBT) engine and AI-driven percentile rank predictor are currently being fine-tuned. This feature will be unlocked soon.
+        </p>
+
+        {/* Feature Highlights Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 max-w-2xl mx-auto mt-8 text-left">
+          <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-slate-200/80">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-2.5">
+              <ShieldCheck className="w-4 h-4" />
             </div>
+            <p className="text-xs font-bold text-[#0B1C30]">Real NTA CBT Engine</p>
+            <p className="text-[11px] text-slate-500 mt-1">Exact UI mirroring NEET &amp; JEE Advanced examination software.</p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {(['all', 'live'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  activeTab === tab
-                    ? 'bg-[#175A67] text-white shadow-sm'
-                    : 'bg-white/60 text-[#175A67] hover:bg-white/90 border border-white/80'
-                }`}
-              >
-                {tab === 'all' ? 'All Tests' : '🔴 Live Now'}
-              </button>
-            ))}
+          <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-slate-200/80">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-2.5">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <p className="text-xs font-bold text-[#0B1C30]">All-India AIR Benchmarking</p>
+            <p className="text-[11px] text-slate-500 mt-1">Instant percentile rank prediction computed across 50k+ aspirants.</p>
           </div>
+
+          <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-slate-200/80">
+            <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center mb-2.5">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <p className="text-xs font-bold text-[#0B1C30]">Weak Area Diagnosis</p>
+            <p className="text-[11px] text-slate-500 mt-1">Deep question-level speed, accuracy and negative marking breakdown.</p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-wrap items-center justify-center gap-3.5 mt-9">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl border border-[#175A67]/25 text-[#175A67] hover:bg-[#EAF3F1] font-bold text-xs sm:text-sm transition-all active:scale-95"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Study Central
+          </button>
+
+          <button
+            onClick={handleNotify}
+            disabled={notified}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-xs sm:text-sm transition-all active:scale-95 shadow-md ${
+              notified
+                ? 'bg-emerald-600 text-white cursor-default'
+                : 'bg-[#0F3B42] hover:bg-[#0b2c31] text-white hover:shadow-lg'
+            }`}
+          >
+            {notified ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                Notification Enabled
+              </>
+            ) : (
+              <>
+                <Bell className="w-4 h-4" />
+                Notify Me When Live
+              </>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Test Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filteredTests.map((test) => (
-          <div
-            key={test.id}
-            className="rounded-2xl bg-white/60 hover:bg-white/85 backdrop-blur-md border border-white/80 p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.05)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.09)] flex flex-col justify-between transition-all duration-300 hover:-translate-y-1"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="px-2.5 py-0.5 rounded-full bg-white/70 text-[#175A67] border border-white/80 text-[10px] font-bold">
-                  {test.type}
-                </span>
-                {test.live ? (
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#10B981]/20 text-[#059669] border border-[#10B981]/40 text-[10px] font-black animate-pulse flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                    LIVE NOW
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-[#2A707C] font-semibold">{test.status}</span>
-                )}
-              </div>
-
-              <h3 className="text-base sm:text-lg font-bold text-[#175A67] leading-snug">{test.title}</h3>
-
-              <div className="grid grid-cols-3 gap-2 mt-4 p-3 rounded-xl bg-white/60 border border-slate-200/60 backdrop-blur-sm text-center">
-                <div>
-                  <div className="text-[10px] text-[#2A707C] uppercase font-bold">Duration</div>
-                  <div className="text-xs font-bold text-[#175A67] mt-0.5">{test.duration}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-[#2A707C] uppercase font-bold">Questions</div>
-                  <div className="text-xs font-bold text-[#175A67] mt-0.5">{test.questions} Qs</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-[#2A707C] uppercase font-bold">Marks</div>
-                  <div className="text-xs font-bold text-[#175A67] mt-0.5">{test.totalMarks} M</div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mt-3 text-xs text-[#2A707C]">
-                <span>{test.attempts}</span>
-                <span className="font-semibold text-[#175A67]">{test.difficulty}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleStartTest(test.title)}
-              className="mt-5 w-full py-2.5 rounded-xl bg-[#175A67] hover:bg-[#124853] text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
-            >
-              <Play className="w-3.5 h-3.5 fill-white" />
-              <span>Start CBT Exam</span>
-            </button>
-          </div>
-        ))}
-      </div>
+      {toast && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[70] bg-[#175A67] text-white text-xs sm:text-sm font-semibold px-5 py-2.5 rounded-full shadow-2xl animate-fadeIn">
+          {toast}
+        </div>
+      )}
     </div>
   );
 };
+
+export default TestSeriesView;
