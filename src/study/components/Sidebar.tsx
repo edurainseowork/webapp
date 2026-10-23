@@ -84,10 +84,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'test-series' as NavTabId,
       label: 'All India Test Pass',
       icon: Award,
-      badge: 'Coming Soon',
-      badgeColor: 'text-amber-300 bg-amber-950/60 border-amber-500/40',
-      locked: true,
-      highlight: false,
+      badge: 'Live',
+      badgeColor: 'text-emerald-300 bg-emerald-950/60 border-emerald-500/40',
+      locked: false,
+      highlight: true,
     },
   ];
 
