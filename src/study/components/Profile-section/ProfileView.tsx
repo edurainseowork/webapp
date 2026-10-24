@@ -1,10 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
-  ShieldCheck,
-  Lock,
   Camera,
-  Share2,
   Pencil,
   Award,
   CheckCircle2,
@@ -13,84 +10,93 @@ import {
   Mail,
   Building2,
   GraduationCap,
-  Fingerprint,
-  Download,
   Timer,
   Target,
   Flame,
   X,
   Check,
   ArrowLeft,
-  RefreshCw,
   School,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
+  Trash2,
+  CalendarDays,
   Activity,
   HelpCircle,
   TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
-
+import { useAuth } from '../../AuthGate';
+import { apiFetch } from '../../lib/api';
+import { saveGoal, type StudentGoal } from '../../lib/goal';
+import {
+  PHOTO_MAX_BYTES,
+  PHOTO_TYPES,
+  fetchProfile,
+  removeProfilePhoto,
+  updateProfile,
+  uploadProfilePhoto,
+  type Gender,
+  type StudentProfile,
+} from '../../lib/profile';
 
 /* ------------------------------------------------------------------ */
-/*  Types                                                               */
+/*  Student profile — everything comes from the database               */
+/*   GET / PATCH /api/profile, POST / DELETE /api/profile/photo,       */
+/*   goal (target exam) via /api/me/goal, goals = CMS categories.      */
 /* ------------------------------------------------------------------ */
-
-export interface StudentProfileData {
-  fullName: string;
-  mobile: string;
-  mobileVerified: boolean;
-  email: string;
-  emailAdded: boolean;
-  gender: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
-  city: string;
-  cityAdded: boolean;
-  targetExam: 'IIT-JEE' | 'NEET' | 'UPSC';
-  classGrade: string;
-  batchLabel: string;
-  ssoId: string;
-  isPro: boolean;
-  centerVerified: boolean;
-}
 
 interface ProfileViewProps {
   onBack: () => void;
-  profile?: StudentProfileData;
+  /** The student's goal (target exam), shared with the goal popup and the top bar */
+  goal: StudentGoal | null;
+  onGoalSaved: (goal: StudentGoal) => void;
 }
 
-const DEFAULT_PROFILE: StudentProfileData = {
-  fullName: 'Abhinav Chauhan',
-  mobile: '+91 87078 75454',
-  mobileVerified: true,
-  email: '',
-  emailAdded: false,
-  gender: 'Male',
-  city: '',
-  cityAdded: false,
-  targetExam: 'IIT-JEE',
-  classGrade: 'Class 12th',
-  batchLabel: 'Allen Kota Batch 2024-25',
-  ssoId: 'ED-04821-X',
-  isPro: true,
-  centerVerified: false,
+type Category = { id: number; name: string; slug: string };
+
+type Draft = {
+  name: string;
+  phone: string;
+  gender: Gender | '';
+  city: string;
+  state: string;
+  goalId: number | null;
 };
 
-const TOP_TEN_STATS = [
-  { icon: Target, label: 'Predictive AIR Marks Analysis', value: 'AIR 1,420', sub: '+380 positions jump this mock', trend: TrendingUp },
-  { icon: Activity, label: 'Overall Syllabus Velocity', value: '68.4%', sub: '14.2 hrs remaining for Physics Phase 2' },
-  { icon: HelpCircle, label: 'AI Accuracy Rate', value: '84.2%', sub: 'Highest in Organic Chem (+6% vs Avg)', trend: TrendingUp },
+const GENDERS: { value: Gender | ''; label: string }[] = [
+  { value: '', label: 'Not specified' },
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
+const genderLabel = (g: Gender | null) => GENDERS.find((x) => x.value === (g ?? ''))?.label ?? 'Not specified';
+
+const PHONE_RE = /^\+?[0-9]{10,15}$/;
+const cleanPhone = (v: string) => v.replace(/[\s()-]/g, '');
+
+const errorText = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
+
+const initialsOf = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase() || '?';
+
+const formatMonth = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
+const formatPace = (seconds: number) => (seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`);
 
 /* ------------------------------------------------------------------ */
 /*  Small shared bits                                                   */
 /* ------------------------------------------------------------------ */
 
-function DetailCard({
-  label,
-  icon: Icon,
-  children,
-}: {
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-}) {
+function DetailCard({ label, icon: Icon, children }: { label: string; icon: React.ComponentType<{ className?: string }>; children: React.ReactNode }) {
   return (
     <div className="bg-[#EAF3F1]/70 rounded-2xl px-4 py-3.5">
       <div className="flex items-center justify-between">
@@ -102,227 +108,336 @@ function DetailCard({
   );
 }
 
-function EditInput({
+const inputClass =
+  'w-full bg-white border border-[#175A67]/20 text-[#175A67] text-sm font-bold px-2.5 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#175A67]/25 placeholder-[#2A707C]/50';
+
+/** One activity tile; `sub` is a muted note, `trend` adds an up / down arrow before it. */
+function StatTile({
+  icon: Icon,
+  tone,
+  label,
   value,
-  onChange,
-  type = 'text',
-  options,
-  placeholder,
+  accent,
+  accentClass = 'text-[#006972]',
+  sub,
+  trend,
 }: {
+  icon: React.ComponentType<{ className?: string }>;
+  tone: string;
+  label: string;
   value: string;
-  onChange: (v: string) => void;
-  type?: 'text' | 'email' | 'tel';
-  options?: string[];
-  placeholder?: string;
+  /** Small text right after the value, e.g. "/ question" */
+  accent?: string;
+  accentClass?: string;
+  sub?: string;
+  trend?: 'up' | 'down';
 }) {
-  if (options) {
-    return (
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-white border border-[#175A67]/20 text-[#175A67] text-sm font-bold px-2.5 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#175A67]/25"
-      >
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-    );
-  }
+  const Trend = trend === 'down' ? TrendingDown : TrendingUp;
   return (
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full bg-white border border-[#175A67]/20 text-[#175A67] text-sm font-bold px-2.5 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#175A67]/25 placeholder-[#2A707C]/50"
-    />
+    <div className="bg-white rounded-2xl p-4 shadow-[0_4px_18px_rgb(0,0,0,0.05)] flex items-start gap-3 select-none">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${tone}`}>
+        <Icon className="w-4.5 h-4.5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold text-[#70787C] uppercase tracking-wide">{label}</p>
+        <p className="text-base font-semibold text-[#0B1C30] mt-0.5 truncate">
+          {value} {accent && <span className={`text-xs font-semibold ${accentClass}`}>{accent}</span>}
+        </p>
+        {sub && (
+          <p className="text-[11px] text-[#006972] mt-0.5 flex items-center gap-1 min-w-0">
+            {trend && <Trend className={`w-3 h-3 shrink-0 ${trend === 'down' ? 'text-red-500' : 'text-emerald-500'}`} />}
+            <span className="truncate">{sub}</span>
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
+
+const formatNumber = (n: number) => n.toLocaleString('en-IN');
 
 /* ------------------------------------------------------------------ */
 /*  Main view                                                           */
 /* ------------------------------------------------------------------ */
 
-export function ProfileView({ onBack, profile }: ProfileViewProps) {
-  const [data, setData] = useState<StudentProfileData>(profile ?? DEFAULT_PROFILE);
-  const [draft, setDraft] = useState<StudentProfileData>(profile ?? DEFAULT_PROFILE);
+export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
+  const { updateSessionName } = useAuth();
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isEditing, setIsEditing] = useState(false);
-  const [bonusClaimed, setBonusClaimed] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const toastTimer = useRef<number>();
 
-  const view = isEditing ? draft : data;
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2400);
+  const showToast = (text: string, error = false) => {
+    setToast({ text, error });
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2800);
   };
 
+  const load = async () => {
+    setLoadError(null);
+    try {
+      setProfile(await fetchProfile());
+    } catch (err) {
+      setLoadError(errorText(err, 'Could not load your profile.'));
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    apiFetch<Category[]>('/categories')
+      .then((list) => setCategories(Array.isArray(list) ? list : []))
+      .catch(() => setCategories([]));
+    return () => window.clearTimeout(toastTimer.current);
+  }, []);
+
   const startEdit = () => {
-    setDraft(data);
+    if (!profile) return;
+    setDraft({
+      name: profile.name ?? '',
+      phone: profile.phone ?? '',
+      gender: profile.gender ?? '',
+      city: profile.city ?? '',
+      state: profile.state ?? '',
+      goalId: goal?.id ?? null,
+    });
+    setFormError(null);
     setIsEditing(true);
   };
 
   const cancelEdit = () => {
-    setDraft(data);
+    if (saving) return;
     setIsEditing(false);
+    setDraft(null);
+    setFormError(null);
   };
 
-  const saveEdit = () => {
-    const emailJustAdded = !data.emailAdded && draft.email.trim().length > 0;
-    const cityJustAdded = !data.cityAdded && draft.city.trim().length > 0;
-    const updated: StudentProfileData = {
-      ...draft,
-      emailAdded: draft.email.trim().length > 0,
-      cityAdded: draft.city.trim().length > 0,
-    };
-    setData(updated);
-    setIsEditing(false);
-    if (emailJustAdded) showToast('Email added — +25 XP earned!');
-    else if (cityJustAdded) showToast('City updated.');
-    else showToast('Profile updated.');
+  const update = <K extends keyof Draft>(key: K) => (value: Draft[K]) => {
+    setFormError(null);
+    setDraft((d) => (d ? { ...d, [key]: value } : d));
   };
 
-  const update = (key: keyof StudentProfileData) => (value: string) =>
-    setDraft((d) => ({ ...d, [key]: value } as StudentProfileData));
+  const saveEdit = async () => {
+    if (!draft || !profile || saving) return;
+    const name = draft.name.trim().replace(/\s+/g, ' ');
+    const phone = cleanPhone(draft.phone.trim());
+    if (name.length < 2) return setFormError('Name must be at least 2 characters.');
+    if (name.length > 80) return setFormError('Name is too long.');
+    if (phone && !PHONE_RE.test(phone)) return setFormError('Enter a valid mobile number (10 to 15 digits).');
 
-  const handleVerifyCenter = () => {
-    setData((d) => ({ ...d, centerVerified: true }));
-    showToast('Test center verified successfully!');
+    setSaving(true);
+    setFormError(null);
+    try {
+      const saved = await updateProfile({
+        name,
+        phone: phone || null,
+        gender: draft.gender || null,
+        city: draft.city.trim() || null,
+        state: draft.state.trim() || null,
+      });
+      if (draft.goalId && draft.goalId !== goal?.id) {
+        const category = categories.find((c) => c.id === draft.goalId);
+        if (category) onGoalSaved(await saveGoal(category));
+      }
+      setProfile(saved);
+      if (saved.name) updateSessionName(saved.name);
+      setIsEditing(false);
+      setDraft(null);
+      showToast('Profile saved.');
+    } catch (err) {
+      setFormError(errorText(err, 'Could not save your profile. Please try again.'));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleClaimBonus = () => {
-    setBonusClaimed(true);
-    showToast('+50 pts bonus claimed!');
+  const pickPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    if (!PHOTO_TYPES.includes(file.type)) return showToast('Photo must be a PNG, JPEG or WEBP image.', true);
+    if (file.size > PHOTO_MAX_BYTES) return showToast('Photo must be 2 MB or smaller.', true);
+    setPhotoBusy(true);
+    try {
+      setProfile(await uploadProfilePhoto(file));
+      showToast('Photo updated.');
+    } catch (err) {
+      showToast(errorText(err, 'Could not upload the photo.'), true);
+    } finally {
+      setPhotoBusy(false);
+    }
   };
 
-  const handleDownloadId = () => showToast('Downloading your Student ID card…');
-  const handleShareProfile = () => showToast('Profile link copied to clipboard!');
+  const deletePhoto = async () => {
+    setPhotoBusy(true);
+    try {
+      setProfile(await removeProfilePhoto());
+      showToast('Photo removed.');
+    } catch (err) {
+      showToast(errorText(err, 'Could not remove the photo.'), true);
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
-  // Profile strength: Name + Mobile + Stream always complete; Email is the 4th step
-  const completedSteps = ['Name', 'Mobile', 'Stream', ...(data.emailAdded ? ['Email'] : [])];
-  const strengthPct = Math.round((completedSteps.length / 4) * 100);
-  const strengthLabel = strengthPct >= 100 ? 'All Set' : strengthPct >= 75 ? 'Intermediate' : strengthPct >= 50 ? 'Getting Started' : 'New';
-  const missingItems = [
-    ...(!data.emailAdded ? ['Email'] : []),
-    ...(!data.centerVerified ? ['Center'] : []),
-  ];
+  /* ---------- Loading / error ---------- */
 
-  const initials = data.fullName
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
-  return (
+  const shell = (children: React.ReactNode) => (
     <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 pb-10 relative animate-tab-content">
-      {/* Breadcrumb + title */}
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-bold">
-            <button
-              onClick={onBack}
-              className="flex items-center gap-1 text-[#40484B] hover:underline"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Settings
-            </button>
-            <ChevronRight className="w-3.5 h-3.5 text-[#40484B]" />
-            <span className="text-[#40484B]">Account Profile</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-[#0B1C30] mt-1.5">Student Profile &amp; Preferences</h1>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 text-xs font-bold bg-sky-100 text-sky-700 px-3 py-1.5 rounded-full">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            SSO ID: {data.ssoId}
-          </span>
-          <button className="flex items-center gap-1.5 text-xs font-bold bg-white hover:bg-white/80 text-[#175A67] px-3.5 py-1.5 rounded-full shadow-sm transition-all active:scale-95">
-            <Lock className="w-3.5 h-3.5" />
-            Security
+      <div className="mb-5">
+        <div className="flex items-center gap-2 text-xs font-bold">
+          <button onClick={onBack} className="flex items-center gap-1 text-[#40484B] hover:underline">
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Settings
           </button>
+          <ChevronRight className="w-3.5 h-3.5 text-[#40484B]" />
+          <span className="text-[#40484B]">Account Profile</span>
         </div>
+        <h1 className="text-2xl sm:text-3xl font-semibold text-[#0B1C30] mt-1.5">Student Profile &amp; Preferences</h1>
       </div>
+      {children}
+    </div>
+  );
 
+  if (loadError && !profile) {
+    return shell(
+      <div className="bg-white rounded-2xl py-14 px-6 flex flex-col items-center text-center shadow-[0_6px_24px_rgb(0,0,0,0.05)]">
+        <AlertTriangle className="w-6 h-6 text-amber-500 mb-2" />
+        <p className="font-semibold text-[#0B1C30]">Couldn&apos;t load your profile</p>
+        <p className="text-xs text-[#2A707C] mt-1">{loadError}</p>
+        <button onClick={() => void load()} className="mt-4 flex items-center gap-1.5 bg-[#0F3B42] text-white text-xs font-bold px-4 py-2 rounded-xl">
+          <RefreshCw className="w-3.5 h-3.5" /> Try again
+        </button>
+      </div>,
+    );
+  }
+
+  if (!profile) {
+    return shell(
+      <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Loading your profile">
+        <div className="bg-white rounded-2xl p-6 flex items-center gap-4">
+          <div className="w-20 h-20 rounded-full bg-[#EAF3F1]" />
+          <div className="flex-1 space-y-2">
+            <div className="h-5 w-48 rounded bg-slate-200" />
+            <div className="h-3 w-64 rounded bg-slate-100" />
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="h-16 rounded-2xl bg-[#EAF3F1]" />
+          ))}
+        </div>
+      </div>,
+    );
+  }
+
+  /* ---------- Data ---------- */
+
+  const displayName = profile.name?.trim() || profile.email.split('@')[0];
+  const location = [profile.city, profile.state].filter(Boolean).join(', ');
+  const checklist: { label: string; done: boolean }[] = [
+    { label: 'Name', done: !!profile.name?.trim() },
+    { label: 'Mobile', done: !!profile.phone },
+    { label: 'Email', done: !!profile.email },
+    { label: 'Target Exam', done: !!goal },
+    { label: 'Gender', done: !!profile.gender },
+    { label: 'City', done: !!profile.city },
+    { label: 'Photo', done: !!profile.profilePhoto },
+  ];
+  const completed = checklist.filter((c) => c.done);
+  const missing = checklist.filter((c) => !c.done);
+  const strengthPct = Math.round((completed.length / checklist.length) * 100);
+  const strengthLabel = strengthPct >= 100 ? 'All Set' : strengthPct >= 70 ? 'Intermediate' : strengthPct >= 40 ? 'Getting Started' : 'New';
+  const stats = profile.stats ?? null;
+  const streak = profile.streak;
+  const accuracyDiff = stats?.accuracy && stats.accuracy.platformPercent !== null ? Math.round((stats.accuracy.percent - stats.accuracy.platformPercent) * 10) / 10 : null;
+  const gained = stats?.latestTest?.positionsGained ?? null;
+  const courseNames = profile.courses.map((c) => c.title);
+
+  return shell(
+    <>
       {/* Hero card */}
       <div className="bg-gradient-to-r from-white to-[#EAF6F1] rounded-2xl p-5 sm:p-6 shadow-[0_6px_24px_rgb(0,0,0,0.05)] flex flex-col sm:flex-row sm:items-center justify-between gap-5 mb-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-w-0">
           <div className="relative shrink-0">
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#175A67] to-[#2A707C] p-1">
-              <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-xl font-black text-[#175A67]">
-                {initials}
-              </div>
+              {profile.profilePhoto ? (
+                <img src={profile.profilePhoto} alt="" className="w-full h-full rounded-full object-cover bg-white" />
+              ) : (
+                <div className="w-full h-full rounded-full bg-white flex items-center justify-center text-xl font-black text-[#175A67]">{initialsOf(displayName)}</div>
+              )}
             </div>
             <button
               title="Change photo"
-              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-amber-300 hover:bg-amber-400 border-2 border-white flex items-center justify-center text-[#175A67] transition-all active:scale-95"
+              onClick={() => fileRef.current?.click()}
+              disabled={photoBusy}
+              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-amber-300 hover:bg-amber-400 border-2 border-white flex items-center justify-center text-[#175A67] transition-all active:scale-95 disabled:opacity-60"
             >
-              <Camera className="w-3.5 h-3.5" />
+              {photoBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
             </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png, image/jpeg, image/webp"
+              aria-label="Profile photo"
+              className="hidden"
+              onChange={(e) => {
+                void pickPhoto(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
           </div>
 
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg sm:text-xl font-bold text-[#0B1C30] uppercase tracking-tight">{data.fullName}</h2>
-              <span className="flex items-center gap-1 text-[10px] font-bold bg-[#003441] text-white px-2.5 py-1 rounded-full text-[#9FF0FB]">
-                <GraduationCap className="w-3 h-3" />
-                ER Student Master
-              </span>
-            </div>
+          <div className="min-w-0">
+            <h2 className="text-lg sm:text-xl font-bold text-[#0B1C30] uppercase tracking-tight truncate">{displayName}</h2>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              {data.isPro && (
-                <span className="text-[11px] font-bold bg-sky-100 text-sky-700 px-2.5 py-0.5 rounded-full">PRO Subscriber</span>
+              {goal ? (
+                <span className="flex items-center gap-1 text-[11px] font-bold bg-[#003441] text-[#9FF0FB] px-2.5 py-0.5 rounded-full">
+                  <GraduationCap className="w-3 h-3" />
+                  {goal.name}
+                </span>
+              ) : (
+                <button onClick={startEdit} className="text-[11px] font-bold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full hover:bg-amber-200">
+                  Set your target exam
+                </button>
               )}
               <span className="flex items-center gap-1 text-[11px] font-semibold text-[#2A707C]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-                Profile Active
+                <CalendarDays className="w-3 h-3" />
+                Member since {formatMonth(profile.memberSince)}
               </span>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-[#2A707C]">
-                <RefreshCw className="w-3 h-3" />
-                Synced across 2 active devices
-              </span>
+              {profile.profilePhoto && (
+                <button onClick={() => void deletePhoto()} disabled={photoBusy} className="flex items-center gap-1 text-[11px] font-semibold text-[#70787C] hover:text-red-600 disabled:opacity-60">
+                  <Trash2 className="w-3 h-3" />
+                  Remove photo
+                </button>
+              )}
             </div>
-            <p className="flex items-center gap-1.5 text-[11px] text-[#2A707C] font-medium mt-1.5">
-              <School className="w-3.5 h-3.5" />
-              {data.batchLabel}
+            <p className="flex items-center gap-1.5 text-[11px] text-[#2A707C] font-medium mt-1.5 min-w-0" title={courseNames.join(', ')}>
+              <School className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{courseNames.length ? `Enrolled: ${courseNames.join(', ')}` : 'Not enrolled in a course yet'}</span>
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
-          <button
-            onClick={handleShareProfile}
-            className="flex items-center gap-1.5 bg-white hover:bg-white/80 text-[#0B1C30] font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all active:scale-95"
-          >
-            <Share2 className="w-4 h-4" />
-            Share Profile
-          </button>
           {!isEditing ? (
-            <button
-              onClick={startEdit}
-              className="flex items-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all active:scale-95"
-            >
+            <button onClick={startEdit} className="flex items-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all active:scale-95">
               <Pencil className="w-3.5 h-3.5" />
               Edit Profile
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              <button
-                onClick={cancelEdit}
-                className="flex items-center gap-1.5 bg-white text-[#175A67] font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-sm transition-all active:scale-95"
-              >
+              <button onClick={cancelEdit} disabled={saving} className="flex items-center gap-1.5 bg-white text-[#175A67] font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-sm transition-all active:scale-95 disabled:opacity-60">
                 <X className="w-3.5 h-3.5" />
                 Cancel
               </button>
-              <button
-                onClick={saveEdit}
-                className="flex items-center gap-1.5 bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-sm transition-all active:scale-95"
-              >
-                <Check className="w-3.5 h-3.5" />
-                Save
+              <button onClick={() => void saveEdit()} disabled={saving} className="flex items-center gap-1.5 bg-[#10B981] hover:bg-[#059669] text-white font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-sm transition-all active:scale-95 disabled:opacity-70">
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           )}
@@ -335,147 +450,114 @@ export function ProfileView({ onBack, profile }: ProfileViewProps) {
           <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center shrink-0">
             <Award className="w-6 h-6 text-amber-500" />
           </div>
-
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h3 className="font-bold text-[#0B1C30] text-sm sm:text-base whitespace-nowrap">
-                Profile Strength: {strengthPct}%
-              </h3>
+              <h3 className="font-bold text-[#0B1C30] text-sm sm:text-base whitespace-nowrap">Profile Strength: {strengthPct}%</h3>
               <span className="text-[10px] font-bold bg-sky-100 text-sky-700 px-2.5 py-1 rounded-full">{strengthLabel}</span>
-              <span className="text-[11px] font-semibold text-[#2A707C]">{completedSteps.length} of 4 Done</span>
+              <span className="text-[11px] font-semibold text-[#2A707C]">
+                {completed.length} of {checklist.length} Done
+              </span>
             </div>
             <div className="w-full h-1.5 rounded-full bg-[#175A67]/10 overflow-hidden mt-2.5">
               <div className="h-full bg-[#0F3B42] rounded-full transition-all duration-500" style={{ width: `${strengthPct}%` }} />
             </div>
             <div className="flex items-center gap-4 flex-wrap mt-2 text-[11px] font-medium">
               <span className="text-[#2A707C]">
-                Completed: <span className="text-[#175A67] font-semibold">{completedSteps.join(', ')}</span>
+                Completed: <span className="text-[#175A67] font-semibold">{completed.map((c) => c.label).join(', ') || '—'}</span>
               </span>
-              {missingItems.length > 0 && (
+              {missing.length > 0 && (
                 <span className="text-[#2A707C]">
-                  Missing: <span className="text-red-500 font-semibold">{missingItems.join(', ')}</span>
+                  Missing: <span className="text-red-500 font-semibold">{missing.map((c) => c.label).join(', ')}</span>
                 </span>
               )}
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {!data.emailAdded && (
-              <button
-                onClick={startEdit}
-                className="flex items-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-[#0B1C30] text-xs font-bold pl-3 pr-1 py-1.5 rounded-full transition-all active:scale-95"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                Add Email
-                <span className="bg-white text-sky-700 text-[10px] font-black px-2 py-1 rounded-full">+25 XP</span>
-              </button>
-            )}
+          {missing.length > 0 && !isEditing && (
             <button
-              onClick={handleVerifyCenter}
-              disabled={data.centerVerified}
-              className="flex items-center gap-1.5 bg-[#EAF3F1] hover:bg-[#dcece7] disabled:opacity-60 text-[#0B1C30] text-xs font-bold px-3.5 py-2 rounded-full transition-all active:scale-95"
+              onClick={() => (missing.length === 1 && missing[0].label === 'Photo' ? fileRef.current?.click() : startEdit())}
+              className="flex items-center gap-1.5 bg-sky-100 hover:bg-sky-200 text-[#0B1C30] text-xs font-bold px-3.5 py-2 rounded-full transition-all active:scale-95 shrink-0 self-start lg:self-auto"
             >
-              <Target className="w-3.5 h-3.5" />
-              {data.centerVerified ? 'Center Verified' : 'Verify Center'}
+              <Pencil className="w-3.5 h-3.5" />
+              Complete Profile
             </button>
-            <button
-              onClick={handleClaimBonus}
-              disabled={bonusClaimed}
-              className="flex items-center gap-1.5 bg-amber-200 hover:bg-amber-300 disabled:opacity-60 text-[#2A1700] text-xs font-bold px-3.5 py-2 rounded-full transition-all active:scale-95"
-            >
-              <Award className="w-3.5 h-3.5" />
-              {bonusClaimed ? 'Bonus Claimed' : 'Claim Bonus'}
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
       {/* Personal & Academic Details */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-[0_6px_24px_rgb(0,0,0,0.05)] mb-6">
-        <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] flex items-center justify-center shrink-0">
-              <User className="w-4.5 h-4.5 text-[#175A67]" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-[#0B1C30] text-sm sm:text-base">Personal &amp; Academic Details</h3>
-              <p className="text-xs text-[#2A707C] mt-0.5">Manage your contact credentials, center allocation, and target exam stream.</p>
-            </div>
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] flex items-center justify-center shrink-0">
+            <User className="w-4.5 h-4.5 text-[#175A67]" />
           </div>
-          <button
-            onClick={handleDownloadId}
-            className="flex items-center gap-1.5 text-xs font-bold bg-[#EAF3F1] hover:bg-[#dcece7] text-[#40484B] px-3.5 py-2 rounded-full transition-all active:scale-95"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Download Student ID
-          </button>
+          <div>
+            <h3 className="font-semibold text-[#0B1C30] text-sm sm:text-base">Personal &amp; Academic Details</h3>
+            <p className="text-xs text-[#2A707C] mt-0.5">Manage your contact details, location and target exam.</p>
+          </div>
         </div>
 
+        {formError && (
+          <p role="alert" className="mb-4 flex items-center gap-1.5 text-xs font-semibold text-red-600 bg-red-50 rounded-xl px-3 py-2">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            {formError}
+          </p>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Full Name */}
           <DetailCard label="Full Name" icon={User}>
-            {isEditing ? (
-              <EditInput value={draft.fullName} onChange={update('fullName')} />
+            {isEditing && draft ? (
+              <input className={inputClass} value={draft.name} maxLength={80} onChange={(e) => update('name')(e.target.value)} aria-label="Full name" />
             ) : (
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-[#003441] text-sm uppercase truncate">{data.fullName}</span>
-                <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0 ml-2" />
+                <span className="font-semibold text-[#003441] text-sm uppercase truncate">{profile.name || 'Not specified'}</span>
+                {profile.name && <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0 ml-2" />}
               </div>
             )}
           </DetailCard>
 
-          {/* Mobile */}
           <DetailCard label="Mobile Number" icon={Phone}>
-            {isEditing ? (
-              <EditInput value={draft.mobile} onChange={update('mobile')} type="tel" />
+            {isEditing && draft ? (
+              <input className={inputClass} type="tel" value={draft.phone} maxLength={20} placeholder="e.g. 9876543210" onChange={(e) => update('phone')(e.target.value)} aria-label="Mobile number" />
+            ) : profile.phone ? (
+              <span className="font-semibold text-[#0B1C30] text-sm truncate block">{profile.phone}</span>
             ) : (
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-[#0B1C30] text-sm truncate">{data.mobile}</span>
-                {data.mobileVerified && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full shrink-0 ml-2">
-                    <CheckCircle2 className="w-3 h-3" /> Verified
-                  </span>
-                )}
-              </div>
-            )}
-          </DetailCard>
-
-          {/* Email */}
-          <DetailCard label="Email Address" icon={Mail}>
-            {isEditing ? (
-              <EditInput value={draft.email} onChange={update('email')} type="email" placeholder="you@example.com" />
-            ) : data.emailAdded ? (
-              <span className="font-semibold text-[#0B1C30] text-sm truncate block">{data.email}</span>
-            ) : (
-              <button onClick={startEdit} className="flex items-center justify-between w-full text-left group">
-                <span className="font-bold text-[#006972] text-sm group-hover:underline">+ Add Email Address</span>
-                <span className="bg-amber-200 text-amber-900 text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ml-2">+25 XP</span>
+              <button onClick={startEdit} className="font-bold text-[#006972] text-sm hover:underline">
+                + Add Mobile Number
               </button>
             )}
           </DetailCard>
 
-          {/* Gender */}
+          <DetailCard label="Email Address" icon={Mail}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-[#0B1C30] text-sm truncate" title={profile.email}>
+                {profile.email}
+              </span>
+              <span className="text-[10px] font-semibold text-[#2A707C] shrink-0">Login email</span>
+            </div>
+          </DetailCard>
+
           <DetailCard label="Gender" icon={User}>
-            {isEditing ? (
-              <EditInput
-                value={draft.gender}
-                onChange={update('gender')}
-                options={['Male', 'Female', 'Other', 'Prefer not to say']}
-              />
+            {isEditing && draft ? (
+              <select className={inputClass} value={draft.gender} onChange={(e) => update('gender')(e.target.value as Gender | '')} aria-label="Gender">
+                {GENDERS.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
             ) : (
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-[#0B1C30] text-sm">{data.gender}</span>
-                <span className="text-[10px] font-semibold text-[#2A707C] shrink-0 ml-2">Self-Declared</span>
-              </div>
+              <span className={`font-semibold text-sm ${profile.gender ? 'text-[#0B1C30]' : 'text-[#70787C]'}`}>{genderLabel(profile.gender)}</span>
             )}
           </DetailCard>
 
-          {/* City */}
-          <DetailCard label="Living City / Town" icon={Building2}>
-            {isEditing ? (
-              <EditInput value={draft.city} onChange={update('city')} placeholder="e.g. Jaipur" />
-            ) : data.cityAdded ? (
-              <span className="font-semibold text-[#0B1C30] text-sm truncate block">{data.city}</span>
+          <DetailCard label="City / State" icon={Building2}>
+            {isEditing && draft ? (
+              <div className="flex items-center gap-2">
+                <input className={inputClass} value={draft.city} maxLength={80} placeholder="City" onChange={(e) => update('city')(e.target.value)} aria-label="City" />
+                <input className={inputClass} value={draft.state} maxLength={80} placeholder="State" onChange={(e) => update('state')(e.target.value)} aria-label="State" />
+              </div>
+            ) : location ? (
+              <span className="font-semibold text-[#0B1C30] text-sm truncate block">{location}</span>
             ) : (
               <button onClick={startEdit} className="flex items-center justify-between w-full text-left group">
                 <span className="font-semibold text-[#70787C] text-sm">Not Specified</span>
@@ -484,22 +566,25 @@ export function ProfileView({ onBack, profile }: ProfileViewProps) {
             )}
           </DetailCard>
 
-          {/* Target Exam */}
           <DetailCard label="Target Exam & Stream" icon={GraduationCap}>
-            {isEditing ? (
-              <div className="flex items-center gap-2">
-                <EditInput
-                  value={draft.targetExam}
-                  onChange={update('targetExam')}
-                  options={['IIT-JEE', 'NEET', 'UPSC']}
-                />
-                <EditInput value={draft.classGrade} onChange={update('classGrade')} placeholder="Class 12th" />
-              </div>
+            {isEditing && draft ? (
+              <select
+                className={inputClass}
+                value={draft.goalId ?? ''}
+                onChange={(e) => update('goalId')(e.target.value ? Number(e.target.value) : null)}
+                aria-label="Target exam"
+                disabled={categories.length === 0}
+              >
+                {!draft.goalId && <option value="">Choose your target exam</option>}
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             ) : (
               <button onClick={startEdit} className="flex items-center justify-between w-full text-left group">
-                <span className="font-semibold text-[#003441] text-sm truncate">
-                  {data.targetExam} ({data.classGrade})
-                </span>
+                <span className={`font-semibold text-sm truncate ${goal ? 'text-[#003441]' : 'text-[#70787C]'}`}>{goal?.name ?? 'Not set'}</span>
                 <span className="text-xs font-bold text-[#175A67] group-hover:underline shrink-0 ml-2">Change</span>
               </button>
             )}
@@ -507,75 +592,98 @@ export function ProfileView({ onBack, profile }: ProfileViewProps) {
         </div>
       </div>
 
-      {/* Bottom stat cards */}
+      {/* Activity — real numbers from tests, lessons and logins; "—" until there is data */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl p-4 shadow-[0_4px_18px_rgb(0,0,0,0.05)] flex items-center gap-3 select-none">
-          <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] flex items-center justify-center shrink-0">
-            <Timer className="w-4.5 h-4.5 text-[#175A67]" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold text-[#70787C] uppercase tracking-wide">Avg. Mock Pace</p>
-            <p className="text-base font-semibold text-[#0B1C30] mt-0.5">
-              1m 14s <span className="text-xs font-semibold text-[#006972]">/ question</span>
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-4 shadow-[0_4px_18px_rgb(0,0,0,0.05)] flex items-center gap-3 select-none">
-          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-            <Award className="w-4.5 h-4.5 text-amber-500" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold text-[#70787C] uppercase tracking-wide">AIR Marks Prediction</p>
-            <p className="text-base font-semibold text-[#0B1C30] mt-0.5">
-              Top 1.2% <span className="text-xs font-semibold text-[#643D00]">AIR ~2,840</span>
-            </p>
-          </div>
-        </div>
-            
-        <div className="bg-white rounded-2xl p-4 shadow-[0_4px_18px_rgb(0,0,0,0.05)] flex items-center gap-3 select-none">
-          <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center shrink-0">
-            <Flame className="w-4.5 h-4.5 text-sky-600" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold text-[#70787C] uppercase tracking-wide">Daily Streak</p>
-            <p className="text-base font-semibold text-[#0B1C30] mt-0.5">
-              18 Days <span className="text-xs font-semibold text-[#006972]">Personal Best</span>
-            </p>
-          </div>
-        </div>
+        <StatTile
+          icon={Timer}
+          tone="bg-[#EAF3F1] text-[#175A67]"
+          label="Avg. Mock Pace"
+          value={stats?.pace ? formatPace(stats.pace.secondsPerQuestion) : '—'}
+          accent={stats?.pace ? '/ question' : undefined}
+          sub={stats?.pace ? `Across ${stats.pace.tests} submitted test${stats.pace.tests === 1 ? '' : 's'}` : 'Shown after your first test'}
+        />
+        <StatTile
+          icon={Award}
+          tone="bg-amber-100 text-amber-500"
+          label="AIR Marks Prediction"
+          value={stats?.standing ? `Top ${stats.standing.topPercent}%` : '—'}
+          accent={stats?.standing ? `AIR ~${formatNumber(stats.standing.rank)}` : undefined}
+          accentClass="text-[#643D00]"
+          sub={stats?.standing ? `Avg ${stats.standing.averagePercent}% marks • ${formatNumber(stats.standing.students)} students` : 'Shown after your first test'}
+        />
+        <StatTile
+          icon={Flame}
+          tone="bg-sky-100 text-sky-600"
+          label="Daily Streak"
+          value={`${streak.current} Day${streak.current === 1 ? '' : 's'}`}
+          accent={streak.current > 0 && streak.current >= streak.longest ? 'Personal Best' : undefined}
+          sub={streak.current > 0 && streak.current >= streak.longest ? 'Keep it going tomorrow' : `Best: ${streak.longest} day${streak.longest === 1 ? '' : 's'}`}
+        />
       </div>
 
-      {/* Rank & Performance Insight Tiles (Static, non-clickable, no hover) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-        {TOP_TEN_STATS.map((stat) => (
-          <div
-            key={stat.label}
-            className="bg-white rounded-2xl p-4 shadow-[0_4px_18px_rgb(0,0,0,0.05)] flex items-start gap-3 select-none"
-          >
-            <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] flex items-center justify-center text-[#175A67] shrink-0">
-              <stat.icon className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-[#40484B] uppercase tracking-wide">{stat.label}</p>
-              <p className="text-lg font-semibold font-black text-[#003441] mt-0.5">{stat.value}</p>
-              <p className="text-[11px] text-[#006972] mt-0.5 flex items-center gap-1">
-                {stat.trend && <stat.trend className="w-3 h-3 text-emerald-500 shrink-0" />}
-                <span className="truncate">{stat.sub}</span>
-              </p>
-            </div>
-          </div>
-        ))}
+        <StatTile
+          icon={Target}
+          tone="bg-[#EAF3F1] text-[#175A67]"
+          label="Predictive AIR Marks Analysis"
+          value={stats?.latestTest ? `AIR ${formatNumber(stats.latestTest.rank)}` : '—'}
+          accent={stats?.latestTest ? `${stats.latestTest.score}/${stats.latestTest.maxMarks} marks` : undefined}
+          sub={
+            !stats?.latestTest
+              ? 'Shown after your first test'
+              : gained === null
+              ? `In ${stats.latestTest.title} (first mock)`
+              : gained > 0
+              ? `+${formatNumber(gained)} positions jump this mock`
+              : gained < 0
+              ? `${formatNumber(Math.abs(gained))} positions down this mock`
+              : 'Same position as last mock'
+          }
+          trend={gained === null || gained === 0 ? undefined : gained > 0 ? 'up' : 'down'}
+        />
+        <StatTile
+          icon={Activity}
+          tone="bg-[#EAF3F1] text-[#175A67]"
+          label="Overall Syllabus Velocity"
+          value={stats?.syllabus ? `${stats.syllabus.percent}%` : '—'}
+          sub={
+            !stats?.syllabus
+              ? courseNames.length
+                ? 'No lessons in your courses yet'
+                : 'Enrol in a course to start'
+              : stats.syllabus.focus
+              ? `${stats.syllabus.focus.remaining} lesson${stats.syllabus.focus.remaining === 1 ? '' : 's'} remaining in ${stats.syllabus.focus.title}`
+              : `All ${stats.syllabus.total} lessons done`
+          }
+        />
+        <StatTile
+          icon={HelpCircle}
+          tone="bg-[#EAF3F1] text-[#175A67]"
+          label="AI Accuracy Rate"
+          value={stats?.accuracy ? `${stats.accuracy.percent}%` : '—'}
+          sub={
+            !stats?.accuracy
+              ? 'Shown after your first test'
+              : accuracyDiff === null || accuracyDiff === 0
+              ? `${stats.accuracy.correct} of ${stats.accuracy.answered} answers correct`
+              : `${accuracyDiff > 0 ? '+' : ''}${accuracyDiff}% vs average student • ${stats.accuracy.correct}/${stats.accuracy.answered} correct`
+          }
+          trend={accuracyDiff === null || accuracyDiff === 0 ? undefined : accuracyDiff > 0 ? 'up' : 'down'}
+        />
       </div>
 
-      {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-[#175A67] text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2 animate-fadeIn">
-          <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
-          {toast}
+        <div
+          role="status"
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2 animate-fadeIn ${
+            toast.error ? 'bg-red-600' : 'bg-[#175A67]'
+          }`}
+        >
+          {toast.error ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4 text-[#10B981]" />}
+          {toast.text}
         </div>
       )}
-    </div>
+    </>,
   );
 }
 

@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, Sparkles, Bell, ArrowLeft, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Lock, Sparkles, Bell, ArrowLeft, ShieldCheck, CheckCircle2, Play } from 'lucide-react';
 import { SubPageHeader } from './SubPageHeader';
 
 interface TestSeriesViewProps {
   onBack: () => void;
   onOpenUpgrade?: () => void;
+  onOpenCourseTests?: () => void;
 }
 
-export const TestSeriesView: React.FC<TestSeriesViewProps> = ({ onBack }) => {
+export const TestSeriesView: React.FC<TestSeriesViewProps> = ({ onBack, onOpenCourseTests }) => {
   const [notified, setNotified] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,8 +99,17 @@ export const TestSeriesView: React.FC<TestSeriesViewProps> = ({ onBack }) => {
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex flex-wrap items-center justify-center gap-3.5 mt-9">
+          {onOpenCourseTests && (
+            <button
+              onClick={onOpenCourseTests}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-[#0F3B42] hover:opacity-95 text-white font-bold text-xs sm:text-sm transition-all active:scale-95 shadow-md"
+            >
+              <Play className="w-4 h-4 fill-current text-emerald-300" />
+              <span>Solve Course Tests</span>
+            </button>
+          )}
+
           <button
             onClick={onBack}
             className="flex items-center gap-2 px-6 py-3 rounded-xl border border-[#175A67]/25 text-[#175A67] hover:bg-[#EAF3F1] font-bold text-xs sm:text-sm transition-all active:scale-95"

@@ -194,6 +194,20 @@ export async function fetchCourseContent(courseId: number): Promise<ContentResul
     throw err;
   }
 }
+/* ------------------------------------------------------------------ */
+/*  Lesson progress (profile → Overall Syllabus Velocity)               */
+/* ------------------------------------------------------------------ */
+
+/** Ids of the lessons the student has opened in this course. */
+export async function fetchCompletedLessons(courseId: number): Promise<string[]> {
+  const res = await apiFetch<{ completed?: string[] }>(`/progress/${courseId}`);
+  return Array.isArray(res.completed) ? res.completed : [];
+}
+
+/** Records that the student opened a lesson (counts as done). */
+export async function markLessonDone(courseId: number, contentId: string): Promise<void> {
+  await apiFetch(`/progress/${courseId}/lessons/${encodeURIComponent(contentId)}`, { method: 'POST' });
+}
 
 /* ------------------------------------------------------------------ */
 /*  Enrolment                                                           */

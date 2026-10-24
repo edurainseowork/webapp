@@ -889,3 +889,166 @@
     flex: 1;
   }
 }
+
+/* "About Mentor" (set by the Super Admin when inviting) */
+.md-profile-about {
+  margin-top: 10px;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--md-muted);
+  white-space: pre-line;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.md-popover-about {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--md-border);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--md-muted);
+  white-space: pre-line;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.md-popover-about + .md-menu-item {
+  margin-top: 12px;
+}
+
+
+/* "My Availability" (slots students can book) */
+.md-av-intro {
+  margin: -8px 0 18px;
+  font-size: 0.85rem;
+  color: var(--md-muted);
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.md-av-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--md-surface);
+  border: 1px solid var(--md-border);
+}
+
+.md-av-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--md-muted);
+  flex: 1 1 140px;
+}
+
+.md-av-form input,
+.md-av-form select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--md-border-strong);
+  background: var(--md-bg);
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  color-scheme: dark;
+}
+
+.md-av-add {
+  flex: 0 0 auto;
+  height: 40px;
+}
+
+.md-av-error,
+.md-av-notice {
+  margin-top: 10px;
+  font-size: 0.8rem;
+}
+
+.md-av-error {
+  color: #ff8a8a;
+}
+
+.md-av-notice {
+  color: var(--md-muted);
+}
+
+.md-av-list {
+  margin-top: 22px;
+  display: grid;
+  gap: 16px;
+}
+
+.md-av-skeleton {
+  height: 96px;
+}
+
+.md-av-day h2 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--md-muted);
+  margin-bottom: 8px;
+}
+
+.md-av-day ul {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.md-av-day li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--md-surface);
+  border: 1px solid var(--md-border);
+}
+
+.md-av-day li.is-past {
+  opacity: 0.55;
+}
+
+.md-av-time {
+  font-weight: 600;
+  font-size: 0.9rem;
+  min-width: 150px;
+}
+
+.md-av-open,
+.md-av-booked {
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.md-av-open {
+  background: rgba(29, 154, 120, 0.15);
+  color: #4fd1a5;
+}
+
+.md-av-booked {
+  background: rgba(255, 94, 94, 0.12);
+  color: var(--md-coral);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-av-remove {
+  margin-left: auto;
+}

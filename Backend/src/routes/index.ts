@@ -22,6 +22,9 @@ import testsRouter from "./tests.js";
 import cmsAdminsRouter from "./cmsAdmins.js";
 import ticketsRouter from "./tickets.js";
 import { mentorDeskRouter, teacherAssistantDeskRouter } from "./desks.js";
+import studentGoalRouter from "./studentGoal.js";
+import mentorshipRouter from "./mentorship.js";
+import progressRouter from "./progress.js";
 import { restrictDeskRoles, authenticateToken } from "../middleware/auth.js";
 const router = Router();
 
@@ -42,6 +45,11 @@ router.use("/auth", authRouter);
 // The signed-in student's own profile, photo and day streak
 router.use("/profile", profileRouter);
 router.use("/tickets", authenticateToken, ticketsRouter);
+// The signed-in student's goal (exam / cohort) and 1:1 mentorship
+router.use("/me/goal", studentGoalRouter);
+router.use("/mentorship", mentorshipRouter);
+// Lessons the student has opened (syllabus progress)
+router.use("/progress", progressRouter);
 router.use("/stats", statsRouter);
 router.use("/enrollments", enrollmentsRouter);
 router.use("/cms/tests", cmsTestsRouter);
