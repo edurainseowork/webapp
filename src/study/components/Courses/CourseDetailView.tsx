@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { Batch, Chapter, Subject, buildSyllabus, lectureIcon } from './courseData';
 import { Toast, daysHoursMinutes, discountPct, formatINR, useCountdown, useToast } from './CourseShared';
-import { enrollInCourse, fetchCourseContent } from '../../lib/courses';
+import { enrollInCourse, fetchCompletedLessons, fetchCourseContent, markLessonDone } from '../../lib/courses';
 
 type TabId = 'description' | 'syllabus' | 'tests' | 'community';
 
@@ -57,11 +57,16 @@ function ChapterRow({
   subjectName,
   isOpen,
   onToggle,
+  done,
+  onOpenLesson,
 }: {
   chapter: Chapter;
   subjectName?: string;
   isOpen: boolean;
   onToggle: () => void;
+  /** Lessons the student has opened */
+  done: Set<string>;
+  onOpenLesson: (lessonId: string) => void;
 }) {
   const num = String(chapter.num).padStart(2, '0');
   const empty = chapter.lectures.length === 0;
@@ -144,6 +149,8 @@ export function CourseDetailView({
 }: CourseDetailViewProps) {
   const [activeTab, setActiveTab] = useState<TabId>('description');
   const [syllabus, setSyllabus] = useState<SyllabusState>({ status: 'loading' });
+    // Lessons this student has opened (✓ Done); also counted on the profile's Syllabus Velocity
+    const [doneLessons, setDoneLessons] = useState<Set<string>>(() => new Set());
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [openChapter, setOpenChapter] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -171,6 +178,11 @@ export function CourseDetailView({
     try {
       const result = await fetchCourseContent(batch.courseId);
       setSyllabus(result.status === 'locked' ? { status: 'locked' } : { status: 'ready', subjects: buildSyllabus(result.items) });
+      if (result.status !== 'locked') {
+        fetchCompletedLessons(batch.courseId)
+          .then((ids) => setDoneLessons(new Set(ids)))
+          .catch(() => undefined);
+      }
     } catch (err) {
       setSyllabus({ status: 'error', message: err instanceof Error ? err.message : 'Could not load the syllabus.' });
     }
@@ -180,6 +192,11 @@ export function CourseDetailView({
     void loadSyllabus();
   }, [loadSyllabus, isEnrolled]);
 
+  const openLesson = (lessonId: string) => {
+    if (doneLessons.has(lessonId)) return;
+    setDoneLessons((prev) => new Set(prev).add(lessonId));
+    markLessonDone(batch.courseId, lessonId).catch(() => undefined); // progress only; never blocks opening the lesson
+  };
   // Open the first chapter of whichever subject is selected
   useEffect(() => {
     const first = subject?.chapters.find((c) => c.lectures.length > 0);
@@ -599,6 +616,8 @@ export function CourseDetailView({
                         subjectName={s.name}
                         isOpen={openChapter === chapter.id}
                         onToggle={() => setOpenChapter(openChapter === chapter.id ? null : chapter.id)}
+                        done={doneLessons}
+                        onOpenLesson={openLesson}
                       />
                     ))}
                   </div>
@@ -613,6 +632,8 @@ export function CourseDetailView({
                       chapter={chapter}
                       isOpen={openChapter === chapter.id}
                       onToggle={() => setOpenChapter(openChapter === chapter.id ? null : chapter.id)}
+                      done={doneLessons}
+                      onOpenLesson={openLesson}
                     />
                   ))}
                 </div>

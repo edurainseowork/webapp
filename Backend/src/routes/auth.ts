@@ -29,9 +29,9 @@ authRouter.get('/me', authenticateToken, async (req: Request, res: Response): Pr
       name: req.user?.name || req.auth?.name,
       role,
       isAdminOrFaculty: role === 'admin' || role === 'faculty',
-            // Decided here from the verified token; the CMS only uses it to show or hide controls
-            isSuperAdmin: isSuperAdminToken(req.auth),
-            superAdminEmailUnverified: isSuperAdminEmail(req.auth?.email) && req.auth?.email_verified !== true,
+      // Decided here from the verified token; the CMS only uses it to show or hide controls
+      isSuperAdmin: isSuperAdminToken(req.auth),
+      superAdminEmailUnverified: isSuperAdminEmail(req.auth?.email) && req.auth?.email_verified !== true,
     },
   });
 });
@@ -144,7 +144,7 @@ authRouter.post('/get-email-by-phone', async (req: Request, res: Response): Prom
 
     const phoneWithCode = `+91${phone}`;
     const userRecord = await getAuth().getUserByPhoneNumber(phoneWithCode);
-    
+
     if (userRecord.email) {
       res.json({ success: true, email: userRecord.email });
     } else {

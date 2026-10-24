@@ -1,6 +1,9 @@
 import { apiFetch } from './api';
 import { auth } from './firebase';
 
+// The student's goal (exam / cohort) is a CMS category, saved in the database against the signed-in
+// account (GET / PUT /api/me/goal), so it is the same after logout, on another device or browser.
+
 export interface StudentGoal {
   /** CMS category id (stable; used to pick the matching Courses tab) */
   id: number;
@@ -8,59 +11,48 @@ export interface StudentGoal {
   slug: string;
 }
 
-const storageKey = () => {
-  const uid = auth.currentUser?.uid;
-  return uid ? `edurain.goal.${uid}` : null;
-};
+type CategoryRow = { id: number; name: string; slug: string };
 
-function readStored(): StudentGoal | null {
-  const key = storageKey();
+// Goals picked before they were saved on the server lived only in this browser. Moved to the
+// account once, then removed here.
+const legacyKey = () => (auth.currentUser?.uid ? `edurain.goal.${auth.currentUser.uid}` : null);
+
+function takeLegacyGoal(): number | null {
+  const key = legacyKey();
   if (!key) return null;
   try {
     const raw = localStorage.getItem(key);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return parsed && Number.isInteger(parsed.id) ? (parsed as StudentGoal) : null;
+    localStorage.removeItem(key);
+    const id = raw ? Number(JSON.parse(raw)?.id) : NaN;
+    return Number.isInteger(id) && id > 0 ? id : null;
   } catch {
-    return null; // storage blocked (private mode) or bad data
+    return null; // storage blocked or bad data
   }
 }
 
-function writeStored(goal: StudentGoal | null) {
-  const key = storageKey();
-  if (!key) return;
-  try {
-    if (goal) localStorage.setItem(key, JSON.stringify(goal));
-    else localStorage.removeItem(key);
-  } catch {
-    // storage blocked: the goal still applies for this visit
-  }
-}
-
-type CategoryRow = { id: number; name: string; slug: string };
-
-/** The goal saved for this student, refreshed from the CMS; null when none is set or its category was deleted. */
+/** The goal saved on this student's account; null when none is set yet (or its category was deleted). */
 export async function fetchGoal(): Promise<StudentGoal | null> {
-  const stored = readStored();
-  if (!stored) return null;
-  let categories: CategoryRow[];
+  const res = await apiFetch<{ goal: StudentGoal | null }>('/me/goal');
+  if (res.goal) {
+    takeLegacyGoal(); // the account already has a goal; drop any old browser copy
+    return res.goal;
+  }
+  const legacy = takeLegacyGoal();
+  if (!legacy) return null;
   try {
-    categories = await apiFetch<CategoryRow[]>('/categories');
+    return await saveGoalId(legacy);
   } catch {
-    return stored; // CMS unreachable: keep using the saved goal
+    return null; // that category no longer exists: ask again
   }
-  const current = Array.isArray(categories) ? categories.find((c) => c.id === stored.id) : undefined;
-  if (!current) {
-    writeStored(null); // category removed in the CMS → ask again
-    return null;
-  }
-  const fresh = { id: current.id, name: current.name, slug: current.slug };
-  writeStored(fresh); // picks up a rename
-  return fresh;
 }
 
-/** Saves the chosen CMS category as the student's goal. */
-export async function saveGoal(category: CategoryRow): Promise<StudentGoal> {
-  const goal = { id: category.id, name: category.name, slug: category.slug };
-  writeStored(goal);
-  return goal;
+async function saveGoalId(categoryId: number): Promise<StudentGoal> {
+  const res = await apiFetch<{ goal: StudentGoal | null }>('/me/goal', { method: 'PUT', body: { categoryId } });
+  if (!res.goal) throw new Error('Could not save your goal. Please try again.');
+  return res.goal;
+}
+
+/** Saves (or changes) the student's goal on their account. Rejects with a readable error. */
+export function saveGoal(category: CategoryRow): Promise<StudentGoal> {
+  return saveGoalId(category.id);
 }

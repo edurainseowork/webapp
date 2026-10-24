@@ -4,6 +4,7 @@ import { z } from "zod";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { coursesTable, userCoursesTable, usersTable } from "@workspace/db/schema";
+import { loadStudentStats } from "../lib/studentStats";
 import { requireAuth } from "../middlewares/auth.js";
 import { rateLimit } from "../middlewares/security";
 import { HttpError } from "../lib/http-error";
@@ -81,6 +82,11 @@ async function loadProfile(req: Request, userId: number) {
     .innerJoin(coursesTable, eq(userCoursesTable.courseId, coursesTable.id))
     .where(eq(userCoursesTable.userId, userId))
     .orderBy(desc(userCoursesTable.purchasedAt));
+  // The six activity tiles (pace, accuracy, standing, latest test, syllabus); never block the profile
+  const stats = await loadStudentStats(userId).catch((err: unknown) => {
+    logger.error({ err, userId }, "Could not load student stats");
+    return null;
+  });
 
   const now = new Date();
   return {
@@ -100,7 +106,7 @@ async function loadProfile(req: Request, userId: number) {
       longest: user.longestStreak,
       lastActiveAt: user.lastActiveAt,
     },
-    courses: purchases.map((c) => ({ ...c, thumbnail: c.thumbnail ? toPublicUrl(c.thumbnail, req) : null })),
+    courses: purchases.map((c) => ({ ...c, thumbnail: c.thumbnail ? toPublicUrl(c.thumbnail, req) : null })),stats,
   };
 }
 

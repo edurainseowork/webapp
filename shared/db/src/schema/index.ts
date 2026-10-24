@@ -38,6 +38,9 @@ export type CourseMentor = {
   name: string;
   experience: string | null; // one line, e.g. "15+ years teaching JEE Physics"
   photo: string | null;
+  // Firebase uid of the invited mentor (Manage Users) this entry was picked from; null for
+  // mentors typed in by hand before mentors could be selected
+  uid?: string | null;
 };
 
 
@@ -288,6 +291,79 @@ export const testSubmissionsTable = pgTable("test_submissions", {
 }, (table) => [
   unique("test_submissions_attempt_unique").on(table.testId, table.userId, table.attemptNumber),
   index("test_submissions_test_id_idx").on(table.testId),
+]);
+// Staff profile details set by the Super Admin (Manage Users), e.g. a mentor's "About Mentor".
+// One row per Firebase account (the same uid as users.firebase_uid), so re-inviting updates it
+// instead of adding a duplicate. Sign-in and password changes never touch this table.
+// Created/extended at runtime by Backend/src/lib/mentorshipSchema.ts (and migrations/0006_mentorship.sql).
+export const staffProfilesTable = pgTable("staff_profiles", {
+  firebaseUid: text("firebase_uid").primaryKey(),
+  about: text("about"), // detailed bio ("About Mentor")
+  headline: text("headline"), // short description shown on mentor cards
+  institute: text("institute"), // college / institute
+  achievement: text("achievement"), // e.g. "JEE Advanced AIR 42"
+  photo: text("photo"), // "/uploads/<file>" or https URL
+  languages: text("languages"), // e.g. "Hindi / English"
+  sessionMinutes: integer("session_minutes").default(30).notNull(),
+  verified: boolean("verified").default(false).notNull(),
+  active: boolean("active").default(true).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// The student's goal (exam / cohort) = a CMS category. One row per student.
+export const studentGoalsTable = pgTable("student_goals", {
+  userId: integer("user_id").primaryKey().references(() => usersTable.id, { onDelete: "cascade" }),
+  categoryId: integer("category_id").notNull().references(() => categoriesTable.id, { onDelete: "cascade" }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Times a mentor offers for 1:1 sessions (added by the mentor on the CMS Mentor Desk).
+export const mentorSlotsTable = pgTable("mentor_slots", {
+  id: serial("id").primaryKey(),
+  mentorUid: text("mentor_uid").notNull(), // users.firebase_uid of the mentor
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  durationMinutes: integer("duration_minutes").notNull(),
+  status: varchar("status", { length: 20 }).default("open").notNull(), // 'open' | 'booked'
+    // 2-minute hold while a student is booking (users.id), so two students can't pick the same time
+    heldByUserId: integer("held_by_user_id"),
+    heldUntil: timestamp("held_until", { withTimezone: true }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("mentor_slots_mentor_start_unique").on(table.mentorUid, table.startsAt),
+  index("mentor_slots_starts_at_idx").on(table.startsAt),
+]);
+
+// A student's booking of one slot (a slot can be booked once).
+export const mentorBookingsTable = pgTable("mentor_bookings", {
+  id: serial("id").primaryKey(),
+  slotId: integer("slot_id").notNull().unique().references(() => mentorSlotsTable.id, { onDelete: "cascade" }),
+  mentorUid: text("mentor_uid").notNull(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  courseId: integer("course_id").references(() => coursesTable.id, { onDelete: "set null" }),
+  topic: text("topic").notNull(),
+  status: varchar("status", { length: 20 }).default("confirmed").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("mentor_bookings_user_id_idx").on(table.userId),
+  index("mentor_bookings_mentor_uid_idx").on(table.mentorUid),
+]);
+
+// Mentors a student marked as favourite.
+export const mentorFavoritesTable = pgTable("mentor_favorites", {
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  mentorUid: text("mentor_uid").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.mentorUid] })]);
+// Lessons a student has opened (= done) — used for "Overall Syllabus Velocity" on the profile.
+// Created at runtime by Backend/src/lib/mentorshipSchema.ts (and migrations/0007_lesson_progress.sql).
+export const lessonProgressTable = pgTable("lesson_progress", {
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  courseId: integer("course_id").notNull().references(() => coursesTable.id, { onDelete: "cascade" }),
+  contentId: text("content_id").notNull(), // course_content.id as text (no FK: its type differs between databases)
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.contentId] }),
+  index("lesson_progress_user_course_idx").on(table.userId, table.courseId),
 ]);
 
 // Zod Schemas

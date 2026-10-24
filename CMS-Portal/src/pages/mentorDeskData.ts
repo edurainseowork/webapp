@@ -1,5 +1,7 @@
+import { apiFetch, ApiError } from '../api'
+
 /* ------------------------------------------------------------------ */
-/*  Mentor Desk – types, sample data and small helpers                  */
+/*  Mentor Desk – types, API calls and small helpers                    */
 /* ------------------------------------------------------------------ */
 
 /** One 1:1 mentorship call a student booked with this mentor. */
@@ -73,72 +75,50 @@ export const nameFromEmail = (email: string) =>
 /*  Data                                                                */
 /* ------------------------------------------------------------------ */
 
-const at = (dayOffset: number, hours: number, minutes: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + dayOffset);
-  d.setHours(hours, minutes, 0, 0);
-  return d.toISOString();
-};
-
-// Sample sessions so the page can be designed and tested before the API exists
-function buildSampleSessions(): MentorSession[] {
-  return [
-    {
-      id: 'sample-1',
-      className: 'Class 12',
-      batchName: 'Lakshya JEE 2026',
-      topic: 'Rotational Motion: Moment of Inertia Doubts',
-      studentName: 'Aarav Sharma',
-      startTime: at(0, 18, 30),
-      endTime: at(0, 19, 15),
-      meetLink: 'https://meet.google.com/abc-defg-hij',
-    },
-    {
-      id: 'sample-2',
-      className: 'Class 10',
-      batchName: 'Udaan Class 10 2026',
-      topic: 'Quadratic Equations & Roots',
-      studentName: 'Priya Nair',
-      startTime: at(0, 20, 0),
-      endTime: at(0, 20, 45),
-      meetLink: 'https://meet.google.com/klm-nopq-rst',
-    },
-    {
-      id: 'sample-3',
-      className: 'Class 12',
-      batchName: 'Arjuna NEET 2026',
-      topic: 'Organic Chemistry: Aldehydes & Ketones',
-      studentName: 'Rohan Mehta',
-      startTime: at(2, 16, 0),
-      endTime: at(2, 16, 45),
-      meetLink: 'https://meet.google.com/uvw-xyza-bcd',
-    },
-    {
-      id: 'sample-4',
-      className: 'Class 10',
-      batchName: 'Udaan Class 10 2026',
-      topic: 'Light: Reflection and Refraction',
-      studentName: 'Ananya Gupta',
-      startTime: at(2, 17, 30),
-      endTime: at(2, 18, 15),
-      meetLink: 'https://meet.google.com/efg-hijk-lmn',
-    },
-  ];
-}
-
 /**
- * Sessions booked with the signed-in mentor, oldest first.
- *
- * TODO: the Backend has no mentorship-booking API yet. When it does, replace the
- * sample data with the real call, e.g.
- *   import { apiFetch } from '../api';
- *   const res = await apiFetch<{ data: MentorSession[] }>('/mentor/sessions');
- *   return sortSessions(res.data);
+ * Sessions students booked with the signed-in mentor (GET /api/mentor-desk/sessions), oldest first.
+ * Bookings are made on the study website from the slots in "My Availability".
  */
 export async function loadMentorSessions(): Promise<MentorSession[]> {
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  return sortSessions(buildSampleSessions());
+  try {
+    const res = await apiFetch<{ data: MentorSession[] }>('/mentor-desk/sessions');
+    return sortSessions(res.data ?? []);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 403) throw new Error('Sessions are shown to mentor accounts only.');
+    throw err;
+  }
 }
 
 export const sortSessions = (list: MentorSession[]) =>
   [...list].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+/* ------------------------------------------------------------------ */
+/*  Availability (slots students can book)                              */
+/* ------------------------------------------------------------------ */
+
+export interface MentorSlot {
+  id: number;
+  startsAt: string;
+  durationMinutes: number;
+  status: 'open' | 'booked';
+  studentName: string | null;
+  topic: string | null;
+}
+
+export async function loadMentorSlots(): Promise<MentorSlot[]> {
+  try {
+    const res = await apiFetch<{ data: MentorSlot[] }>('/mentor-desk/slots');
+    return res.data ?? [];
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 403) throw new Error('Availability is managed by mentor accounts only.');
+    throw err;
+  }
+}
+
+export async function addMentorSlot(startsAt: Date, durationMinutes: number): Promise<void> {
+  await apiFetch('/mentor-desk/slots', { method: 'POST', body: { startsAt: startsAt.toISOString(), durationMinutes } });
+}
+
+export async function removeMentorSlot(id: number): Promise<void> {
+  await apiFetch(`/mentor-desk/slots/${id}`, { method: 'DELETE' });
+}

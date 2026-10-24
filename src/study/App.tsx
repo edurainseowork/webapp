@@ -35,6 +35,7 @@ import { ProfileView } from './components/Profile-section/ProfileView';
 import { LibraryView } from './components/LibraryView';
 import { CohortGoalModal } from './components/Modals/CohortGoalModal';
 import { fetchGoal, saveGoal, type StudentGoal } from './lib/goal';
+import { recordActivity } from './lib/profile';
 import { PurchasesModal } from './components/Modals/PurchasesModal';
 import { PurchasesView } from './components/PurchasesView';
 import { PiView } from './components/PiView';
@@ -215,9 +216,13 @@ export function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+  // Daily streak: record one visit per login session (the backend counts days, not visits)
+  useEffect(() => {
+    recordActivity();
+  }, [session.uid]);
 
   // After login: load the saved goal once; students who haven't picked one yet get the goal popup.
-  // Returning students with a goal go straight in (they can change it from the top navigation).
+  // Returning students with a goal land on Daily Drop (they can change the goal from the top navigation).
   const goalLoadedFor = useRef<string | null>(null);
   useEffect(() => {
     if (goalLoadedFor.current === session.uid) return;
@@ -226,7 +231,16 @@ export function App() {
       .then((saved) => {
         if (goalLoadedFor.current !== session.uid) return; // signed out meanwhile
         setGoal(saved);
-        if (!saved) setIsGoalModalOpen(true);
+        if (!saved) {
+          setIsGoalModalOpen(true);
+          return;
+        }
+        // Opened on the home address (e.g. right after login): go to Daily Drop. A direct link or a
+        // refresh of another page (/study/courses, /study/mentorship…) stays where it is.
+        if (window.location.pathname.replace(/\/+$/, '') === '/study') {
+          setActiveNav('pi');
+          window.history.replaceState(null, '', '/study/daily-doubts');
+        }
       })
       .catch((err) => console.error('Could not load the saved goal', err));
   }, [session.uid]);
@@ -675,7 +689,7 @@ export function App() {
                   <Award className="w-4 h-4" />
                   <span>ALL INDIA TEST PASS</span>
                 </div>
-                <Lock className="w-3.5 h-3.5 opacity-70" />
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-800">Live</span>
               </button>
             </div>
           </div>
@@ -752,7 +766,7 @@ export function App() {
                   <Award className="w-4 h-4" />
                   <span>ALL INDIA TEST PASS</span>
                 </div>
-                <Lock className="w-3.5 h-3.5 opacity-70" />
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-800">Live</span>
               </button>
             </div>
           </div>
@@ -784,8 +798,12 @@ export function App() {
           ) : isMentorshipOpen ? (
             <MentorshipHub
               studentEmail={session.email}
+              goalId={goal?.id ?? null}
+              goalName={goal?.name ?? null}
+              onChangeGoal={() => setIsGoalModalOpen(true)}
               onExit={() => setIsMentorshipOpen(false)}
             />
+
           ) : isAiMentorPageOpen ? (
             <AiMentorView
               userName={firstName}
@@ -836,7 +854,14 @@ export function App() {
 
             />
           ) : activeNav === 'profile' ? (
-            <ProfileView onBack={() => navigateTo('study-central')} />
+            <ProfileView
+              onBack={() => navigateTo('study-central')}
+              goal={goal}
+              onGoalSaved={(saved) => {
+                setGoal(saved);
+                setSelectedBatch(saved.name);
+              }}
+            />
           ) : activeNav === 'library' ? (
             <LibraryView
               onBack={() => navigateTo('study-central')}
@@ -864,6 +889,7 @@ export function App() {
             <TestSeriesView
               onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
+              onOpenCourseTests={() => setIsCourseTestsOpen(true)}
             />
           ) : (
             <>
@@ -1029,7 +1055,9 @@ export function App() {
           const saved = await saveGoal(category);
           setGoal(saved);
           setSelectedBatch(category.name);
-          navigateTo('courses');
+          // Changed from the Mentorship page: stay there (its mentors follow the new goal);
+          // otherwise go to Daily Drop for the new goal
+          if (!isMentorshipOpen) navigateTo('pi');
         }}
       />
 
