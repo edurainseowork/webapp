@@ -7,7 +7,8 @@ export const DESK_HOME = {
   
   export const STUDY_HOME = '/study/';
   
-  export const isDeskRole = (role: string | null | undefined): role is DeskRole => !!role && role in DESK_HOME;
+  export const isDeskRole = (role: string | null | undefined): role is DeskRole =>
+  Boolean(role && Object.prototype.hasOwnProperty.call(DESK_HOME, role));
   
   export const isCmsRole = (role: string | null | undefined) => role === 'admin' || role === 'faculty';
   

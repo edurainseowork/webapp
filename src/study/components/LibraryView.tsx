@@ -9,13 +9,10 @@ import {
 import { SubPageHeader } from './SubPageHeader';
 
 interface LibraryViewProps {
-  onOpenUpgrade?: () => void;
   onBack?: () => void;
-  searchQuery?: string;
 }
 
 export function LibraryView({ onBack }: LibraryViewProps) {
-  const [toast] = useState<string | null>(null);
 
   return (
     <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 relative space-y-6 min-h-[calc(100vh-6rem)]">
@@ -66,14 +63,6 @@ export function LibraryView({ onBack }: LibraryViewProps) {
           </span>
         </div>
       </section>
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-[#175A67] text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2 animate-fadeIn max-w-[90vw]">
-          <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0" />
-          <span className="truncate">{toast}</span>
-        </div>
-      )}
     </div>
   );
 }

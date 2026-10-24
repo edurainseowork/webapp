@@ -7,6 +7,7 @@ import CourseManager from './CourseManager'
 import CategoryManager from './CategoryManager'
 import CourseContentManager from './CourseContentManager'
 import RoleGuard from '../components/RoleGuard'
+import type { AllowedRole } from '../components/RoleGuard'
 import Coupons from './Coupons'
 import GoLive from './GoLive'
 import Notifications from './Notifications'
@@ -14,6 +15,7 @@ import Tests from './Tests'
 import ManageAdmins from './ManageAdmins'
 import MentorDesk from './MentorDesk'
 import TeacherAssistantDesk from './TeacherAssistantDesk'
+import TeacherAssistantAnalysis from './TeacherAssistantAnalysis'
 import { handoffError } from '../handoff'
 
 import '../index.css'
@@ -71,7 +73,13 @@ function App() {
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
 
+  // Loading states for client-side skeletons (250ms rule)
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [isLoadingBanners, setIsLoadingBanners] = useState(false);
+
   const fetchBanners = async () => {
+    setIsLoadingBanners(true);
     try {
       const data = await apiFetch('/banners');
       if (data.success) {
@@ -79,6 +87,8 @@ function App() {
       }
     } catch (e) {
       console.error("Failed to fetch banners", e);
+    } finally {
+      setIsLoadingBanners(false);
     }
   };
 
@@ -92,15 +102,19 @@ function App() {
   }, []);
 
   const fetchCourses = async () => {
+    setIsLoadingCourses(true);
     try {
       const data = await apiFetch<{ data: AdminCourse[] }>('/admin/courses');
       setCoursesList(data.data);
     } catch (e) {
       console.error("Failed to fetch courses", e);
+    } finally {
+      setIsLoadingCourses(false);
     }
   };
 
   const fetchStats = async () => {
+    setIsLoadingStats(true);
     try {
       const data = await apiFetch('/stats');
       if (data.success) {
@@ -108,6 +122,8 @@ function App() {
       }
     } catch (e) {
       console.error("Failed to fetch stats", e);
+    } finally {
+      setIsLoadingStats(false);
     }
   };
   const fetchMe = async () => {
@@ -120,13 +136,33 @@ function App() {
   };
 
   useEffect(() => {
-    if (user) fetchMe();
-    else setMe({ isSuperAdmin: false, superAdminEmailUnverified: false });
+    let cancelled = false;
+    if (user) {
+      apiFetch<{ user?: Partial<MeInfo> }>('/auth/me')
+        .then((data) => {
+          if (!cancelled) {
+            setMe({
+              isSuperAdmin: data.user?.isSuperAdmin === true,
+              superAdminEmailUnverified: data.user?.superAdminEmailUnverified === true,
+            });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setMe({ isSuperAdmin: false, superAdminEmailUnverified: false });
+          }
+        });
+    } else {
+      setMe({ isSuperAdmin: false, superAdminEmailUnverified: false });
+    }
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   // Leave the admin page if the signed-in account is not the Super Admin
   useEffect(() => {
-    if (activeTab === 'admins' && !me.isSuperAdmin) setActiveTab('dashboard');
+    if ((activeTab === 'admins' || activeTab === 'taAnalytics') && !me.isSuperAdmin) setActiveTab('dashboard');
   }, [activeTab, me.isSuperAdmin]);
 
   const handleSendVerification = async () => {
@@ -299,46 +335,27 @@ function App() {
     </div>
   );
 
-  // Mentor accounts: the Mentor Desk only, with no "Back to CMS" (the backend refuses them every CMS API too)
-  if (isMentor) {
-    return (
-      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
-        <MentorDesk user={user} />
-      </RoleGuard>
-    );
-  }
-
-  // Mentor Desk is a full page with its own sidebar (admins / faculty can preview it and go back)
-  if (activeTab === 'mentorDesk') {
-    return (
-      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
-        <MentorDesk user={user} onExit={() => setActiveTab(lastCmsTab.current)} />
-      </RoleGuard>
-    );
-  }
-
-
-  // Teacher Assistant accounts: the Teacher Assistant Desk only, with no "Back to CMS"
-  if (isTeacherAssistant) {
-    return (
-      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
-        <TeacherAssistantDesk user={user} />
-      </RoleGuard>
-    );
-  }
-
-  // Teacher Assistant Desk is a full page with its own sidebar (admins / faculty can preview it and go back)
-  if (activeTab === 'teacherAssistant') {
-    return (
-      <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
-        <TeacherAssistantDesk user={user} onExit={() => setActiveTab(lastCmsTab.current)} />
-      </RoleGuard>
-    );
-  }
+  // Allowed roles for the current layout view: CMS layout strictly permits admin and faculty only
+  const currentAllowedRoles: AllowedRole[] = isMentor
+    ? ['mentor', 'admin', 'faculty']
+    : isTeacherAssistant
+    ? ['teacher_assistant', 'admin', 'faculty']
+    : ['admin', 'faculty'];
 
   return (
-    <RoleGuard allowedRoles={['admin', 'faculty', 'mentor', 'teacher_assistant']} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
-      <div className="layout">
+    <RoleGuard allowedRoles={currentAllowedRoles} fallbackLogin={loginForm} onRoleResolved={setCmsRole}>
+      {isMentor ? (
+        <MentorDesk user={user} />
+      ) : activeTab === 'mentorDesk' ? (
+        <MentorDesk user={user} onExit={() => setActiveTab(lastCmsTab.current)} />
+      ) : isTeacherAssistant ? (
+        <TeacherAssistantDesk user={user} />
+      ) : activeTab === 'teacherAssistant' ? (
+        <TeacherAssistantDesk user={user} onExit={() => setActiveTab(lastCmsTab.current)} />
+      ) : cmsRole === 'mentor' || cmsRole === 'teacher_assistant' ? (
+        null
+      ) : (
+        <div className="layout">
       {/* Toast Notification */}
       {toast && (
         <div style={{
@@ -400,6 +417,16 @@ function App() {
               Manage Users
             </div>
           )}
+          {me.isSuperAdmin && (
+            <button
+              type="button"
+              className={`nav-link ${activeTab === 'taAnalytics' ? 'active' : ''}`}
+              onClick={() => setActiveTab('taAnalytics')}
+              style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', cursor: 'pointer' }}
+            >
+              Teacher Assistant Analysis
+            </button>
+          )}
           <div className={`nav-link ${activeTab === 'mentorDesk' ? 'active' : ''}`} onClick={() => setActiveTab('mentorDesk')}>
             Mentor Desk
           </div>
@@ -423,6 +450,7 @@ function App() {
             {activeTab === 'notifications' && 'Notifications'}
             {activeTab === 'tests' && 'Test Management'}
             {activeTab === 'admins' && 'Manage Users'}
+            {activeTab === 'taAnalytics' && 'Teacher Assistant Analysis'}
           </h1>
           <div className="user-profile" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
           {me.isSuperAdmin && (
@@ -450,46 +478,71 @@ function App() {
           </div>
         )}
         {activeTab === 'dashboard' && (
-          <>
+          <div className="animate-view">
             <div className="dashboard-grid">
-              <div className="glass-card stat-card">
+              <div className="glass-card stat-card" role="status" aria-busy={isLoadingCourses}>
                 <span className="stat-label">Total Courses</span>
-                <span className="stat-value">{coursesList.length}</span>
+                {isLoadingCourses ? (
+                  <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
+                ) : (
+                  <span className="stat-value">{coursesList.length}</span>
+                )}
               </div>
-              <div className="glass-card stat-card">
+              <div className="glass-card stat-card" role="status" aria-busy={isLoadingCourses}>
                 <span className="stat-label">Published</span>
-                <span className="stat-value">{coursesList.filter(c => c.isPublished).length}</span>
+                {isLoadingCourses ? (
+                  <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
+                ) : (
+                  <span className="stat-value">{coursesList.filter(c => c.isPublished).length}</span>
+                )}
               </div>
-              <div className="glass-card stat-card">
+              <div className="glass-card stat-card" role="status" aria-busy={isLoadingStats}>
                 <span className="stat-label">Active Students</span>
-                <span className="stat-value">{activeStudents}</span>
+                {isLoadingStats ? (
+                  <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
+                ) : (
+                  <span className="stat-value">{activeStudents}</span>
+                )}
               </div>
             </div>
             <div className="glass-card" style={{ minHeight: '300px' }}>
               <h3 style={{ marginBottom: 'var(--space-md)' }}>Recent Activity</h3>
-              <p style={{ color: 'var(--text-secondary)' }}>Welcome to the CMS Dashboard.</p>
+              {isLoadingStats ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} aria-busy="true" role="status">
+                  <div className="skeleton-box" style={{ width: '100%', height: '42px' }} />
+                  <div className="skeleton-box" style={{ width: '85%', height: '42px' }} />
+                  <div className="skeleton-box" style={{ width: '70%', height: '42px' }} />
+                </div>
+              ) : (
+                <p style={{ color: 'var(--text-secondary)' }}>Welcome to the CMS Dashboard.</p>
+              )}
             </div>
-          </>
+          </div>
         )}
 
         {activeTab === 'courses' && (
-          <CourseManager
-            courses={coursesList}
-            reloadCourses={fetchCourses}
-            showToast={showToast}
-            onManageContent={(courseId) => {
-              setSelectedCourseForContent(String(courseId));
-              setActiveTab('content');
-            }}
-          />
+          <div className="animate-view">
+            <CourseManager
+              courses={coursesList}
+              isLoading={isLoadingCourses}
+              reloadCourses={fetchCourses}
+              showToast={showToast}
+              onManageContent={(courseId) => {
+                setSelectedCourseForContent(String(courseId));
+                setActiveTab('content');
+              }}
+            />
+          </div>
         )}
 
         {activeTab === 'categories' && (
-          <CategoryManager showToast={showToast} onCategoriesChanged={fetchCourses} />
+          <div className="animate-view">
+            <CategoryManager showToast={showToast} onCategoriesChanged={fetchCourses} />
+          </div>
         )}
 
         {activeTab === 'content' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+          <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
             <CourseContentManager
               courses={coursesList}
               selectedCourseId={selectedCourseForContent}
@@ -517,10 +570,15 @@ function App() {
         )}
 
         {activeTab === 'banners' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+          <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
             <div className="glass-card">
               <h3 style={{ marginBottom: 'var(--space-md)' }}>Uploaded Banners ({bannersList.length}/5)</h3>
-              {bannersList.length === 0 ? (
+              {isLoadingBanners ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }} aria-busy="true" role="status">
+                  <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '12px' }} />
+                  <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '12px' }} />
+                </div>
+              ) : bannersList.length === 0 ? (
                 <p style={{ color: 'var(--text-secondary)' }}>No banners uploaded yet.</p>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -560,29 +618,45 @@ function App() {
         )}
 
         {activeTab === 'coupons' && (
-          <Coupons user={user!} coursesList={coursesList} showToast={showToast} />
+          <div className="animate-view">
+            <Coupons user={user!} coursesList={coursesList} showToast={showToast} />
+          </div>
         )}
 
         {activeTab === 'golive' && (
-          <GoLive user={user!} coursesList={coursesList} showToast={showToast} />
+          <div className="animate-view">
+            <GoLive user={user!} coursesList={coursesList} showToast={showToast} />
+          </div>
         )}
 
         {activeTab === 'notifications' && (
-          <Notifications showToast={showToast} />
+          <div className="animate-view">
+            <Notifications showToast={showToast} />
+          </div>
         )}
 
         {activeTab === 'tests' && (
-          <Tests showToast={showToast} />
+          <div className="animate-view">
+            <Tests showToast={showToast} />
+          </div>
         )}
-                {activeTab === 'admins' && me.isSuperAdmin && (
-          <ManageAdmins
-            showToast={showToast}
-            openCreate={openCreateAdmin}
-            onCreateOpened={() => setOpenCreateAdmin(false)}
-          />
+        {activeTab === 'admins' && me.isSuperAdmin && (
+          <div className="animate-view">
+            <ManageAdmins
+              showToast={showToast}
+              openCreate={openCreateAdmin}
+              onCreateOpened={() => setOpenCreateAdmin(false)}
+            />
+          </div>
+        )}
+        {activeTab === 'taAnalytics' && me.isSuperAdmin && (
+          <div className="animate-view">
+            <TeacherAssistantAnalysis />
+          </div>
         )}
       </main>
     </div>
+      )}
   </RoleGuard>
   )
 }

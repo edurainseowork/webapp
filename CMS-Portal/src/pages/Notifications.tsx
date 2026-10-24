@@ -29,13 +29,17 @@ function Notifications({ showToast }: NotificationsProps) {
   const [preview, setPreview] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [history, setHistory] = useState<AdminNotification[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(true)
 
   const fetchHistory = async () => {
+    setLoadingHistory(true)
     try {
       const data = await apiFetch<{ data: AdminNotification[] }>('/admin/notifications')
       setHistory(data.data)
     } catch (e: any) {
       showToast('Failed to load notifications: ' + e.message, 'error')
+    } finally {
+      setLoadingHistory(false)
     }
   }
 
@@ -120,7 +124,20 @@ function Notifications({ showToast }: NotificationsProps) {
 
       <div className="glass-card">
         <h3 style={{ marginBottom: 'var(--space-md)' }}>Sent Notifications</h3>
-        {history.length === 0 ? (
+        {loadingHistory && history.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }} aria-busy="true" role="status">
+            {[1, 2, 3].map((n) => (
+              <div key={n} style={{ display: 'flex', gap: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="skeleton-box" style={{ width: '96px', height: '54px', borderRadius: '6px', flexShrink: 0 }} />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="skeleton-box" style={{ width: '50%', height: '18px' }} />
+                  <div className="skeleton-box" style={{ width: '85%', height: '14px' }} />
+                  <div className="skeleton-box" style={{ width: '35%', height: '12px' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : history.length === 0 ? (
           <p style={{ color: 'var(--text-secondary)' }}>No notifications sent yet.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>

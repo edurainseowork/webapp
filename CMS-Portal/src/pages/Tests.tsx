@@ -118,7 +118,15 @@ function Tests({ showToast }: TestsProps) {
           <h3 style={{ marginBottom: '6px' }}>Courses</h3>
           <p style={{ ...mutedText, marginBottom: 'var(--space-md)' }}>Click a course to see its tests or create a new one.</p>
           {coursesState.loading ? (
-            <p style={mutedText}>Loading courses...</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--space-md)' }} aria-busy="true" role="status">
+              {[1, 2, 3, 4].map((n) => (
+                <div key={n} style={{ padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="skeleton-box" style={{ width: '70%', height: '18px' }} />
+                  <div className="skeleton-box" style={{ width: '40%', height: '14px' }} />
+                  <div className="skeleton-box" style={{ width: '30%', height: '12px', marginTop: '4px' }} />
+                </div>
+              ))}
+            </div>
           ) : coursesState.error ? (
             <p style={{ color: '#ff8a8a' }}>Failed to load courses: {coursesState.error}</p>
           ) : courses.length === 0 ? (
@@ -168,7 +176,30 @@ function Tests({ showToast }: TestsProps) {
           </div>
 
           {list.loading && list.items.length === 0 ? (
-            <p style={mutedText}>Loading tests...</p>
+            <div style={{ overflowX: 'auto' }} aria-busy="true" role="status">
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {[...(view.kind === 'all' ? ['Course'] : []), 'Test Name', 'Batch', 'Duration', 'Questions', 'Publish Date / Time', 'Status', 'Created By / At', 'Actions'].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[1, 2, 3, 4].map((n) => (
+                    <tr key={n}>
+                      {view.kind === 'all' && <td style={tdStyle}><div className="skeleton-box" style={{ width: '90px', height: '16px' }} /></td>}
+                      <td style={tdStyle}><div className="skeleton-box" style={{ width: '140px', height: '16px' }} /></td>
+                      <td style={tdStyle}><div className="skeleton-box" style={{ width: '80px', height: '16px' }} /></td>
+                      <td style={tdStyle}><div className="skeleton-box" style={{ width: '60px', height: '16px' }} /></td>
+                      <td style={tdStyle}><div className="skeleton-box" style={{ width: '40px', height: '16px' }} /></td>
+                      <td style={tdStyle}><div className="skeleton-box" style={{ width: '110px', height: '16px' }} /></td>
+                      <td style={tdStyle}><div className="skeleton-box" style={{ width: '70px', height: '22px', borderRadius: '999px' }} /></td>
+                      <td style={tdStyle}><div className="skeleton-box" style={{ width: '100px', height: '16px' }} /></td>
+                      <td style={tdStyle}><div className="skeleton-box" style={{ width: '60px', height: '24px', borderRadius: '4px' }} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : list.error ? (
             <p style={{ color: '#ff8a8a' }}>Failed to load tests: {list.error}</p>
           ) : list.items.length === 0 ? (

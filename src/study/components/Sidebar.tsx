@@ -174,11 +174,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={item.id}
                   onClick={() => {
+                    if (item.locked) return;
                     onSelectTab(item.id);
                     onCloseMobile();
                   }}
                   className={`group relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                    isActive
+                    item.locked
+                      ? 'cursor-not-allowed opacity-70 text-slate-400'
+                      : isActive
                       ? 'bg-gradient-to-r from-emerald-500/25 via-emerald-500/15 to-transparent text-white font-semibold border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
                       : 'text-slate-300 hover:text-white hover:bg-[#0a231b]/60 border border-transparent'
                   }`}

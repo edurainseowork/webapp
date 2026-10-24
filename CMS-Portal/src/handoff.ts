@@ -17,8 +17,8 @@ export async function consumeHandoff(): Promise<void> {
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
 
   if (sentError) {
-    handoffError = `Automatic sign-in from the study website failed: ${sentError}`;
-    console.error('[cms-handoff]', handoffError);
+    handoffError = 'Automatic sign-in from the study website failed. Please log in.';
+    console.error('[cms-handoff] Remote handoff error:', sentError);
     return;
   }
   try {

@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Star, Timer, Users, PlayCircle, Play } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Star, Users, PlayCircle, Play } from 'lucide-react';
 import { Batch, toEnrolledCourse, useCatalog } from './courseData';
 import {
   CatalogEmpty,
   CatalogError,
   CatalogSkeleton,
   LiveBatchCatalog,
-  daysHoursMinutes,
   discountPct,
   formatINR,
-  useCountdown,
 } from './CourseShared';
 import { SubPageHeader, BreadcrumbCrumb } from '../SubPageHeader';
 
@@ -52,7 +50,6 @@ export function EnrolledCoursesView({
   const [query] = useState('');
   const [promoIndex, setPromoIndex] = useState(0);
   const catalogRef = useRef<HTMLElement>(null);
-  const countdown = useCountdown(daysHoursMinutes(3, 14, 22));
 
   const { status, error, reload, batches, filters, ownedBatches, isOwned } = useCatalog(goalKey);
   const promos = pickPromos(batches, isOwned);
@@ -101,12 +98,6 @@ export function EnrolledCoursesView({
                       <Star className="w-3 h-3 fill-current" />
                       {promoOff > 0 ? `${promoBatch.category} • ${promoOff}% OFF` : promoBatch.category}
                     </span>
-                    {promoOff > 0 && (
-                      <span className="flex items-center gap-1.5 text-[10px] font-semibold text-white/80 bg-white/10 border border-white/15 px-3 py-1 rounded-full tabular-nums">
-                        <Timer className="w-3 h-3" />
-                        ENDS IN: {countdown.days}d : {countdown.hours}h : {countdown.minutes}m
-                      </span>
-                    )}
                   </div>
 
                   <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mt-4 leading-tight">{promoBatch.title}</h1>

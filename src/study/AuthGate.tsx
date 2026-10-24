@@ -7,6 +7,7 @@ import { authService } from './components/Auth/authService';
 import { MentorDesk } from './components/Desk/MentorDesk';
 import { TeacherAssistantDesk } from './components/Desk/TeacherAssistantDesk';
 import { DESK_HOME, STUDY_HOME, isCmsRole, isDeskPath, isDeskRole, isWithin, replacePath } from './lib/roles';
+import { resetCoursesForUser } from './lib/courses';
 
 // Admins and faculty work in the CMS portal; students stay on the study page
 const CMS_URL = (import.meta.env.VITE_CMS_URL || '').trim();
@@ -47,7 +48,7 @@ async function loadSession(user: User): Promise<Session> {
     // set it), so a Mentor / Teacher Assistance account never lands in the student app
     try {
       const { claims } = await user.getIdTokenResult();
-      const claimRole = typeof claims.role === 'string' ? claims.role.toLowerCase() : claims.admin === true ? 'admin' : 'student';
+      const claimRole = claims.admin === true ? 'admin' : typeof claims.role === 'string' ? claims.role.toLowerCase() : 'student';
       return { ...base, role: claimRole };
     } catch {
       return { ...base, role: 'student' };
@@ -89,6 +90,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     let current = 0;
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       const run = ++current;
+      resetCoursesForUser(user?.uid || null);
       if (!user) {
         setSession(null);
         setPhase('signed-out');
@@ -152,6 +154,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     session,
     firstName: session.name.split(' ')[0] || session.name,
     logout: async () => {
+      resetCoursesForUser(null);
       await authService.logout();
       // The next person signs in from the normal study address
       replacePath(STUDY_HOME);

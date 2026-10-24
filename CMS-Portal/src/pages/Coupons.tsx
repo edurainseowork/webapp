@@ -30,6 +30,7 @@ const badgeStyle = { fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 8px',
 
 function Coupons({ user, coursesList, showToast }: CouponsProps) {
   const [coupons, setCoupons] = useState<Coupon[]>([])
+  const [loadingCoupons, setLoadingCoupons] = useState(true)
   const [editingId, setEditingId] = useState<number | null>(null)
 
   const [code, setCode] = useState('')
@@ -51,11 +52,14 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
   }
 
   const fetchCoupons = async () => {
+    setLoadingCoupons(true)
     try {
       const data = await authFetch('/coupons')
       setCoupons(data.data)
     } catch (e: any) {
       showToast('Failed to load coupons: ' + e.message, 'error')
+    } finally {
+      setLoadingCoupons(false)
     }
   }
 
@@ -207,7 +211,22 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
 
       <div className="glass-card">
         <h3 style={{ marginBottom: 'var(--space-md)' }}>Existing Coupons</h3>
-        {coupons.length === 0 ? (
+        {loadingCoupons && coupons.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }} aria-busy="true" role="status">
+            {[1, 2, 3].map((n) => (
+              <div key={n} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="skeleton-box" style={{ width: '120px', height: '22px' }} />
+                  <div className="skeleton-box" style={{ width: '220px', height: '14px' }} />
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <div className="skeleton-box" style={{ width: '50px', height: '28px' }} />
+                  <div className="skeleton-box" style={{ width: '50px', height: '28px' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : coupons.length === 0 ? (
           <p style={{ color: 'var(--text-secondary)' }}>No coupons yet.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>

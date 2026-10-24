@@ -20,8 +20,9 @@ import bunnyRouter from "./bunny.routes.js";
 import cmsTestsRouter from "./cmsTests.js";
 import testsRouter from "./tests.js";
 import cmsAdminsRouter from "./cmsAdmins.js";
+import ticketsRouter from "./tickets.js";
 import { mentorDeskRouter, teacherAssistantDeskRouter } from "./desks.js";
-import { restrictDeskRoles } from "../middleware/auth.js";
+import { restrictDeskRoles, authenticateToken } from "../middleware/auth.js";
 const router = Router();
 
 // Mentor / Teacher Assistance accounts may only reach /auth/me and their own desk API
@@ -40,6 +41,7 @@ router.use("/banners", bannersRouter);
 router.use("/auth", authRouter);
 // The signed-in student's own profile, photo and day streak
 router.use("/profile", profileRouter);
+router.use("/tickets", authenticateToken, ticketsRouter);
 router.use("/stats", statsRouter);
 router.use("/enrollments", enrollmentsRouter);
 router.use("/cms/tests", cmsTestsRouter);

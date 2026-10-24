@@ -18,6 +18,7 @@ const ALLOWED_THUMBNAIL_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 type Props = {
   courses: AdminCourse[];
+  isLoading?: boolean;
   reloadCourses: () => Promise<void>;
   showToast: (message: string, type?: 'success' | 'error') => void;
   onManageContent?: (courseId: number) => void;
@@ -56,7 +57,7 @@ const newMentorRow = (m?: CourseMentor): MentorRow => ({
 const toCount = (value: string) => (value.trim() === '' ? null : Math.round(Number(value)));
 const isValidCount = (value: string) => value.trim() === '' || (Number.isInteger(Number(value)) && Number(value) >= 0);
 
-export default function CourseManager({ courses, reloadCourses, showToast, onManageContent }: Props) {
+export default function CourseManager({ courses, isLoading = false, reloadCourses, showToast, onManageContent }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -281,7 +282,23 @@ export default function CourseManager({ courses, reloadCourses, showToast, onMan
           </select>
         </div>
 
-        {visibleCourses.length === 0 ? (
+        {isLoading && visibleCourses.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }} aria-busy="true" role="status">
+            {[1, 2, 3].map((n) => (
+              <div key={n} style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="skeleton-box" style={{ width: '96px', height: '54px', borderRadius: '6px', flexShrink: 0 }} />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="skeleton-box" style={{ width: '45%', height: '18px' }} />
+                  <div className="skeleton-box" style={{ width: '30%', height: '14px' }} />
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                  <div className="skeleton-box" style={{ width: '80px', height: '30px' }} />
+                  <div className="skeleton-box" style={{ width: '60px', height: '30px' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : visibleCourses.length === 0 ? (
           <p style={{ color: 'var(--text-secondary)' }}>No courses found.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>

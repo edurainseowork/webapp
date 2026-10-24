@@ -10,27 +10,27 @@ import {
 } from 'lucide-react';
 import { SubPageHeader } from './SubPageHeader';
 
+interface RankerItem {
+  rank: number;
+  name: string;
+  points: string;
+  streak: string;
+  college: string;
+  isYou?: boolean;
+}
+
 interface CourseTestSeriesViewProps {
   onBack: () => void;
   selectedBatch?: string;
-  searchQuery?: string;
-  onOpenUpgrade?: () => void;
   studentName?: string;
 }
 
 export function CourseTestSeriesView({
   onBack,
   selectedBatch = '12th - IIT JEE',
-  onOpenUpgrade,
-  studentName
 }: CourseTestSeriesViewProps) {
   const [toast] = useState<string | null>(null);
-  const rankers = [
-    { rank: 1, name: 'Siddharth M.', points: '4,920 XP', streak: '28 Days', college: 'IIT Bombay Target' },
-    { rank: 2, name: 'Ananya Verma', points: '4,650 XP', streak: '24 Days', college: 'IIT Delhi Target' },
-    { rank: 3, name: 'Rohan Gupta', points: '4,310 XP', streak: '19 Days', college: 'IIT Madras Target' },
-    { rank: 42, name: studentName ? `${studentName} (You)` : 'Gauransh (You)', points: '2,840 XP', streak: '14 Days', college: 'IIT Kharagpur Target', isYou: true },
-  ];
+  const [rankers] = useState<RankerItem[]>([]);
 
   return (
     <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 relative space-y-6 min-h-[calc(100vh-6rem)] animate-fadeIn">
@@ -92,64 +92,66 @@ export function CourseTestSeriesView({
         </div>
       </section>
 
-      {/* 2. Batch Leaderboard Section */}
-      <div className="rounded-2xl bg-white/70 backdrop-blur-md border border-white/80 p-5 sm:p-6 shadow-[0_6px_24px_rgb(0,0,0,0.04)]">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-500" />
-            <h3 className="font-bold text-[#175A67] text-base">Batch Leaderboard</h3>
-          </div>
-          
-          <span className="text-xs text-[#2A707C] font-semibold bg-[#EAF3F1] px-2.5 py-1 rounded-full border border-[#175A67]/15">
-            Weekly Cycle
-          </span>
-        </div>
-
-        <div className="space-y-2.5">
-          {rankers.map((ranker) => (
-            <div
-              key={ranker.rank}
-              className={`flex items-center justify-between p-3.5 rounded-xl border transition-all ${
-                ranker.isYou
-                  ? 'bg-[#175A67]/15 border-[#175A67]/35 shadow-sm'
-                  : 'bg-white/80 border-slate-200/60 hover:bg-white/95 backdrop-blur-sm'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
-                    ranker.rank === 1
-                      ? 'bg-amber-400 text-slate-900 shadow-sm'
-                      : ranker.rank === 2
-                      ? 'bg-slate-300 text-slate-800'
-                      : ranker.rank === 3
-                      ? 'bg-amber-700 text-white'
-                      : 'bg-[#175A67] text-white'
-                  }`}
-                >
-                  #{ranker.rank}
-                </div>
-                <div>
-                  <div className="text-xs sm:text-sm font-bold text-[#175A67] flex items-center gap-1.5">
-                    <span>{ranker.name}</span>
-                    {ranker.isYou && (
-                      <span className="px-1.5 py-0.2 bg-[#10B981] text-white text-[9px] font-bold rounded">
-                        YOU
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-[#2A707C]">{ranker.college}</div>
-                </div>
-              </div>
-
-              <div className="text-right">
-                <div className="text-xs sm:text-sm font-bold text-[#175A67]">{ranker.points}</div>
-                <div className="text-[10px] text-[#10B981] font-semibold">{ranker.streak} streak 🔥</div>
-              </div>
+      {/* 2. Batch Leaderboard Section (Visible only when real CMS data is available) */}
+      {rankers.length > 0 && (
+        <div className="rounded-2xl bg-white/70 backdrop-blur-md border border-white/80 p-5 sm:p-6 shadow-[0_6px_24px_rgb(0,0,0,0.04)]">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <h3 className="font-bold text-[#175A67] text-base">Batch Leaderboard</h3>
             </div>
-          ))}
+            
+            <span className="text-xs text-[#2A707C] font-semibold bg-[#EAF3F1] px-2.5 py-1 rounded-full border border-[#175A67]/15">
+              Weekly Cycle
+            </span>
+          </div>
+
+          <div className="space-y-2.5">
+            {rankers.map((ranker) => (
+              <div
+                key={ranker.rank}
+                className={`flex items-center justify-between p-3.5 rounded-xl border transition-all ${
+                  ranker.isYou
+                    ? 'bg-[#175A67]/15 border-[#175A67]/35 shadow-sm'
+                    : 'bg-white/80 border-slate-200/60 hover:bg-white/95 backdrop-blur-sm'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
+                      ranker.rank === 1
+                        ? 'bg-amber-400 text-slate-900 shadow-sm'
+                        : ranker.rank === 2
+                        ? 'bg-slate-300 text-slate-800'
+                        : ranker.rank === 3
+                        ? 'bg-amber-700 text-white'
+                        : 'bg-[#175A67] text-white'
+                    }`}
+                  >
+                    #{ranker.rank}
+                  </div>
+                  <div>
+                    <div className="text-xs sm:text-sm font-bold text-[#175A67] flex items-center gap-1.5">
+                      <span>{ranker.name}</span>
+                      {ranker.isYou && (
+                        <span className="px-1.5 py-0.2 bg-[#10B981] text-white text-[9px] font-bold rounded">
+                          YOU
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-[#2A707C]">{ranker.college}</div>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-xs sm:text-sm font-bold text-[#175A67]">{ranker.points}</div>
+                  <div className="text-[10px] text-[#10B981] font-semibold">{ranker.streak} streak 🔥</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Toast Notification */}
       {toast && (

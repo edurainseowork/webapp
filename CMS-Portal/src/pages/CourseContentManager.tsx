@@ -792,9 +792,41 @@ export default function CourseContentManager({
           </p>
         </div>
       ) : loading ? (
-        <div className="glass-card" style={styles.loadingCard}>
-          <div style={styles.spinner} />
-          <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>Loading course content...</p>
+        <div className="glass-card" style={styles.tableCard} aria-busy="true" role="status">
+          <div style={styles.tableHeaderRow}>
+            <span style={{ flex: 1 }}>ITEM / TITLE</span>
+            <span style={{ width: '130px', textAlign: 'center' }}>TYPE</span>
+            <span style={{ width: '140px', textAlign: 'center' }}>SIZE / COUNT</span>
+            <span style={{ width: '110px', textAlign: 'center' }}>ORDER</span>
+            <span style={{ width: '160px', textAlign: 'right' }}>ACTIONS</span>
+          </div>
+          <div style={styles.itemsList}>
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} style={styles.itemRow}>
+                <div style={styles.itemTitleCell}>
+                  <div className="skeleton-box" style={{ width: '36px', height: '36px', borderRadius: '8px' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minWidth: '160px' }}>
+                    <div className="skeleton-box" style={{ width: '60%', height: '16px' }} />
+                    <div className="skeleton-box" style={{ width: '35%', height: '12px' }} />
+                  </div>
+                </div>
+                <div style={{ width: '130px', display: 'flex', justifyContent: 'center' }}>
+                  <div className="skeleton-box" style={{ width: '70px', height: '24px', borderRadius: '12px' }} />
+                </div>
+                <div style={{ width: '140px', display: 'flex', justifyContent: 'center' }}>
+                  <div className="skeleton-box" style={{ width: '60px', height: '14px' }} />
+                </div>
+                <div style={{ width: '110px', display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                  <div className="skeleton-box" style={{ width: '24px', height: '24px', borderRadius: '4px' }} />
+                  <div className="skeleton-box" style={{ width: '24px', height: '24px', borderRadius: '4px' }} />
+                </div>
+                <div style={{ width: '160px', display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                  <div className="skeleton-box" style={{ width: '50px', height: '28px', borderRadius: '6px' }} />
+                  <div className="skeleton-box" style={{ width: '50px', height: '28px', borderRadius: '6px' }} />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       ) : filteredItems.length === 0 ? (
         <div className="glass-card" style={styles.emptyFolderCard}>

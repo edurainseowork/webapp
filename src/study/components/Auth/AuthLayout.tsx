@@ -109,7 +109,7 @@ export function AuthLayout({ children, topAction }: AuthLayoutProps) {
                 starts here.
               </h2>
               <p className="text-xs sm:text-sm text-white/60 mt-3 max-w-sm leading-relaxed">
-                One login for your courses, AI mentor, test series and e-book library — synced across web and mobile.
+                One login for your courses, interactive live classes, 1-to-1 mentorship, and instant doubt solving — synced across web and mobile.
               </p>
 
               <div className="mt-6 space-y-2.5 max-w-sm">

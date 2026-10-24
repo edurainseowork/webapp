@@ -27,8 +27,7 @@ import {
   HelpCircle,
   TrendingUp,
 } from 'lucide-react';
-import { PerformanceProjectionView } from './PerformanceProjectionView';
-import { SyllabusVelocityView } from './SyllabusVelocityView';
+
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -152,8 +151,6 @@ export function ProfileView({ onBack, profile }: ProfileViewProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [bonusClaimed, setBonusClaimed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [showPerformanceProjection, setShowPerformanceProjection] = useState(false);
-  const [showSyllabusVelocity, setShowSyllabusVelocity] = useState(false);
 
   const view = isEditing ? draft : data;
 
@@ -203,10 +200,6 @@ export function ProfileView({ onBack, profile }: ProfileViewProps) {
   const handleDownloadId = () => showToast('Downloading your Student ID card…');
   const handleShareProfile = () => showToast('Profile link copied to clipboard!');
 
-  // Sub-pages temporarily disabled until completely ready
-  // const handleOpenAirRankDetail = () => setShowPerformanceProjection(true);
-  // const handleOpenSyllabusVelocity = () => setShowSyllabusVelocity(true);
-
   // Profile strength: Name + Mobile + Stream always complete; Email is the 4th step
   const completedSteps = ['Name', 'Mobile', 'Stream', ...(data.emailAdded ? ['Email'] : [])];
   const strengthPct = Math.round((completedSteps.length / 4) * 100);
@@ -223,48 +216,8 @@ export function ProfileView({ onBack, profile }: ProfileViewProps) {
     .join('')
     .toUpperCase();
 
-  /* Sub-pages commented out until inner pages are finished
-  if (showPerformanceProjection) {
-    return (
-      <>
-        <PerformanceProjectionView
-          onBack={() => setShowPerformanceProjection(false)}
-          onOpenSubjectBreakdown={() => showToast('Loading subject-wise breakdown…')}
-          onOpenTestHistory={() => showToast('Opening your test history…')}
-          onPracticeDrills={(spot) => showToast(`Loading ${spot.drillCount} drills for ${spot.topic}…`)}
-        />
-        {toast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-[#175A67] text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2 animate-fadeIn">
-            <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
-            {toast}
-          </div>
-        )}
-      </>
-    );
-  }
-
-  if (showSyllabusVelocity) {
-    return (
-      <>
-        <SyllabusVelocityView
-          onBack={() => setShowSyllabusVelocity(false)}
-          onViewChapterChecklist={() => showToast('Opening chapter checklist…')}
-          onOpenRevisionPlan={() => showToast('Opening Chemistry revision plan…')}
-          onOpenSubject={(subject) => showToast(`Loading ${subject.subject} chapter-wise detail…`)}
-        />
-        {toast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-[#175A67] text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2 animate-fadeIn">
-            <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
-            {toast}
-          </div>
-        )}
-      </>
-    );
-  }
-  */
-
   return (
-    <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 pb-10 relative">
+    <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 pb-10 relative animate-tab-content">
       {/* Breadcrumb + title */}
       <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
         <div>

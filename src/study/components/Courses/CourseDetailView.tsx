@@ -15,7 +15,6 @@ import {
   ClipboardList,
   MessagesSquare,
   Target,
-  AlarmClock,
   MonitorPlay,
   ShieldCheck,
   Headphones,
@@ -30,7 +29,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { Batch, Chapter, Subject, buildSyllabus, lectureIcon } from './courseData';
-import { Toast, daysHoursMinutes, discountPct, formatINR, useCountdown, useToast } from './CourseShared';
+import { Toast, discountPct, formatINR, useToast } from './CourseShared';
 import { enrollInCourse, fetchCourseContent } from '../../lib/courses';
 
 type TabId = 'description' | 'syllabus' | 'tests' | 'community';
@@ -149,7 +148,6 @@ export function CourseDetailView({
   const [query, setQuery] = useState('');
   const [enrolling, setEnrolling] = useState(false);
   const [toast, showToast] = useToast();
-  const countdown = useCountdown(daysHoursMinutes(2, 14, 41));
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const plansRef = useRef<HTMLElement>(null);
@@ -426,10 +424,6 @@ export function CourseDetailView({
                       <span className="text-slate-500">Instant Net Savings:</span>
                       <span className="font-bold text-emerald-700">SAVE {formatINR(batch.mrp - batch.price)}</span>
                     </div>
-                    <p className="flex items-center justify-center gap-1.5 mt-3 bg-sky-50 border border-sky-100 rounded-lg py-2 text-xs font-semibold text-[#175A67] tabular-nums">
-                      <AlarmClock className="w-4 h-4" />
-                      Offer ends in: {countdown.days}d : {countdown.hours}h : {countdown.minutes}m
-                    </p>
                   </>
                 )}
               </div>

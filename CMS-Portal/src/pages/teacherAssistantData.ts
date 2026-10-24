@@ -6,6 +6,7 @@ export interface ChatMessage {
   time: string;
   avatar?: string;
   attachmentUrl?: string;
+  attachmentUrls?: string[];
 }
 
 export interface StudentInfo {
@@ -31,17 +32,24 @@ export interface DoubtTicket {
   id: string;
   ticketNumber: string;
   title: string;
-  subject: 'Physics' | 'Mathematics' | 'Chemistry';
+  subject: 'Physics' | 'Mathematics' | 'Chemistry' | string;
   examTag: string;
   studentName: string;
   studentClass: string;
   studentAvatar: string;
   submittedAt: string;
-  urgency: 'Urgent' | 'Normal';
-  status: 'queue' | 'in_progress' | 'resolved';
+  submittedAtRelative?: string;
+  status: 'queue' | 'in_progress' | 'resolution_requested' | 'resolved';
+  assignedTo?: { id: string; name: string; email: string } | null;
+  resolutionRequestedAt?: string | null;
+  resolutionRequestedBy?: string | null;
+  resolvedAt?: string | null;
+  resolvedBy?: string | null;
   questionSnippet: string;
   questionFull: string;
   diagramUrl?: string;
+  diagramUrls?: string[];
+  attachmentUrls?: string[];
   messages: ChatMessage[];
   studentInfo: StudentInfo;
   previousChats: PreviousChat[];
@@ -95,8 +103,8 @@ export const INITIAL_TICKETS: DoubtTicket[] = [
     studentClass: 'Class 12th',
     studentAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=128&q=80',
     submittedAt: '10 mins ago',
-    urgency: 'Urgent',
     status: 'queue',
+    assignedTo: null,
     questionSnippet: 'Unable to understand how to apply parallel axis theorem in this inclined plane situation.',
     questionFull: 'In the diagram attached, a uniform circular cylinder of mass M and radius R rolls without slipping down an inclined plane with angle theta. Please explain the torque balance about the contact axis vs the center of mass.',
     diagramUrl: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=1200&q=80',
@@ -117,8 +125,8 @@ export const INITIAL_TICKETS: DoubtTicket[] = [
     studentClass: 'Class 12th',
     studentAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&q=80',
     submittedAt: '25 mins ago',
-    urgency: 'Normal',
     status: 'queue',
+    assignedTo: null,
     questionSnippet: 'Evaluating integral from 0 to 2pi of x*sin(x)/(1+cos^2(x)) dx using substitution.',
     questionFull: 'Evaluating integral from 0 to 2pi of x*sin(x)/(1+cos^2(x)) dx using substitution. Should I split at pi or directly apply f(a+b-x)?',
     messages: [
@@ -137,8 +145,8 @@ export const INITIAL_TICKETS: DoubtTicket[] = [
     studentClass: 'Class 11th',
     studentAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=128&q=80',
     submittedAt: '40 mins ago',
-    urgency: 'Urgent',
     status: 'queue',
+    assignedTo: null,
     questionSnippet: 'Calculating CFSE in octahedral d4 high spin complex with weak field ligand.',
     questionFull: 'In [Cr(H2O)6]2+ complex, Cr is +2 with 3d4 configuration. Weak ligand means high spin (t2g3 eg1). How do we calculate total CFSE in terms of delta_o?',
     diagramUrl: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=1200&q=80',
@@ -158,8 +166,10 @@ export const INITIAL_TICKETS: DoubtTicket[] = [
     studentClass: 'Class 12th',
     studentAvatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=128&q=80',
     submittedAt: '1 hour ago',
-    urgency: 'Normal',
     status: 'resolved',
+    assignedTo: { id: 'ta-1', name: 'Dr. Arjun Mehta', email: 'arjun.mehta@edurain.in' },
+    resolvedBy: 'Dr. Arjun Mehta',
+    resolvedAt: '1 hour ago',
     questionSnippet: 'Why is delta S universe > 0 when q = 0 in free expansion of ideal gas?',
     questionFull: 'Why is delta S universe > 0 when q = 0 in free expansion of ideal gas? Since q_rev is used to define entropy, how do we construct the reversible path?',
     messages: [

@@ -1,9 +1,8 @@
 import { Router, type Request } from "express";
 import { requireDeskRole } from "../middleware/auth";
+import ticketsRouter from "./tickets.js";
 
-// Mentor Desk and Teacher Assistance Desk APIs. Each router only admits its own role
-// (requireDeskRole); desk accounts are blocked from every other API by restrictDeskRoles.
-
+// Mentor Desk and Teacher Assistance Desk APIs.
 const deskProfile = (req: Request) => ({
   name: req.user?.name || (req.auth?.name as string | undefined) || req.auth?.email?.split("@")[0] || "",
   email: req.user?.email || req.auth?.email || "",
@@ -21,7 +20,9 @@ mentorDeskRouter.get("/me", (req, res) => {
 // /api/teacher-assistant-desk
 export const teacherAssistantDeskRouter = Router();
 teacherAssistantDeskRouter.use(requireDeskRole("teacher_assistant"));
-// GET /api/teacher-assistant-desk/me — the signed-in teacher assistance user
+// Tickets API for Teacher Assistant Desk
+teacherAssistantDeskRouter.use("/tickets", ticketsRouter);
+// GET /api/teacher-assistant-desk/me
 teacherAssistantDeskRouter.get("/me", (req, res) => {
   res.json({ success: true, data: deskProfile(req) });
 });

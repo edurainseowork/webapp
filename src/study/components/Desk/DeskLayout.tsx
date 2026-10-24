@@ -32,10 +32,11 @@ interface DeskLayoutProps {
 
 type DeskState = { status: 'loading' } | { status: 'ready'; name: string } | { status: 'denied' | 'error'; message: string };
 
-export function DeskLayout({ apiPrefix, deskName, subtitle, description, cards }: DeskLayoutProps) {
+export function DeskLayout({ apiPrefix, deskName, subtitle, description, cards, footer }: DeskLayoutProps) {
   const { session, logout } = useAuth();
   const [state, setState] = useState<DeskState>({ status: 'loading' });
   const [signingOut, setSigningOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,10 +54,12 @@ export function DeskLayout({ apiPrefix, deskName, subtitle, description, cards }
 
   const handleLogout = async () => {
     setSigningOut(true);
+    setLogoutError(null);
     try {
       await logout();
     } catch (err) {
       console.error('Logout failed', err);
+      setLogoutError(err instanceof Error ? err.message : 'Sign out failed. Please try again.');
       setSigningOut(false);
     }
   };
@@ -90,6 +93,12 @@ export function DeskLayout({ apiPrefix, deskName, subtitle, description, cards }
           </div>
         </div>
       </header>
+      {logoutError && (
+        <div className="bg-red-500/10 border-b border-red-500/20 text-red-700 px-4 py-2 text-center text-xs font-semibold flex items-center justify-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+          <span>{logoutError}</span>
+        </div>
+      )}
 
       <main className="max-w-[1100px] mx-auto px-4 sm:px-6 py-8 sm:py-12">
         {state.status === 'loading' ? (
@@ -132,6 +141,7 @@ export function DeskLayout({ apiPrefix, deskName, subtitle, description, cards }
             </section>
           </>
         )}
+        {footer && <footer className="mt-8">{footer}</footer>}
       </main>
     </div>
   );

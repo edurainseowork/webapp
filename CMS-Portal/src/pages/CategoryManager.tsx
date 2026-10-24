@@ -10,6 +10,7 @@ type Props = {
 
 export default function CategoryManager({ showToast, onCategoriesChanged }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [sortOrder, setSortOrder] = useState('0');
   const [isSaving, setIsSaving] = useState(false);
@@ -19,11 +20,14 @@ export default function CategoryManager({ showToast, onCategoriesChanged }: Prop
   const [editSortOrder, setEditSortOrder] = useState('0');
 
   const fetchCategories = async () => {
+    setLoading(true);
     try {
       const res = await apiFetch<{ data: Category[] }>('/admin/categories');
       setCategories(res.data);
     } catch (e: any) {
       showToast('Failed to load categories: ' + e.message, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -85,7 +89,22 @@ export default function CategoryManager({ showToast, onCategoriesChanged }: Prop
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
       <div className="glass-card">
         <h3 style={{ marginBottom: 'var(--space-md)' }}>Categories ({categories.length})</h3>
-        {categories.length === 0 ? (
+        {loading && categories.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }} aria-busy="true" role="status">
+            {[1, 2, 3].map((n) => (
+              <div key={n} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="skeleton-box" style={{ width: '40%', height: '18px' }} />
+                  <div className="skeleton-box" style={{ width: '25%', height: '12px' }} />
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <div className="skeleton-box" style={{ width: '50px', height: '28px' }} />
+                  <div className="skeleton-box" style={{ width: '50px', height: '28px' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : categories.length === 0 ? (
           <p style={{ color: 'var(--text-secondary)' }}>No categories yet.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>

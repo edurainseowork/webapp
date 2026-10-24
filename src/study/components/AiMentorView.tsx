@@ -38,6 +38,7 @@ export function AiMentorView({ userName, onBack }: AiMentorViewProps) {
   const [activeDoubtId, setActiveDoubtId] = useState<string>(RECENT_DOUBTS[0].id);
   const [draft, setDraft] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const filteredDoubts = useMemo(() => {
     if (!sidebarSearch.trim()) return RECENT_DOUBTS;
@@ -47,19 +48,24 @@ export function AiMentorView({ userName, onBack }: AiMentorViewProps) {
 
   const flashStatus = (msg: string) => {
     setStatusMessage(msg);
-    setTimeout(() => setStatusMessage(null), 2200);
+    setTimeout(() => setStatusMessage(null), 2500);
   };
 
   const handleAskNewDoubt = () => {
     setActiveDoubtId('');
     setDraft('');
+    setIsAnalyzing(false);
     flashStatus('Fresh doubt session started.');
   };
 
   const handleSend = () => {
-    if (!draft.trim()) return;
-    flashStatus('Analyzing your doubt with EduAI…');
+    if (!draft.trim() || isAnalyzing) return;
+    setIsAnalyzing(true);
     setDraft('');
+    setTimeout(() => {
+      setIsAnalyzing(false);
+      flashStatus('EduAI analysis ready! Step-by-step breakdown generated.');
+    }, 1800);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -168,11 +174,21 @@ export function AiMentorView({ userName, onBack }: AiMentorViewProps) {
               </p>
             </div>
 
-            {statusMessage && (
+            {isAnalyzing ? (
+              <div className="w-full max-w-xl bg-white/90 backdrop-blur-md rounded-2xl p-5 shadow-sm border border-emerald-900/10 space-y-3 animate-fadeIn" aria-busy="true" role="status">
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-800">
+                  <Sparkles className="w-4 h-4 text-emerald-600 animate-spin" />
+                  <span>EduAI is thinking & decomposing your concept...</span>
+                </div>
+                <div className="h-4 w-5/6 rounded skeleton-shimmer" />
+                <div className="h-4 w-4/6 rounded skeleton-shimmer" />
+                <div className="h-4 w-3/4 rounded skeleton-shimmer" />
+              </div>
+            ) : statusMessage ? (
               <div className="bg-white text-[#175A67] text-xs font-semibold px-4 py-2 rounded-full shadow-sm animate-fadeIn">
                 {statusMessage}
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* Bottom input bar */}

@@ -41,6 +41,7 @@ const formatWindow = (startTime: string, endTime: string) => {
 function GoLive({ user, coursesList, showToast }: GoLiveProps) {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
   const [liveClasses, setLiveClasses] = useState<LiveClass[]>([])
+  const [loadingClasses, setLoadingClasses] = useState(false)
 
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(todayLocal())
@@ -61,11 +62,14 @@ function GoLive({ user, coursesList, showToast }: GoLiveProps) {
   }
 
   const fetchLiveClasses = async (courseId: number) => {
+    setLoadingClasses(true)
     try {
       const data = await authFetch(`/courses/${courseId}/live-classes`)
       setLiveClasses(data.data)
     } catch (e: any) {
       showToast('Failed to load live classes: ' + e.message, 'error')
+    } finally {
+      setLoadingClasses(false)
     }
   }
 
@@ -224,7 +228,23 @@ function GoLive({ user, coursesList, showToast }: GoLiveProps) {
 
       <div className="glass-card">
         <h3 style={{ marginBottom: 'var(--space-md)' }}>Live & Upcoming Classes</h3>
-        {liveClasses.length === 0 ? (
+        {loadingClasses && liveClasses.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }} aria-busy="true" role="status">
+            {[1, 2].map((n) => (
+              <div key={n} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="skeleton-box" style={{ width: '40%', height: '18px' }} />
+                  <div className="skeleton-box" style={{ width: '30%', height: '14px' }} />
+                  <div className="skeleton-box" style={{ width: '50%', height: '12px' }} />
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <div className="skeleton-box" style={{ width: '70px', height: '28px' }} />
+                  <div className="skeleton-box" style={{ width: '60px', height: '28px' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : liveClasses.length === 0 ? (
           <p style={{ color: 'var(--text-secondary)' }}>No live classes scheduled for this course.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>

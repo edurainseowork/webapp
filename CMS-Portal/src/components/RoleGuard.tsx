@@ -14,19 +14,41 @@ export interface RoleGuardProps {
     onRoleResolved?: (role: string | null) => void;
 }
 
+let cachedAuthUid: string | null = null;
+let cachedRole: string | null = null;
+
 export function RoleGuard({
   children,
   allowedRoles = ['admin', 'faculty'],
   fallbackLogin,
   onRoleResolved,
 }: RoleGuardProps) {
-  const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const onRoleResolvedRef = React.useRef(onRoleResolved);
+  React.useEffect(() => {
+    onRoleResolvedRef.current = onRoleResolved;
+  }, [onRoleResolved]);
+
+  const [user, setUser] = useState<User | null>(() => auth.currentUser);
+  const [role, setRole] = useState<string | null>(() => {
+    if (auth.currentUser && auth.currentUser.uid === cachedAuthUid) {
+      return cachedRole;
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    return !(auth.currentUser && auth.currentUser.uid === cachedAuthUid && cachedRole);
+  });
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  const checkUserRole = async (currentUser: User) => {
+  const checkUserRole = async (currentUser: User, forceRefresh = false) => {
+    if (!forceRefresh && currentUser.uid === cachedAuthUid && cachedRole) {
+      setRole(cachedRole);
+      onRoleResolvedRef.current?.(cachedRole);
+      setLoading(false);
+      return;
+    }
+
     try {
       // 1. Check Firebase ID Token custom claims
       const tokenResult = await currentUser.getIdTokenResult(true);
@@ -51,14 +73,16 @@ export function RoleGuard({
         }
       }
 
+      cachedAuthUid = currentUser.uid;
+      cachedRole = detectedRole;
       setRole(detectedRole);
-      onRoleResolved?.(detectedRole);
+      onRoleResolvedRef.current?.(detectedRole);
       setError(null);
     } catch (err: any) {
       console.error('[RoleGuard] Error verifying user permissions:', err);
       setError(err.message || 'Failed to verify user permissions');
       setRole('student');
-      onRoleResolved?.('student');
+      onRoleResolvedRef.current?.('student');
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -71,8 +95,10 @@ export function RoleGuard({
       if (currentUser) {
         await checkUserRole(currentUser);
       } else {
+        cachedAuthUid = null;
+        cachedRole = null;
         setRole(null);
-        onRoleResolved?.(null);
+        onRoleResolvedRef.current?.(null);
         setLoading(false);
       }
     });

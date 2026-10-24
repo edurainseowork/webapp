@@ -180,7 +180,7 @@ export function App() {
     setSearchQuery('');
     setActiveNav(nav);
     if (typeof window !== 'undefined') {
-      const slug = customSlug !== undefined ? customSlug : (nav === 'study-central' ? '' : nav === 'pi' ? 'daily-doubts' : nav);
+      const slug = customSlug !== undefined ? customSlug : (nav === 'study-central' ? '' : nav === 'pi' ? 'daily-drop' : nav);
       const url = `/study/${slug ? slug : ''}`;
       if (window.location.pathname !== url) {
         window.history.pushState(null, '', url);
@@ -795,6 +795,10 @@ export function App() {
             <BookDoubtSessionView
               onBack={() => setIsBookDoubtSessionOpen(false)}
               onOpenMySessions={() => openSubView('purchases')}
+              selectedBatch={selectedBatch}
+              goalName={goal?.name}
+              studentName={session?.name}
+              studentEmail={session?.email}
             />
           ) : isBookmarksPageOpen ? (
             <BookmarksView
@@ -824,8 +828,6 @@ export function App() {
             <CourseTestSeriesView
               onBack={() => setIsCourseTestsOpen(false)}
               selectedBatch={selectedBatch}
-              searchQuery={searchQuery}
-              onOpenUpgrade={() => setIsUpgradeOpen(true)}
               studentName={session?.name}
             />
           ) : isMyCoursesOpen ? (
@@ -840,8 +842,6 @@ export function App() {
           ) : activeNav === 'library' ? (
             <LibraryView
               onBack={() => navigateTo('study-central')}
-              searchQuery={searchQuery}
-              onOpenUpgrade={() => setIsUpgradeOpen(true)}
             />
           ) : activeNav === 'pi' ? (
             <PiView
@@ -866,7 +866,7 @@ export function App() {
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
             />
           ) : (
-            <>
+            <div className="animate-tab-content">
               {/* Subheader & Wi-Fi Sync Indicator */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
                 <div>
@@ -982,7 +982,7 @@ export function App() {
                   })}
                 </div>
               </section>
-            </>
+            </div>
           )}
 
         </main>

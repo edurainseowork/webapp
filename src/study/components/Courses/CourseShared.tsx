@@ -254,15 +254,23 @@ export function BatchCatalog({
 
 export function CatalogSkeleton({ count = 3 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" aria-busy="true" aria-label="Loading courses">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" aria-busy="true" role="status" aria-label="Loading courses">
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-[0_6px_24px_rgb(0,0,0,0.05)] animate-pulse">
-          <div className="h-[96px] bg-[#1B5868]/30" />
-          <div className="p-5 space-y-3">
-            <div className="h-3 w-1/2 rounded bg-slate-200" />
-            <div className="h-3 w-3/4 rounded bg-slate-200" />
-            <div className="h-3 w-2/3 rounded bg-slate-200" />
-            <div className="h-8 w-full rounded-full bg-slate-100 mt-6" />
+        <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-slate-100 flex flex-col">
+          <div className="h-[96px] skeleton-shimmer-dark" />
+          <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="h-3 w-1/3 rounded-full skeleton-shimmer" />
+              <div className="h-4 w-4/5 rounded skeleton-shimmer" />
+              <div className="h-3 w-1/2 rounded skeleton-shimmer" />
+            </div>
+            <div className="pt-4 space-y-2">
+              <div className="flex justify-between items-center">
+                <div className="h-4 w-1/4 rounded skeleton-shimmer" />
+                <div className="h-3 w-1/4 rounded skeleton-shimmer" />
+              </div>
+              <div className="h-9 w-full rounded-xl skeleton-shimmer" />
+            </div>
           </div>
         </div>
       ))}

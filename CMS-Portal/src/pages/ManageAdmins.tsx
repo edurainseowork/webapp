@@ -223,7 +223,37 @@ function ManageAdmins({ showToast, openCreate, onCreateOpened }: ManageAdminsPro
         {ROLE_ORDER.map((role) => filterButton(role, `${ROLES[role].plural} (${counts[role]})`))}
       </div>
 
-      {visible.length === 0 ? (
+      {loading && visible.length === 0 ? (
+        <div style={{ overflowX: 'auto' }} aria-busy="true" role="status">
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Email</th>
+                <th style={thStyle}>Role</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Created</th>
+                <th style={thStyle}>Last sign-in</th>
+                <th style={thStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[1, 2, 3, 4].map((n) => (
+                <tr key={n}>
+                  <td style={tdStyle}>
+                    <div className="skeleton-box" style={{ width: '160px', height: '16px', marginBottom: '6px' }} />
+                    <div className="skeleton-box" style={{ width: '100px', height: '12px' }} />
+                  </td>
+                  <td style={tdStyle}><div className="skeleton-box" style={{ width: '80px', height: '22px', borderRadius: '999px' }} /></td>
+                  <td style={tdStyle}><div className="skeleton-box" style={{ width: '70px', height: '22px', borderRadius: '999px' }} /></td>
+                  <td style={tdStyle}><div className="skeleton-box" style={{ width: '90px', height: '14px' }} /></td>
+                  <td style={tdStyle}><div className="skeleton-box" style={{ width: '90px', height: '14px' }} /></td>
+                  <td style={tdStyle}><div className="skeleton-box" style={{ width: '60px', height: '26px', borderRadius: '4px' }} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : visible.length === 0 ? (
         <p style={mutedText}>{roleFilter === 'all' ? 'No users yet.' : `No ${ROLES[roleFilter].plural} yet.`}</p>
       ) : (
         <div style={{ overflowX: 'auto' }}>

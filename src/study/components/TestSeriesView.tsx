@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Lock, Sparkles, Bell, ArrowLeft, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { SubPageHeader } from './SubPageHeader';
 
@@ -10,11 +10,23 @@ interface TestSeriesViewProps {
 export const TestSeriesView: React.FC<TestSeriesViewProps> = ({ onBack }) => {
   const [notified, setNotified] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleNotify = () => {
     setNotified(true);
     setToast('You will be notified as soon as All India Test Pass is unlocked!');
-    setTimeout(() => setToast(null), 3000);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   };
 
   return (

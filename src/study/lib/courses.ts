@@ -63,7 +63,16 @@ const REFRESH_MS = 60_000;
 let state: CoursesState = { status: 'loading', error: null, courses: [], categories: [], categoriesError: null, ownedIds: [] };
 let inFlight: Promise<void> | null = null;
 let lastLoadedAt = 0;
+let currentUserId: string | null = null;
 const listeners = new Set<() => void>();
+
+export function resetCoursesForUser(uid: string | null): void {
+  if (currentUserId !== uid) {
+    currentUserId = uid;
+    lastLoadedAt = 0;
+    setState({ ownedIds: [] });
+  }
+}
 
 const setState = (next: Partial<CoursesState>) => {
   state = { ...state, ...next };
@@ -74,12 +83,13 @@ const errorMessage = (err: unknown, fallback: string) =>
   err instanceof Error && err.message ? err.message : fallback;
 
 async function fetchOwnedIds(): Promise<number[]> {
+  const reqUid = currentUserId;
   try {
     const res = await apiFetch<{ data?: unknown[] }>('/razorpay/my-courses');
     return (res.data ?? []).map(Number).filter((id) => Number.isInteger(id));
   } catch {
-    // Not fatal: the catalogue still works, the student just sees nothing as owned
-    return state.ownedIds;
+    // Not fatal: return cached IDs only if belonging to the same user, else empty list
+    return currentUserId === reqUid ? state.ownedIds : [];
   }
 }
 
@@ -165,15 +175,18 @@ export async function fetchCourseContent(courseId: number): Promise<ContentResul
   try {
     const res = await apiFetch<{ data?: Array<Record<string, any>> }>(`/courses/${courseId}/content?parentId=all`);
     const items = (res.data ?? []).map(
-      (item): CmsContentItem => ({
-        id: String(item.id),
-        parentId: item.parentId ?? item.parent_id ?? null,
-        title: String(item.title ?? ''),
-        type: item.type,
-        mediaUrl: item.mediaUrl ?? item.media_url ?? item.url ?? null,
-        fileSize: item.fileSize ?? item.file_size ?? null,
-        order: Number(item.order ?? 0),
-      })
+      (item): CmsContentItem => {
+        const rawParent = item.parentId ?? item.parent_id ?? null;
+        return {
+          id: String(item.id),
+          parentId: rawParent != null ? String(rawParent) : null,
+          title: String(item.title ?? ''),
+          type: item.type,
+          mediaUrl: item.mediaUrl ?? item.media_url ?? item.url ?? null,
+          fileSize: item.fileSize ?? item.file_size ?? null,
+          order: Number(item.order ?? 0),
+        };
+      }
     );
     return { status: 'ok', items };
   } catch (err) {
@@ -195,7 +208,10 @@ export type EnrollResult = { ok: true } | { ok: false; paymentRequired: boolean;
 export async function enrollInCourse(courseId: number): Promise<EnrollResult> {
   try {
     await apiFetch('/enrollments', { body: { courseId } });
-    await refreshOwnedCourses();
+    if (!state.ownedIds.includes(courseId)) {
+      setState({ ownedIds: [...state.ownedIds, courseId] });
+    }
+    void refreshOwnedCourses();
     return { ok: true };
   } catch (err) {
     const paymentRequired = err instanceof ApiError && err.status === 403;

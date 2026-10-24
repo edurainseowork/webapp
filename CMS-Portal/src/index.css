@@ -21,6 +21,15 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 20px;
+
+  /* Enterprise Motion Tokens (per Motion Architecture Specification) */
+  --duration-instant: 100ms;
+  --duration-fast: 180ms;
+  --duration-normal: 260ms;
+  --duration-slow: 400ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-quad: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out-std: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -174,4 +183,81 @@ body::before {
 .btn:hover {
   transform: translateY(-2px);
   opacity: 0.9;
+}
+
+.btn:active, button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* 60fps Hardware-Accelerated Shimmer Wave Keyframe (PDF Manual Architecture) */
+@keyframes shimmerWave {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Dark Mode Skeleton Primitives for CMS */
+.skeleton-box {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmerWave 1.6s infinite linear;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+.skeleton-text {
+  height: 14px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+}
+
+.skeleton-title {
+  height: 20px;
+  width: 60%;
+  margin-bottom: 12px;
+  border-radius: 6px;
+}
+
+.skeleton-card {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+/* Directional View Entrance Animation */
+@keyframes fadeInSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-view {
+  animation: fadeInSlideUp var(--duration-normal) var(--ease-out-expo) forwards;
+}
+
+/* WCAG 2.1 Reduced Motion Safety */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 120ms !important;
+    transition-property: opacity, background-color, color, border-color !important;
+  }
+  .skeleton-box {
+    animation: none !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+  }
 }
