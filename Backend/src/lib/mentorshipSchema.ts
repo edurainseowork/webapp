@@ -45,6 +45,14 @@ const STATEMENTS = [
         mentor_uid text NOT NULL,
         created_at timestamp NOT NULL DEFAULT now(),
         PRIMARY KEY (user_id, mentor_uid))`,
+  // Lessons a student opened (profile → Overall Syllabus Velocity); see migrations/0007_lesson_progress.sql
+  sql`CREATE TABLE IF NOT EXISTS lesson_progress (
+        user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        course_id integer NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        content_id text NOT NULL,
+        completed_at timestamp NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, content_id))`,
+  sql`CREATE INDEX IF NOT EXISTS lesson_progress_user_course_idx ON lesson_progress (user_id, course_id)`,
 ];
 
 let ready: Promise<void> | null = null;

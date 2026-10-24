@@ -354,6 +354,17 @@ export const mentorFavoritesTable = pgTable("mentor_favorites", {
   mentorUid: text("mentor_uid").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.userId, table.mentorUid] })]);
+// Lessons a student has opened (= done) — used for "Overall Syllabus Velocity" on the profile.
+// Created at runtime by Backend/src/lib/mentorshipSchema.ts (and migrations/0007_lesson_progress.sql).
+export const lessonProgressTable = pgTable("lesson_progress", {
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  courseId: integer("course_id").notNull().references(() => coursesTable.id, { onDelete: "cascade" }),
+  contentId: text("content_id").notNull(), // course_content.id as text (no FK: its type differs between databases)
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.contentId] }),
+  index("lesson_progress_user_course_idx").on(table.userId, table.courseId),
+]);
 
 // Zod Schemas
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true });

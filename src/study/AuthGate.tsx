@@ -23,6 +23,8 @@ interface AuthContextValue {
   /** First name for greetings, e.g. "Abhinav" */
   firstName: string;
   logout: () => Promise<void>;
+    /** Shows a newly saved name in the header straight away (after Profile → Save) */
+    updateSessionName: (name: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -88,6 +90,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       session: { uid: 'dev-student', name: 'Student', email: 'student@edurain.in', role: 'student' },
       firstName: 'Student',
       logout: async () => {},
+      updateSessionName: () => {},
     };
     return <AuthContext.Provider value={devValue}>{children}</AuthContext.Provider>;
   }
@@ -166,6 +169,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       // The next person signs in from the normal study address
       replacePath(STUDY_HOME);
     },
+    updateSessionName: (name: string) => setSession((s) => (s ? { ...s, name } : s)),
   };
 
   // Mentor / Teacher Assistance only ever get their desk; the study app is never rendered for them

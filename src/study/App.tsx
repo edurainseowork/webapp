@@ -35,6 +35,7 @@ import { ProfileView } from './components/Profile-section/ProfileView';
 import { LibraryView } from './components/LibraryView';
 import { CohortGoalModal } from './components/Modals/CohortGoalModal';
 import { fetchGoal, saveGoal, type StudentGoal } from './lib/goal';
+import { recordActivity } from './lib/profile';
 import { PurchasesModal } from './components/Modals/PurchasesModal';
 import { PurchasesView } from './components/PurchasesView';
 import { PiView } from './components/PiView';
@@ -215,6 +216,10 @@ export function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+  // Daily streak: record one visit per login session (the backend counts days, not visits)
+  useEffect(() => {
+    recordActivity();
+  }, [session.uid]);
 
   // After login: load the saved goal once; students who haven't picked one yet get the goal popup.
   // Returning students with a goal land on Daily Drop (they can change the goal from the top navigation).
@@ -849,7 +854,14 @@ export function App() {
 
             />
           ) : activeNav === 'profile' ? (
-            <ProfileView onBack={() => navigateTo('study-central')} />
+            <ProfileView
+              onBack={() => navigateTo('study-central')}
+              goal={goal}
+              onGoalSaved={(saved) => {
+                setGoal(saved);
+                setSelectedBatch(saved.name);
+              }}
+            />
           ) : activeNav === 'library' ? (
             <LibraryView
               onBack={() => navigateTo('study-central')}
