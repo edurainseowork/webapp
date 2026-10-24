@@ -684,7 +684,7 @@ export function App() {
                   <Award className="w-4 h-4" />
                   <span>ALL INDIA TEST PASS</span>
                 </div>
-                <Lock className="w-3.5 h-3.5 opacity-70" />
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-800">Live</span>
               </button>
             </div>
           </div>
@@ -761,7 +761,7 @@ export function App() {
                   <Award className="w-4 h-4" />
                   <span>ALL INDIA TEST PASS</span>
                 </div>
-                <Lock className="w-3.5 h-3.5 opacity-70" />
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-800">Live</span>
               </button>
             </div>
           </div>
@@ -877,6 +877,7 @@ export function App() {
             <TestSeriesView
               onBack={() => navigateTo('study-central')}
               onOpenUpgrade={() => setIsUpgradeOpen(true)}
+              onOpenCourseTests={() => setIsCourseTestsOpen(true)}
             />
           ) : (
             <>

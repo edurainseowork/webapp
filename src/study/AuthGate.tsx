@@ -79,9 +79,19 @@ function FullScreenMessage({ children }: { children: ReactNode }) {
   );
 }
 
-// Shows the login / sign-up screens until the user is signed in, then renders the app untouched.
-// The Firebase session survives reloads ("Keep me signed in" = local persistence, otherwise this tab only).
+// ponytail: Set BYPASS_AUTH = true to temporarily bypass Firebase login for local dev testing
+const BYPASS_AUTH = false;
+
 export function AuthGate({ children }: { children: ReactNode }) {
+  if (BYPASS_AUTH) {
+    const devValue: AuthContextValue = {
+      session: { uid: 'dev-student', name: 'Student', email: 'student@edurain.in', role: 'student' },
+      firstName: 'Student',
+      logout: async () => {},
+    };
+    return <AuthContext.Provider value={devValue}>{children}</AuthContext.Provider>;
+  }
+
   const [phase, setPhase] = useState<Phase>('checking');
   const [session, setSession] = useState<Session | null>(null);
 
