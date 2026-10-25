@@ -17,6 +17,7 @@ router.get("/", async (_req, res) => {
     title: adminNotificationsTable.title,
     body: adminNotificationsTable.body,
     imageUrl: adminNotificationsTable.imageUrl,
+    link: adminNotificationsTable.link,
     createdAt: adminNotificationsTable.createdAt,
   })
     .from(adminNotificationsTable)

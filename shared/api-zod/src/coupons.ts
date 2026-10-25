@@ -27,14 +27,24 @@ export const CouponBody = zod
       .positive("Frequency must be a positive number")
       .max(1_000_000, "Frequency is too large")
       .nullish(),
+    maxDiscountAmount: zod.coerce
+      .number({ invalid_type_error: "Cap amount must be a number" })
+      .int("Cap amount must be a whole number")
+      .positive("Cap amount must be a positive number")
+      .max(10_000_000, "Cap amount is too large")
+      .nullish(),
   })
   .superRefine((value, ctx) => {
     if (!value.isPublic && value.usageLimit == null) {
       ctx.addIssue({ code: zod.ZodIssueCode.custom, path: ["usageLimit"], message: "Frequency is required for private coupons" });
     }
   })
-  // Public coupons are unlimited
-  .transform((value) => ({ ...value, usageLimit: value.isPublic ? null : value.usageLimit ?? null }));
+  // Public coupons are unlimited; maxDiscountAmount defaults to null if not provided
+  .transform((value) => ({
+    ...value,
+    usageLimit: value.isPublic ? null : value.usageLimit ?? null,
+    maxDiscountAmount: value.maxDiscountAmount ?? null,
+  }));
 
 export type CouponBody = zod.infer<typeof CouponBody>;
 

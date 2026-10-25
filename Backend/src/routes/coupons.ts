@@ -32,9 +32,20 @@ const serializeCoupon = (coupon: Coupon, courseIds: number[]) => ({
   status: !coupon.isActive || isExhausted(coupon) ? "expired" : "active",
 });
 
-export const calculateDiscount = (price: number, discountPercent: number) => {
-  const discountAmount = Math.round((price * discountPercent) / 100);
-  return { originalPrice: price, discountAmount, finalPrice: price - discountAmount };
+export const calculateDiscount = (price: number, discountPercent: number, maxDiscountAmount?: number | null) => {
+  let discountAmount = Math.round((price * discountPercent) / 100);
+  if (maxDiscountAmount && maxDiscountAmount > 0) {
+    const capPaise = maxDiscountAmount * 100;
+    if (discountAmount > capPaise) {
+      discountAmount = capPaise;
+    }
+  }
+  return {
+    originalPrice: price,
+    discountAmount,
+    finalPrice: Math.max(0, price - discountAmount),
+    maxDiscountAmount: maxDiscountAmount ?? null,
+  };
 };
 
 type CouponCheck =
@@ -139,10 +150,10 @@ router.post("/validate", async (req, res) => {
         res.status(404).json({ valid: false, error: "Course not found" });
         return;
       }
-      pricing = calculateDiscount(course.price, coupon.discountPercent);
+      pricing = calculateDiscount(course.price, coupon.discountPercent, coupon.maxDiscountAmount);
     }
 
-    res.json({ valid: true, code: coupon.code, discountPercent: coupon.discountPercent, ...pricing });
+    res.json({ valid: true, code: coupon.code, discountPercent: coupon.discountPercent, maxDiscountAmount: coupon.maxDiscountAmount ?? null, ...pricing });
   } catch (error) {
     console.error("Failed to validate coupon", error);
     res.status(500).json({ error: "Failed to validate coupon" });
@@ -166,7 +177,14 @@ router.get("/public", async (req, res) => {
       const courseIds = courseIdsByCoupon.get(coupon.id) ?? [];
       return courseIds.length === 0 || courseIds.includes(courseId);
     });
-    res.json({ success: true, data: applicable.map(({ code, discountPercent }) => ({ code, discountPercent })) });
+    res.json({
+      success: true,
+      data: applicable.map(({ code, discountPercent, maxDiscountAmount }) => ({
+        code,
+        discountPercent,
+        maxDiscountAmount: maxDiscountAmount ?? null,
+      })),
+    });
   } catch (error) {
     console.error("Failed to fetch public coupons", error);
     res.status(500).json({ error: "Failed to fetch coupons" });
@@ -195,7 +213,13 @@ router.post("/redeem", requireAuth, async (req, res) => {
     }
 
     const coupon = await db.transaction((tx) => redeemCoupon(tx, result.coupon.id, { courseId, firebaseUid: req.auth!.uid }));
-    res.json({ success: true, code: result.coupon.code, discountPercent: result.coupon.discountPercent, ...calculateDiscount(course.price, result.coupon.discountPercent), couponActive: coupon?.isActive ?? false });
+    res.json({
+      success: true,
+      code: result.coupon.code,
+      discountPercent: result.coupon.discountPercent,
+      ...calculateDiscount(course.price, result.coupon.discountPercent, result.coupon.maxDiscountAmount),
+      couponActive: coupon?.isActive ?? false,
+    });
   } catch (error) {
     if (error instanceof CouponExhaustedError) {
       res.status(400).json({ error: "This coupon has expired" });
@@ -248,7 +272,7 @@ router.post("/", requireAdmin, async (req, res) => {
   }
 
   try {
-    const { code, discountPercent, isPublic, courseIds, usageLimit } = parsed.data;
+    const { code, discountPercent, maxDiscountAmount, isPublic, courseIds, usageLimit } = parsed.data;
     if (await findCodeConflict(code)) {
       res.status(409).json({ error: `Coupon code ${code} already exists` });
       return;
@@ -260,7 +284,15 @@ router.post("/", requireAdmin, async (req, res) => {
     }
 
     const coupon = await db.transaction(async (tx) => {
-      const [created] = await tx.insert(couponsTable).values({ code, discountPercent, isPublic, usageLimit, usedCount: 0, isActive: true }).returning();
+      const [created] = await tx.insert(couponsTable).values({
+        code,
+        discountPercent,
+        maxDiscountAmount: maxDiscountAmount ?? null,
+        isPublic,
+        usageLimit,
+        usedCount: 0,
+        isActive: true,
+      }).returning();
       await tx.insert(couponCoursesTable).values(courseIds.map((courseId) => ({ couponId: created.id, courseId })));
       return created;
     });
@@ -288,7 +320,7 @@ router.put("/:id", requireAdmin, async (req, res) => {
   }
 
   try {
-    const { code, discountPercent, isPublic, courseIds, usageLimit } = parsed.data;
+    const { code, discountPercent, maxDiscountAmount, isPublic, courseIds, usageLimit } = parsed.data;
     const [existing] = await db.select().from(couponsTable).where(eq(couponsTable.id, id));
     if (!existing) {
       res.status(404).json({ error: "Coupon not found" });
@@ -312,6 +344,7 @@ router.put("/:id", requireAdmin, async (req, res) => {
       const [updated] = await tx.update(couponsTable).set({
         code,
         discountPercent,
+        maxDiscountAmount: maxDiscountAmount ?? null,
         isPublic,
         usageLimit,
         // Raising the frequency (or switching to public) re-activates a coupon that had hit its limit

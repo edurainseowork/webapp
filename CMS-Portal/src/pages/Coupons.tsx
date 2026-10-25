@@ -8,6 +8,7 @@ type Coupon = {
   id: number
   code: string
   discountPercent: number
+  maxDiscountAmount: number | null
   isPublic: boolean
   usageLimit: number | null
   usedCount: number
@@ -35,6 +36,7 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
 
   const [code, setCode] = useState('')
   const [discountPercent, setDiscountPercent] = useState('')
+  const [maxDiscountAmount, setMaxDiscountAmount] = useState('')
   const [isPublic, setIsPublic] = useState(true)
   const [courseIds, setCourseIds] = useState<number[]>([])
   const [usageLimit, setUsageLimit] = useState('')
@@ -72,6 +74,7 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
     setEditingId(null)
     setCode('')
     setDiscountPercent('')
+    setMaxDiscountAmount('')
     setIsPublic(true)
     setCourseIds([])
     setUsageLimit('')
@@ -81,6 +84,7 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
     setEditingId(coupon.id)
     setCode(coupon.code)
     setDiscountPercent(String(coupon.discountPercent))
+    setMaxDiscountAmount(coupon.maxDiscountAmount ? String(coupon.maxDiscountAmount) : '')
     setIsPublic(coupon.isPublic)
     // Legacy coupons apply to every course: pre-select all so saving keeps that behaviour unless the admin narrows it
     setCourseIds(coupon.appliesToAllCourses ? coursesList.map((course) => course.id) : coupon.courseIds)
@@ -98,6 +102,7 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
     const parsed = CouponBody.safeParse({
       code,
       discountPercent,
+      maxDiscountAmount: maxDiscountAmount.trim() === '' ? null : maxDiscountAmount,
       isPublic,
       courseIds,
       usageLimit: isPublic || usageLimit.trim() === '' ? null : usageLimit,
@@ -147,16 +152,67 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
       <div className="glass-card">
         <h3 style={{ marginBottom: 'var(--space-md)' }}>{editingId !== null ? `Edit Coupon ${code}` : 'Generate Coupons'}</h3>
         <form noValidate style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }} onSubmit={(e) => { e.preventDefault(); handleSave() }}>
-          <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Coupon Code</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-md)' }}>
+            <div>
+              <label style={labelStyle}>Coupon Code *</label>
               <input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. DIWALI50" maxLength={30} style={inputStyle} />
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Discount (%)</label>
-              <input type="number" min={1} max={100} value={discountPercent} onChange={e => setDiscountPercent(e.target.value)} placeholder="e.g. 20" style={inputStyle} />
+            <div>
+              <label style={labelStyle}>Discount Percentage (%) *</label>
+              <input type="number" min={1} max={100} value={discountPercent} onChange={e => setDiscountPercent(e.target.value)} placeholder="e.g. 10 for 10% off" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Maximum Discount Limit (₹ Cap) — Optional</label>
+              <input type="number" min={1} step={1} value={maxDiscountAmount} onChange={e => setMaxDiscountAmount(e.target.value)} placeholder="e.g. 100 for Max ₹100 off" style={inputStyle} />
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Leave empty for unlimited discount. If set, discount will never exceed this amount.
+              </div>
             </div>
           </div>
+
+          {Number(discountPercent) > 0 && (
+            <div style={{
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.25)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              fontSize: '0.85rem',
+            }}>
+              <div style={{ fontWeight: 600, color: '#60a5fa', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>💡 Live Capping Preview:</span>
+                <span style={{ fontWeight: 400, color: '#93c5fd' }}>
+                  {maxDiscountAmount ? `${discountPercent}% off up to ₹${Number(maxDiscountAmount).toLocaleString('en-IN')} max` : `Flat ${discountPercent}% off (No maximum limit)`}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', color: '#e2e8f0' }}>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '10px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: '2px' }}>On a ₹1,000 Course:</div>
+                  <div>
+                    Discount: <strong style={{ color: '#4ade80' }}>₹{Math.min(Math.round((1000 * Number(discountPercent)) / 100), maxDiscountAmount ? Number(maxDiscountAmount) : Infinity)}</strong>
+                    {maxDiscountAmount && (1000 * Number(discountPercent)) / 100 > Number(maxDiscountAmount) && (
+                      <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '4px' }}>(Capped)</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Student pays: <strong>₹{1000 - Math.min(Math.round((1000 * Number(discountPercent)) / 100), maxDiscountAmount ? Number(maxDiscountAmount) : Infinity)}</strong>
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '10px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: '2px' }}>On a ₹5,000 Course:</div>
+                  <div>
+                    Discount: <strong style={{ color: '#4ade80' }}>₹{Math.min(Math.round((5000 * Number(discountPercent)) / 100), maxDiscountAmount ? Number(maxDiscountAmount) : Infinity)}</strong>
+                    {maxDiscountAmount && (5000 * Number(discountPercent)) / 100 > Number(maxDiscountAmount) && (
+                      <span style={{ color: '#f59e0b', fontSize: '0.75rem', marginLeft: '4px' }}>(Capped at ₹{maxDiscountAmount})</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '2px' }}>
+                    Student pays: <strong>₹{5000 - Math.min(Math.round((5000 * Number(discountPercent)) / 100), maxDiscountAmount ? Number(maxDiscountAmount) : Infinity)}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
             <div style={{ flex: 1 }}>
@@ -237,7 +293,9 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                       <h4 style={{ color: 'white', letterSpacing: '0.5px' }}>{coupon.code}</h4>
-                      <span style={{ ...badgeStyle, background: 'rgba(255,255,255,0.1)' }}>{coupon.discountPercent}% OFF</span>
+                      <span style={{ ...badgeStyle, background: 'rgba(255,255,255,0.1)' }}>
+                        {coupon.discountPercent}% OFF{coupon.maxDiscountAmount ? ` (Up to ₹${coupon.maxDiscountAmount.toLocaleString('en-IN')})` : ''}
+                      </span>
                       <span style={{ ...badgeStyle, background: coupon.isPublic ? 'rgba(79,70,229,0.6)' : 'rgba(255,255,255,0.1)' }}>{coupon.isPublic ? 'PUBLIC' : 'PRIVATE'}</span>
                       <span style={{ ...badgeStyle, background: coupon.status === 'active' ? 'rgba(29,154,120,0.7)' : '#ff5e5e' }}>{coupon.status === 'active' ? 'ACTIVE' : 'EXPIRED'}</span>
                     </div>

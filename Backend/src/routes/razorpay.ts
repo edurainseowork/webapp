@@ -97,7 +97,7 @@ router.post("/order", requireAuth, async (req, res) => {
         res.status(result.status).json({ error: result.error });
         return;
       }
-      amount = calculateDiscount(course.price, result.coupon.discountPercent).finalPrice;
+      amount = calculateDiscount(course.price, result.coupon.discountPercent, result.coupon.maxDiscountAmount).finalPrice;
       couponId = result.coupon.id;
     }
 

@@ -54,6 +54,8 @@ function App() {
   const [loginError, setLoginError] = useState(handoffError);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [activeStudents, setActiveStudents] = useState(0);
+  const [contentStats, setContentStats] = useState<Record<string, number>>({});
+  const [usersList, setUsersList] = useState<any[]>([]);
 
   const [coursesList, setCoursesList] = useState<AdminCourse[]>([]);
   
@@ -116,9 +118,11 @@ function App() {
   const fetchStats = async () => {
     setIsLoadingStats(true);
     try {
-      const data = await apiFetch('/stats');
+      const data = await apiFetch<any>('/stats');
       if (data.success) {
         setActiveStudents(data.activeStudents);
+        setContentStats(data.content || {});
+        setUsersList(data.users || []);
       }
     } catch (e) {
       console.error("Failed to fetch stats", e);
@@ -504,17 +508,56 @@ function App() {
                   <span className="stat-value">{activeStudents}</span>
                 )}
               </div>
+              {Object.entries(contentStats).map(([k, v]) => (
+                <div key={k} className="glass-card stat-card" role="status" aria-busy={isLoadingStats}>
+                  <span className="stat-label" style={{ textTransform: 'capitalize' }}>
+                    {k.replace(/([A-Z])/g, ' $1')}
+                  </span>
+                  {isLoadingStats ? (
+                    <div className="skeleton-box" style={{ width: '60px', height: '48px', marginTop: '6px' }} />
+                  ) : (
+                    <span className="stat-value">{v}</span>
+                  )}
+                </div>
+              ))}
             </div>
-            <div className="glass-card" style={{ minHeight: '300px' }}>
-              <h3 style={{ marginBottom: 'var(--space-md)' }}>Recent Activity</h3>
+            <div className="glass-card" style={{ minHeight: '300px', overflowX: 'auto', marginTop: 'var(--space-lg)' }}>
+              <h3 style={{ marginBottom: 'var(--space-md)' }}>Registered Students</h3>
               {isLoadingStats ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} aria-busy="true" role="status">
                   <div className="skeleton-box" style={{ width: '100%', height: '42px' }} />
-                  <div className="skeleton-box" style={{ width: '85%', height: '42px' }} />
-                  <div className="skeleton-box" style={{ width: '70%', height: '42px' }} />
+                  <div className="skeleton-box" style={{ width: '90%', height: '42px' }} />
+                  <div className="skeleton-box" style={{ width: '75%', height: '42px' }} />
                 </div>
+              ) : usersList.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)' }}>No students registered yet.</p>
               ) : (
-                <p style={{ color: 'var(--text-secondary)' }}>Welcome to the CMS Dashboard.</p>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Name</th>
+                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Email</th>
+                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Phone</th>
+                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Location</th>
+                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usersList.map((u, i) => (
+                      <tr key={u.id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '12px 8px' }}>{u.name || '-'}</td>
+                        <td style={{ padding: '12px 8px' }}>{u.email}</td>
+                        <td style={{ padding: '12px 8px' }}>{u.phone || '-'}</td>
+                        <td style={{ padding: '12px 8px' }}>
+                          {[u.city, u.state].filter(Boolean).join(', ') || '-'}
+                        </td>
+                        <td style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>
+                          {new Date(u.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>

@@ -12,6 +12,13 @@ export const AdminNotificationBody = zod.object({
     .trim()
     .min(3, "Description must be at least 3 characters")
     .max(500, "Description must be at most 500 characters"),
+  link: zod
+    .string()
+    .trim()
+    .url("Link must be a valid URL (e.g. https://youtube.com/...)")
+    .or(zod.literal(""))
+    .nullish()
+    .transform((v) => v || null),
 });
 
 export type AdminNotificationBody = zod.infer<typeof AdminNotificationBody>;

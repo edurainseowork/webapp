@@ -53,6 +53,8 @@ const STATEMENTS = [
         completed_at timestamp NOT NULL DEFAULT now(),
         PRIMARY KEY (user_id, content_id))`,
   sql`CREATE INDEX IF NOT EXISTS lesson_progress_user_course_idx ON lesson_progress (user_id, course_id)`,
+  sql`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS max_discount_amount integer`,
+  sql`ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS link text`,
 ];
 
 let ready: Promise<void> | null = null;

@@ -100,6 +100,7 @@ export const couponsTable = pgTable("coupons", {
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(),
   discountPercent: integer("discount_percent").notNull(),
+  maxDiscountAmount: integer("max_discount_amount"), // optional cap in rupees (e.g. 1000 for Up to ₹1000 off); null = no cap
   isPublic: boolean("is_public").default(false).notNull(),
   usageLimit: integer("usage_limit"), // max redemptions for private coupons; null = unlimited
   usedCount: integer("used_count").default(0).notNull(),
@@ -216,6 +217,7 @@ export const adminNotificationsTable = pgTable("admin_notifications", {
   title: text("title").notNull(),
   body: text("body").notNull(),
   imageUrl: text("image_url"),
+  link: text("link"), // optional external URL (e.g. YouTube video, website, etc.)
   sentBy: text("sent_by"),
   recipientCount: integer("recipient_count").default(0).notNull(),
   pushSentCount: integer("push_sent_count").default(0).notNull(),

@@ -38,7 +38,7 @@ router.get("/", async (_req, res) => {
 
 // Send a notification to every registered user: saved for the in-app history and pushed to all devices
 router.post("/", rateLimit({ windowMs: 60_000, max: 10 }), parseMultipart, async (req, res) => {
-  const { title, description } = AdminNotificationBody.parse(req.body ?? {});
+  const { title, description, link } = AdminNotificationBody.parse(req.body ?? {});
 
   let imageUrl: string | null = null;
   if (req.file) {
@@ -58,6 +58,7 @@ router.post("/", rateLimit({ windowMs: 60_000, max: 10 }), parseMultipart, async
     title,
     body: description,
     imageUrl,
+    link: link || null,
     sentBy: req.auth?.email ?? null,
     recipientCount,
   }).returning();
@@ -67,7 +68,11 @@ router.post("/", rateLimit({ windowMs: 60_000, max: 10 }), parseMultipart, async
     title,
     body: description,
     imageUrl,
-    data: { type: "admin_notification", adminNotificationId: notification.id },
+    data: {
+      type: "admin_notification",
+      adminNotificationId: notification.id,
+      link: link || undefined,
+    },
   });
 
   const [updated] = await db.update(adminNotificationsTable)

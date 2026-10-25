@@ -98,6 +98,7 @@ export const coupons = pgTable("coupons", {
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(),
   discountPercent: integer("discount_percent").notNull(),
+  maxDiscountAmount: integer("max_discount_amount"),
   isPublic: boolean("is_public").default(false).notNull(),
 });
 
