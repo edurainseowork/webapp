@@ -14,6 +14,7 @@ import GoLive from './GoLive'
 import Notifications from './Notifications'
 import Tests from './Tests'
 import ManageAdmins from './ManageAdmins'
+import StudentManager from './StudentManager'
 import MentorDesk from './MentorDesk'
 import TeacherAssistantDesk from './TeacherAssistantDesk'
 import TeacherAssistantAnalysis from './TeacherAssistantAnalysis'
@@ -63,6 +64,7 @@ function App() {
       if (pageLoadingTimeoutRef.current) clearTimeout(pageLoadingTimeoutRef.current);
     };
   }, []);
+  const [targetStudentForNotification, setTargetStudentForNotification] = useState<{ id: number; name: string | null; email: string; phone: string | null } | null>(null);
   const [openEBookModal, setOpenEBookModal] = useState(false);
   const [highlightEBookSection, setHighlightEBookSection] = useState(false);
   const ebookUploadSectionRef = useRef<HTMLDivElement>(null);
@@ -557,9 +559,12 @@ function App() {
               <div className={`nav-link ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => handleTabChange('tests')}>
                 Tests
               </div>
+              <div className={`nav-link ${activeTab === 'students' ? 'active' : ''}`} onClick={() => handleTabChange('students')}>
+                Student Management
+              </div>
               {me.isSuperAdmin && (
                 <div className={`nav-link ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => handleTabChange('admins')}>
-                  Manage Users
+                  Manage Staff
                 </div>
               )}
               {me.isSuperAdmin && (
@@ -595,7 +600,8 @@ function App() {
                 {activeTab === 'golive' && 'Live Classes'}
                 {activeTab === 'notifications' && 'Notifications'}
                 {activeTab === 'tests' && 'Test Management'}
-                {activeTab === 'admins' && 'Manage Users'}
+                {activeTab === 'students' && 'User & Student Management'}
+                {activeTab === 'admins' && 'Manage Staff'}
                 {activeTab === 'taAnalytics' && 'Teacher Assistant Analysis'}
               </h1>
               <div className="user-profile" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
@@ -828,13 +834,30 @@ function App() {
 
             {activeTab === 'notifications' && (
               <div className="animate-view">
-                <Notifications showToast={showToast} />
+                <Notifications
+                  showToast={showToast}
+                  initialTargetStudent={targetStudentForNotification}
+                  onClearInitialTarget={() => setTargetStudentForNotification(null)}
+                />
               </div>
             )}
 
             {activeTab === 'tests' && (
               <div className="animate-view">
                 <Tests showToast={showToast} />
+              </div>
+            )}
+
+            {activeTab === 'students' && (
+              <div className="animate-view">
+                <StudentManager
+                  coursesList={coursesList}
+                  showToast={showToast}
+                  onSendDirectNotification={(student) => {
+                    setTargetStudentForNotification(student);
+                    handleTabChange('notifications');
+                  }}
+                />
               </div>
             )}
             {activeTab === 'admins' && me.isSuperAdmin && (

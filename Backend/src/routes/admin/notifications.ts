@@ -2,7 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import multer from "multer";
 import { count, desc, eq } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { adminNotificationsTable, pushTokensTable, usersTable } from "@workspace/db/schema";
+import { adminNotificationsTable, notificationsTable, pushTokensTable, usersTable } from "@workspace/db/schema";
 import { AdminNotificationBody, NOTIFICATION_IMAGE_MAX_BYTES } from "@workspace/api-zod";
 import { HttpError } from "../../lib/http-error";
 import { logger } from "../../lib/logger";
@@ -84,6 +84,56 @@ router.post("/", rateLimit({ windowMs: 60_000, max: 10 }), parseMultipart, async
   res.status(201).json({ success: true, data: updated, devices: tokens.length });
 });
 
+// Send a targeted in-app notification directly to a specific student
+router.post("/direct", rateLimit({ windowMs: 60_000, max: 30 }), async (req, res) => {
+  const { userId, title, description, link } = req.body ?? {};
+  const numUserId = Number(userId);
+  if (!numUserId || Number.isNaN(numUserId) || numUserId <= 0) {
+    throw new HttpError(400, "Valid student userId is required");
+  }
+  if (!title || typeof title !== "string" || !title.trim()) {
+    throw new HttpError(400, "Notification title is required");
+  }
+  if (!description || typeof description !== "string" || !description.trim()) {
+    throw new HttpError(400, "Notification message is required");
+  }
+
+  const [targetUser] = await db.select().from(usersTable).where(eq(usersTable.id, numUserId)).limit(1);
+  if (!targetUser) {
+    throw new HttpError(404, "Student not found");
+  }
+
+  const [notification] = await db.insert(notificationsTable).values({
+    userId: numUserId,
+    type: "admin",
+    title: title.trim(),
+    body: description.trim(),
+    isRead: false,
+  }).returning();
+
+  const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(eq(pushTokensTable.userId, numUserId))).map((r) => r.token);
+  let push = { sent: 0, failed: 0 };
+  if (tokens.length > 0) {
+    push = await sendExpoPush(tokens, {
+      title: title.trim(),
+      body: description.trim(),
+      data: {
+        type: "direct_admin_notification",
+        notificationId: notification.id,
+        link: link || undefined,
+      },
+    });
+  }
+
+  logger.info({ studentId: numUserId, studentEmail: targetUser.email, notificationId: notification.id, ...push }, "Direct student notification sent");
+  res.status(201).json({
+    success: true,
+    data: notification,
+    pushSentCount: push.sent,
+    targetUser: { id: targetUser.id, name: targetUser.name, email: targetUser.email },
+  });
+});
+
 // Delete an admin notification (CMS): removes it so it disappears from students' in-app notifications
 router.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);
@@ -105,4 +155,3 @@ router.delete("/:id", async (req, res) => {
 });
 
 export default router;
-
