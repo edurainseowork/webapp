@@ -6,7 +6,7 @@ import { ensureMentorshipSchema } from "./mentorshipSchema";
 //  - tests the student submitted (test_submissions) compared with every other student's,
 //  - lessons opened in their enrolled courses (lesson_progress),
 //  - the daily streak is read from the users row by the profile route.
-// "Rank" means rank among EduRAIN students who took the same tests (there is no national data).
+// "Rank" means rank among EduRain students who took the same tests (there is no national data).
 
 export type StudentStats = {
   /** Avg. Mock Pace: total time in submitted tests ÷ total questions in them */

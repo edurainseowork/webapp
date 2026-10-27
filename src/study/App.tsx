@@ -382,12 +382,12 @@ export function App() {
 
             <img
               src={logo}
-              alt="EduRAIN Logo"
+              alt="EduRain Logo"
               className="h-9 sm:h-10 w-auto object-contain transition-transform hover:scale-105"
             />
             <div className="flex items-center text-lg sm:text-xl font-bold tracking-tight">
               <span className="text-emerald-600 font-bold">Edu</span>
-              <span className="text-amber-400 font-black uppercase">RAIN</span>
+              <span className="text-amber-400 font-black">Rain</span>
             </div>
           </div>
 
@@ -566,12 +566,12 @@ export function App() {
               <div className="flex items-center gap-2">
                 <img
                   src={logo}
-                  alt="EduRAIN Logo"
+                  alt="EduRain Logo"
                   className="h-8 w-auto object-contain"
                 />
                 <div className="flex items-center text-lg font-bold tracking-tight">
                   <span className="text-emerald-600 font-bold">Edu</span>
-                  <span className="text-amber-400 font-black uppercase">RAIN</span>
+                  <span className="text-amber-400 font-black">Rain</span>
                 </div>
               </div>
               <button
@@ -689,7 +689,6 @@ export function App() {
                   <Award className="w-4 h-4" />
                   <span>ALL INDIA TEST PASS</span>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-800">Live</span>
               </button>
             </div>
           </div>
@@ -766,7 +765,6 @@ export function App() {
                   <Award className="w-4 h-4" />
                   <span>ALL INDIA TEST PASS</span>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-800">Live</span>
               </button>
             </div>
           </div>

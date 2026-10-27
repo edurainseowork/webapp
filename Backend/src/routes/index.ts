@@ -25,6 +25,7 @@ import { mentorDeskRouter, teacherAssistantDeskRouter } from "./desks.js";
 import studentGoalRouter from "./studentGoal.js";
 import mentorshipRouter from "./mentorship.js";
 import progressRouter from "./progress.js";
+import aiDoubtRouter from "./aiDoubt.js";
 import { restrictDeskRoles, authenticateToken } from "../middleware/auth.js";
 const router = Router();
 
@@ -64,6 +65,8 @@ router.use(liveClassesRouter);
 router.use("/notifications", notificationsRouter);
 // Admin notifications for the app (separate from the live class notifications above)
 router.use("/admin-notifications", adminNotificationsRouter);
+router.use("/ai/doubt", aiDoubtRouter);
+router.use("/ai", aiDoubtRouter);
 router.use(bunnyRouter);
 
 export default router;

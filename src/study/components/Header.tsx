@@ -99,10 +99,10 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Logo */}
           <div className="flex items-center gap-2.5 group cursor-pointer">
-            <img src={logoImage} alt="EduRAIN Logo" className="h-10 w-auto object-contain group-hover:scale-105 transition-transform" />
+            <img src={logoImage} alt="EduRain Logo" className="h-10 w-auto object-contain group-hover:scale-105 transition-transform" />
             <div className="flex items-center text-xl font-black tracking-tight font-sans">
               <span className="text-emerald-600 font-bold">Edu</span>
-              <span className="text-amber-400 font-black uppercase">RAIN</span>
+              <span className="text-amber-400 font-black">Rain</span>
               <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 ml-1.5">
                 LMS
               </span>

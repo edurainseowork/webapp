@@ -84,8 +84,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'test-series' as NavTabId,
       label: 'All India Test Pass',
       icon: Award,
-      badge: 'Live',
-      badgeColor: 'text-emerald-300 bg-emerald-950/60 border-emerald-500/40',
       locked: false,
       highlight: true,
     },
@@ -103,7 +101,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="flex items-center font-bold">
               <span className="text-emerald-500 font-bold">Edu</span>
-              <span className="text-amber-400 font-black uppercase">RAIN</span>
+              <span className="text-amber-400 font-black">Rain</span>
               <span className="text-slate-300 font-normal ml-1">Navigation</span>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import multer from "multer";
 import { HttpError } from "../lib/http-error";
 import { logger } from "../lib/logger";
+import { sendSlackAlert } from "../lib/slackAlert";
 
 // Express 5 forwards rejected promises from async handlers here, so routes can just throw.
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
@@ -51,6 +52,12 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
 
   // Never leak internals (SQL, stack traces) to clients.
   logger.error({ err, path: req.originalUrl }, "Unhandled error");
+  sendSlackAlert(`500 API Error: ${req.method} ${req.originalUrl}`, err, {
+    path: req.originalUrl,
+    method: req.method,
+    ip: req.ip,
+    userId: (req as any).user?.id,
+  }).catch(() => {});
   res.status(500).json({ error: "Internal server error" });
 }
 

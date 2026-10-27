@@ -71,10 +71,10 @@ export function DeskLayout({ apiPrefix, deskName, subtitle, description, cards, 
       <header className="bg-white/70 backdrop-blur-md border-b border-white/80">
         <div className="max-w-[1100px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <img src={logo} alt="EduRAIN" className="w-9 h-9 rounded-xl shadow-sm" />
+            <img src={logo} alt="EduRain" className="w-9 h-9 rounded-xl shadow-sm" />
             <span className="text-lg font-bold tracking-tight">
               <span className="text-emerald-600">Edu</span>
-              <span className="text-amber-400 font-black">RAIN</span>
+              <span className="text-amber-400 font-black">Rain</span>
             </span>
             <span className="hidden sm:inline-block text-[11px] font-semibold bg-[#175A67]/10 text-[#175A67] px-2.5 py-1 rounded-full">{deskName}</span>
           </div>

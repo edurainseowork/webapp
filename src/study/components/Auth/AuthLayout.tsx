@@ -29,7 +29,7 @@ export function AuthBrand({ onDark = false }: { onDark?: boolean }) {
       <img src={logo} alt="EduRain Logo" className="h-9 w-auto object-contain" />
       <div className="flex items-center text-xl font-bold tracking-tight">
         <span className={onDark ? 'text-emerald-400' : 'text-emerald-600'}>Edu</span>
-        <span className="text-amber-400 font-black uppercase">RAIN</span>
+        <span className="text-amber-400 font-black">Rain</span>
       </div>
     </div>
   );
