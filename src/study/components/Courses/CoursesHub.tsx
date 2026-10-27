@@ -15,10 +15,6 @@ interface CoursesHubProps {
   searchQuery?: string;
   /** CMS category id of the student's goal: its tab is selected when the courses open */
   goalCategoryId?: number | null;
-  /** Name of the student's active goal/cohort (e.g. JEE, NEET) */
-  goalName?: string | null;
-  /** Allows the student to switch their cohort directly from the courses page */
-  onChangeGoal?: () => void;
   onExit: () => void;
 }
 
@@ -28,7 +24,7 @@ interface CoursesHubProps {
  *  - enrolled → "Your Enrolled Courses"
  *  - clicking any course from either one → course detail page
  */
-export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, goalName, onChangeGoal, onExit }: CoursesHubProps) {
+export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, onExit }: CoursesHubProps) {
   const [view, setView] = useState<HubView>(mode);
   const [openBatchId, setOpenBatchId] = useState<string | null>(null);
   const [jumpToPlans, setJumpToPlans] = useState(false);
@@ -81,9 +77,6 @@ export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, g
   return (
     <CourseStoreView
       searchQuery={searchQuery}
-      goalCategoryId={goalCategoryId}
-      goalName={goalName}
-      onChangeGoal={onChangeGoal}
       onBack={onExit}
       onOpenBatch={(id) => openBatch(id)}
       onBuyBatch={(id) => openBatch(id, true)}

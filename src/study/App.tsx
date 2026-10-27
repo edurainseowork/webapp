@@ -903,8 +903,6 @@ export function App() {
               selectedBatch={selectedBatch}
               searchQuery={searchQuery}
               goalCategoryId={goal?.id ?? null}
-              goalName={goal?.name ?? null}
-              onChangeGoal={() => setIsGoalModalOpen(true)}
               onExit={() => navigateTo('study-central')}
             />
           ) : activeNav === 'test-series' ? (
