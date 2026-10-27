@@ -6,9 +6,18 @@ import { requireAdmin } from "../middlewares/auth";
 
 const router = Router();
 
-// Get all banners
+// Get all banners (optional ?placement=home|purchases)
 router.get("/", async (req, res) => {
   try {
+    const placement = typeof req.query.placement === "string" ? req.query.placement : undefined;
+    if (placement) {
+      const banners = await db
+        .select()
+        .from(bannersTable)
+        .where(eq(bannersTable.placement, placement))
+        .orderBy(desc(bannersTable.createdAt));
+      return res.json({ success: true, data: banners });
+    }
     const banners = await db.select().from(bannersTable).orderBy(desc(bannersTable.createdAt));
     res.json({ success: true, data: banners });
   } catch (error) {
@@ -18,21 +27,33 @@ router.get("/", async (req, res) => {
 
 // Create a banner
 router.post("/", requireAdmin, async (req, res) => {
-  const { imageUrl } = req.body;
+  const { imageUrl, placement = "home", courseId, title, linkUrl } = req.body;
   if (!imageUrl) {
     return res.status(400).json({ error: "imageUrl is required" });
   }
   
   try {
-    const count = await db.select().from(bannersTable);
-    if (count.length >= 5) {
-      return res.status(400).json({ error: "Maximum 5 banners allowed. Delete one first." });
+    const existing = await db
+      .select()
+      .from(bannersTable)
+      .where(eq(bannersTable.placement, placement));
+    if (existing.length >= 5) {
+      return res.status(400).json({ error: `Maximum 5 banners allowed for ${placement}. Delete one first.` });
     }
 
-    const newBanner = await db.insert(bannersTable).values({ imageUrl }).returning();
+    const newBanner = await db
+      .insert(bannersTable)
+      .values({
+        imageUrl,
+        placement,
+        courseId: courseId ? Number(courseId) : null,
+        title: title ? String(title).trim() : null,
+        linkUrl: linkUrl ? String(linkUrl).trim() : null,
+      })
+      .returning();
     return res.json({ success: true, data: newBanner[0] });
   } catch (error: any) {
-    return res.status(500).json({ error: "Failed to create banner" });
+    return res.status(500).json({ error: "Failed to create banner: " + error.message });
   }
 });
 

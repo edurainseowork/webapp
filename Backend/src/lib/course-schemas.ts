@@ -63,6 +63,8 @@ const courseFields = {
   studentsEnrolled: optionalCount,
   duration: optionalText(40),
   totalLessons: optionalCount,
+  isPurchasedBanner: z.boolean(),
+  bannerImage: mentorPhoto,
 };
 
 
@@ -83,6 +85,8 @@ export const createCourseSchema = z
     studentsEnrolled: courseFields.studentsEnrolled.optional(),
     duration: courseFields.duration.optional(),
     totalLessons: courseFields.totalLessons.optional(),
+    isPurchasedBanner: courseFields.isPurchasedBanner.default(false),
+    bannerImage: courseFields.bannerImage.default(null),
   })
   .strict()
   .refine(originalPriceNotBelowPrice, originalPriceIssue);

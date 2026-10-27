@@ -10,6 +10,15 @@ import {
   formatINR,
 } from './CourseShared';
 import { SubPageHeader, BreadcrumbCrumb } from '../SubPageHeader';
+import { apiFetch } from '../../lib/api';
+
+interface PurchasesBanner {
+  id: number;
+  imageUrl: string;
+  courseId?: number | null;
+  title?: string | null;
+  linkUrl?: string | null;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Hero promos — the best CMS offers the student doesn't own yet       */
@@ -18,11 +27,18 @@ import { SubPageHeader, BreadcrumbCrumb } from '../SubPageHeader';
 const MAX_PROMOS = 3;
 const PROMO_INTERVAL_MS = 6000;
 
-const pickPromos = (batches: Batch[], isOwned: (id: string) => boolean): Batch[] =>
-  batches
+const pickPromos = (batches: Batch[], isOwned: (id: string) => boolean): Batch[] => {
+  // 1. Prioritize courses explicitly set as banner in CMS Course Manager
+  const chosen = batches.filter((b) => b.isPurchasedBanner && !isOwned(b.id));
+  if (chosen.length > 0) {
+    return chosen.slice(0, MAX_PROMOS);
+  }
+  // 2. Fall back to best CMS offers not owned
+  return batches
     .filter((b) => !isOwned(b.id) && b.price > 0)
     .sort((a, b) => discountPct(b.price, b.mrp) - discountPct(a.price, a.mrp))
     .slice(0, MAX_PROMOS);
+};
 
 /* ------------------------------------------------------------------ */
 /*  Main view                                                           */
@@ -49,10 +65,30 @@ export function EnrolledCoursesView({
 }: EnrolledCoursesViewProps) {
   const [query] = useState('');
   const [promoIndex, setPromoIndex] = useState(0);
+  const [purchasesBanners, setPurchasesBanners] = useState<PurchasesBanner[]>([]);
+  const [purchasesBannerIndex, setPurchasesBannerIndex] = useState(0);
   const catalogRef = useRef<HTMLElement>(null);
 
   const { status, error, reload, batches, filters, ownedBatches, isOwned } = useCatalog(goalKey);
   const promos = pickPromos(batches, isOwned);
+
+  // Fetch custom purchases banners uploaded in CMS Manage Banners
+  useEffect(() => {
+    apiFetch<{ success: boolean; data: PurchasesBanner[] }>('/banners?placement=purchases')
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setPurchasesBanners(res.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Rotate custom purchases banner carousel
+  useEffect(() => {
+    if (purchasesBanners.length < 2) return;
+    const timer = setTimeout(() => setPurchasesBannerIndex((i) => (i + 1) % purchasesBanners.length), PROMO_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [purchasesBannerIndex, purchasesBanners.length]);
 
   // Rotate the hero promo; restarts whenever the student picks a slide
   useEffect(() => {
@@ -87,8 +123,55 @@ export function EnrolledCoursesView({
             }
           />
 
-          {/* Hero promo carousel */}
-          {promoBatch && (
+          {/* Hero Banner: Custom Purchases Banner (from Manage Banners) OR Promo Course Carousel */}
+          {purchasesBanners.length > 0 ? (
+            <div className="relative overflow-hidden rounded-3xl shadow-[0_12px_40px_rgba(15,59,66,0.25)] border border-white/20 group animate-fadeIn">
+              {(() => {
+                const currentBanner = purchasesBanners[purchasesBannerIndex % purchasesBanners.length];
+                const bannerCourse = currentBanner.courseId ? batches.find(b => b.courseId === currentBanner.courseId) : null;
+                return (
+                  <div
+                    onClick={() => {
+                      if (currentBanner.courseId) onOpenBatch(String(currentBanner.courseId));
+                      else if (currentBanner.linkUrl) window.open(currentBanner.linkUrl, '_blank');
+                    }}
+                    className={`relative w-full ${currentBanner.courseId || currentBanner.linkUrl ? 'cursor-pointer hover:opacity-95 transition-opacity' : ''}`}
+                  >
+                    <img
+                      src={currentBanner.imageUrl}
+                      alt={currentBanner.title || "Purchases Banner"}
+                      className="w-full h-auto max-h-[280px] sm:max-h-[340px] object-cover rounded-3xl block"
+                    />
+                    {currentBanner.title && (
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 sm:p-6 text-white rounded-b-3xl">
+                        <h2 className="text-lg sm:text-2xl font-bold">{currentBanner.title}</h2>
+                        {bannerCourse && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs bg-[#FAD9B5] text-[#0B1C30] font-semibold px-3 py-1 rounded-lg">
+                              View Course &rarr;
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {purchasesBanners.length > 1 && (
+                <div className="absolute bottom-3 right-4 flex items-center gap-1.5 z-10 bg-black/40 backdrop-blur-md px-2.5 py-1.5 rounded-full">
+                  {purchasesBanners.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={(e) => { e.stopPropagation(); setPurchasesBannerIndex(idx); }}
+                      className={`h-1.5 rounded-full transition-all ${idx === purchasesBannerIndex % purchasesBanners.length ? 'w-5 bg-white' : 'w-1.5 bg-white/50'}`}
+                      title={`Slide ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : promoBatch ? (
             <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0F3B42] via-[#0D3238] to-[#0A2329] text-white p-6 sm:p-8 shadow-[0_12px_40px_rgba(15,59,66,0.25)]">
               <div className="absolute -top-24 -left-10 w-[380px] h-[380px] rounded-full bg-teal-300/10 blur-[100px] pointer-events-none" />
               <div key={promoBatch.id} className="relative grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-center animate-fadeIn">
@@ -131,8 +214,8 @@ export function EnrolledCoursesView({
 
                 <div>
                   <div className="rounded-2xl bg-white/[0.07] border border-white/15 overflow-hidden backdrop-blur-sm">
-                    {promoBatch.thumbnail && (
-                      <img src={promoBatch.thumbnail} alt="" className="w-full h-36 object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                    {(promoBatch.bannerImage || promoBatch.thumbnail) && (
+                      <img src={promoBatch.bannerImage || promoBatch.thumbnail || ''} alt="" className="w-full h-36 object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
                     )}
                     <div className="p-5">
                       {promoBatch.studentsEnrolled ? (
@@ -171,7 +254,7 @@ export function EnrolledCoursesView({
                 </div>
               </div>
             </section>
-          )}
+          ) : null}
 
           {/* Enrolled courses */}
           <section>

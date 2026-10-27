@@ -83,11 +83,47 @@ export function onBookmarksChange(callback: () => void): () => void {
 /*  Saved PDFs (Protected - In-App Only, No Device Downloads)          */
 /* ------------------------------------------------------------------ */
 
+export const INITIAL_SAMPLE_PDFS: SavedPdf[] = [
+  {
+    id: 'prd-infra-perf-01',
+    title: 'Infrastructure Performance Scalability PRD',
+    mediaUrl: 'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf',
+    subject: 'Physics',
+    courseTitle: 'Class 11th Mathematics',
+    courseId: 10,
+    fileSize: '1.2 MB',
+    savedAt: new Date().toISOString(),
+  },
+  {
+    id: 'thermo-notes-02',
+    title: 'Thermodynamics & Heat Transfer Revision Notes',
+    mediaUrl: 'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf',
+    subject: 'Physics',
+    courseTitle: 'JEE Advanced Physics Mastery',
+    courseId: 11,
+    fileSize: '2.4 MB',
+    savedAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: 'organic-chem-03',
+    title: 'Organic Chemistry Reaction Mechanisms & Reagents',
+    mediaUrl: 'https://raw.githubusercontent.com/mozilla/pdf.js/master/web/compressed.tracemonkey-pldi-09.pdf',
+    subject: 'Chemistry',
+    courseTitle: 'Class 12th Chemistry Crash Course',
+    courseId: 12,
+    fileSize: '3.1 MB',
+    savedAt: new Date(Date.now() - 172800000).toISOString(),
+  },
+];
+
 export function getSavedPdfs(): SavedPdf[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(SAVED_PDFS_STORAGE_KEY);
-    if (!raw) return [];
+    if (raw === null) {
+      localStorage.setItem(SAVED_PDFS_STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_PDFS));
+      return INITIAL_SAMPLE_PDFS;
+    }
     return JSON.parse(raw);
   } catch {
     return [];

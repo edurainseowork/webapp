@@ -74,6 +74,7 @@ interface BookmarksViewProps {
   onClearHistory?: () => void;
   onWatchVideo?: (video: HistoryVideo) => void;
   onOpenPdfViewer?: () => void;
+  onOpenSavedPdfsPage?: () => void;
   onOpenWatchLater?: () => void;
   onAddDocument?: () => void;
   onOpenEbook?: (book: EBook) => void;
@@ -91,6 +92,7 @@ export function BookmarksView({
   onClearHistory,
   onWatchVideo,
   onOpenPdfViewer,
+  onOpenSavedPdfsPage,
   onOpenWatchLater,
   onAddDocument,
   onOpenEbook,
@@ -373,13 +375,17 @@ export function BookmarksView({
             </div>
             <button
               onClick={() => {
-                setIsSavedPdfsOpen(true);
-                onOpenPdfViewer?.();
+                if (onOpenSavedPdfsPage) {
+                  onOpenSavedPdfsPage();
+                } else {
+                  setIsSavedPdfsOpen(true);
+                  onOpenPdfViewer?.();
+                }
               }}
-              className="w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95 shadow-sm"
+              className="w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95 shadow-sm cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              Open PDF Viewer ({savedPdfs.length})
+              Open Saved PDFs Page ({savedPdfs.length})
             </button>
           </div>
 
@@ -427,13 +433,28 @@ export function BookmarksView({
                   <p className="text-xs text-[#2A707C]">In-app study collection • Device download is disabled</p>
                 </div>
               </div>
-              <button
-                onClick={() => setIsSavedPdfsOpen(false)}
-                className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-black/5 transition-colors"
-                title="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {onOpenSavedPdfsPage && (
+                  <button
+                    onClick={() => {
+                      setIsSavedPdfsOpen(false);
+                      onOpenSavedPdfsPage();
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs active:scale-95"
+                    title="Open as full dedicated page"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Full Page</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsSavedPdfsOpen(false)}
+                  className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-black/5 transition-colors"
+                  title="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Content List */}

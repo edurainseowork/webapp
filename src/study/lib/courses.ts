@@ -25,6 +25,8 @@ export interface CmsCourse {
   studentsEnrolled: number | null;
   duration: string | null;
   totalLessons: number | null;
+  isPurchasedBanner?: boolean;
+  bannerImage?: string | null;
 }
 
 export interface CmsCategory {
