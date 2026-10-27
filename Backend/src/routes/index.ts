@@ -25,6 +25,7 @@ import { mentorDeskRouter, teacherAssistantDeskRouter } from "./desks.js";
 import studentGoalRouter from "./studentGoal.js";
 import mentorshipRouter from "./mentorship.js";
 import progressRouter from "./progress.js";
+import ebooksRouter from "./ebooks.js";
 import { restrictDeskRoles, authenticateToken } from "../middleware/auth.js";
 const router = Router();
 
@@ -39,6 +40,7 @@ router.use("/coupons", couponsRouter);
 router.use("/razorpay", razorpayRouter);
 router.use("/google-play", googlePlayRouter);
 router.use("/content", contentRouter);
+router.use("/ebooks", ebooksRouter);
 router.use("/upload", uploadRouter);
 router.use("/banners", bannersRouter);
 router.use("/auth", authRouter);

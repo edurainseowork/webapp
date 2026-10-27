@@ -24,11 +24,28 @@ export async function apiFetch<T = any>(path: string, { method = 'GET', body, fo
   if (token) headers['Authorization'] = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(`${API_BASE_URL}/api${path}`, {
+  let res = await fetch(`${API_BASE_URL}/api${path}`, {
     method,
     headers,
     body: formData ?? (body !== undefined ? JSON.stringify(body) : undefined),
   });
+
+  // If token expired, auto-refresh token and retry once
+  if (res.status === 401 && auth.currentUser) {
+    try {
+      const freshToken = await auth.currentUser.getIdToken(true);
+      if (freshToken) {
+        headers['Authorization'] = `Bearer ${freshToken}`;
+        res = await fetch(`${API_BASE_URL}/api${path}`, {
+          method,
+          headers,
+          body: formData ?? (body !== undefined ? JSON.stringify(body) : undefined),
+        });
+      }
+    } catch (refreshErr) {
+      console.warn('Failed to refresh Firebase token on 401:', refreshErr);
+    }
+  }
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

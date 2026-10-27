@@ -30,6 +30,7 @@ export interface Batch {
   /** Course id as a string (used for navigation) */
   id: string;
   courseId: number;
+  categoryId?: number | null;
   /** Uppercase name used on catalogue cards */
   name: string;
   /** Ribbon on the card header (category) */
@@ -143,6 +144,7 @@ export function toBatch(course: CmsCourse, index: number): Batch {
   return {
     id: String(course.id),
     courseId: course.id,
+    categoryId: course.categoryId ?? null,
     name: course.title.toUpperCase(),
     label: category.toUpperCase(),
     tone: TONES[index % TONES.length],
@@ -314,7 +316,12 @@ export function useCatalog(goalKey?: string | null) {
     const batches = courses.map((course, i) => {
       const batch = toBatch(course, i);
       const matched = course.categoryId ? null : byName.get(batch.category.trim().toLowerCase());
-      return matched ? { ...batch, categories: [categoryKey(matched)] } : batch;
+      const resolvedCatId = course.categoryId ?? matched ?? null;
+      return {
+        ...batch,
+        categoryId: resolvedCatId,
+        categories: resolvedCatId ? [categoryKey(resolvedCatId)] : batch.categories,
+      };
     });
     const owned = new Set(ownedIds.map(String));
     const byId = new Map(batches.map((b) => [b.id, b]));

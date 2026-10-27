@@ -179,7 +179,17 @@ function TestResults({ test, showToast }: { test: TestItem; showToast: (message:
                 {results.map((row) => (
                   <tr key={row.id} title="View result" style={{ cursor: 'pointer' }} onClick={() => setOpenId(row.id)}>
                     <td style={{ ...tdStyle, fontWeight: 700 }}>{row.rank}</td>
-                    <td style={tdStyle}>{studentLabel(row)}<div style={{ ...mutedText, fontSize: '0.75rem' }}>{row.studentEmail}</div></td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 600 }}>{studentLabel(row)}</span>
+                        {(row.violationCount > 0 || row.submissionReason?.startsWith('CHEATING')) && (
+                          <span style={{ ...badgeStyle, background: '#ef4444', color: 'white', fontSize: '0.65rem', padding: '1px 5px', borderRadius: '4px' }}>
+                            CHEATING FLAGGED
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ ...mutedText, fontSize: '0.75rem' }}>{row.studentEmail}</div>
+                    </td>
                     <td style={tdStyle}>{row.userId}</td>
                     <td style={{ ...tdStyle, fontSize: '0.78rem', minWidth: '150px' }}>{test.courseTitle}<div style={{ ...mutedText, fontSize: '0.75rem' }}>{test.title}</div></td>
                     <td style={{ ...tdStyle, fontWeight: 700 }}>{row.score}</td>
@@ -189,7 +199,16 @@ function TestResults({ test, showToast }: { test: TestItem; showToast: (message:
                     <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{formatDate(row.submittedAt)}<div style={mutedText}>{formatTime(row.submittedAt)}</div></td>
                     <td style={tdStyle}><ReasonBadge reason={row.submissionReason} /></td>
                     <td style={{ ...tdStyle, color: row.violationCount ? '#fbbf24' : undefined }}>
-                      {row.violationCount}
+                      {row.violationCount > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                          <span style={{ fontWeight: 700, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            ⚠️ {row.violationCount} switch{row.violationCount === 1 ? '' : 'es'}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#ff8a8a' }}>cheat attempt</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#6ee7b7' }}>0</span>
+                      )}
                       {row.reportedViolationCount !== null && row.reportedViolationCount !== row.violationCount && (
                         <div style={{ ...mutedText, fontSize: '0.72rem' }}>app said {row.reportedViolationCount}</div>
                       )}
@@ -279,6 +298,18 @@ function ResultDetailModal({ testId, submissionId, onClose }: { testId: number; 
         <p style={mutedText}>Loading result...</p>
       ) : (
         <>
+          {(s.violationCount > 0 || s.submissionReason?.startsWith('CHEATING')) && (
+            <div style={{ padding: '12px 16px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#ff8a8a', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '1.4rem' }}>⚠️</span>
+              <div>
+                <div style={{ fontWeight: 700, color: '#fca5a5' }}>Cheating Warning Recorded: {s.violationCount} Tab Switch Violation{s.violationCount === 1 ? '' : 's'}</div>
+                <div style={{ fontSize: '0.82rem', marginTop: '2px', color: '#fecaca' }}>
+                  This student attempted to navigate away or switch tabs during the examination.
+                  {s.submissionReason === 'CHEATING_TAB_SWITCH' && ' The test was automatically force-submitted for exceeding the tab switch limit.'}
+                </div>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' }}>
             {info.map(([label, value]) => (
               <div key={label} style={{ padding: '8px 10px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)' }}>

@@ -72,6 +72,7 @@ export const SUBMISSION_REASON_LABELS: Record<string, string> = {
   TIME_EXPIRED: 'Time expired',
   CHEATING_APP_MINIMIZED: 'Cheating: app minimized',
   CHEATING_SCREEN_EXIT: 'Cheating: screen exit',
+  CHEATING_TAB_SWITCH: 'Cheating: tab switched',
   ADMIN_SUBMISSION: 'Closed by admin',
 }
 

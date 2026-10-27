@@ -29,6 +29,7 @@ interface CourseContentManagerProps {
   selectedCourseId?: string | number;
   onSelectCourse?: (id: string) => void;
   showToast?: (message: string, type?: 'success' | 'error') => void;
+  onOpenEBookUpload?: () => void;
 }
 
 function formatBytes(bytes?: number): string {
@@ -44,6 +45,7 @@ export default function CourseContentManager({
   selectedCourseId: initialSelectedCourseId,
   onSelectCourse,
   showToast: externalToast,
+  onOpenEBookUpload,
 }: CourseContentManagerProps) {
   // Course State
   const [activeCourseId, setActiveCourseId] = useState<string>(
@@ -765,6 +767,20 @@ export default function CourseContentManager({
                 style={styles.btnVideo}
               >
                 <span style={{ fontSize: '1.1rem' }}>🎥</span> + Upload Video
+              </button>
+
+              <button
+                onClick={() => {
+                  if (onOpenEBookUpload) {
+                    onOpenEBookUpload();
+                  } else {
+                    const el = document.getElementById('upload-ebooks-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }}
+                style={styles.btnEBook}
+              >
+                <span style={{ fontSize: '1.1rem' }}>📖</span> + Upload E-Book
               </button>
 
               <button
@@ -1642,6 +1658,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnVideo: {
     backgroundColor: '#ef4444',
+    color: '#ffffff',
+    border: 'none',
+    padding: '9px 16px',
+    borderRadius: '8px',
+    fontSize: '0.88rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  btnEBook: {
+    backgroundColor: '#8b5cf6',
     color: '#ffffff',
     border: 'none',
     padding: '9px 16px',

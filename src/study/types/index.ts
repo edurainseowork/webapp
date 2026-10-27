@@ -1,4 +1,4 @@
-﻿export interface Mission {
+export interface Mission {
   id: string;
   title: string;
   subtitle: string;
@@ -14,15 +14,16 @@ export interface VaultResource {
   second_text: string;
   id: string;
   title: string;
-  subject: 'Physics' | 'Chemistry' | 'Mathematics' | 'Mock Tests';
+  subject: 'Physics' | 'Chemistry' | 'Mathematics' | 'Mock Tests' | 'Live Sessions';
   countLabel: string;
   tags: string[];
-  iconType: 'book' | 'archive' | 'combat' | 'analytics';
+  iconType: 'book' | 'archive' | 'combat' | 'analytics' | 'live';
   isLive?: boolean;
   statusText?: string;
   description: string;
   downloadSize?: string;
   rating?: number;
+  pdfUrl?: string;
 }
 
 export interface NotificationItem {
