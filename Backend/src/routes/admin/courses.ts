@@ -13,6 +13,8 @@ import { HttpError, parseId } from "../../lib/http-error";
 import { deleteLocalUpload } from "../../lib/media";
 import { logger } from "../../lib/logger";
 import { resolveCourseMentors } from "../../lib/courseMentors";
+import { saveCoursePlans, withCoursePlans } from "../../lib/coursePlans";
+import { ensureMentorshipSchema } from "../../lib/mentorshipSchema";
 // Mounted behind requireAdmin in routes/admin/index.ts.
 const router = Router();
 
@@ -26,7 +28,8 @@ async function loadCourse(courseId: number) {
     .leftJoin(categoriesTable, eq(coursesTable.categoryId, categoriesTable.id))
     .where(eq(coursesTable.id, courseId));
   if (!course) throw new HttpError(404, "Course not found");
-  return course;
+  const [withPlans] = await withCoursePlans([course]);
+  return withPlans;
 }
 
 async function requireCategory(executor: Db | Tx, categoryId: number) {
@@ -62,7 +65,7 @@ router.get("/", async (req, res) => {
     .where(and(...filters))
     .orderBy(desc(coursesTable.updatedAt), desc(coursesTable.id));
 
-  res.json({ success: true, data: courses.map((c) => withPublicThumbnail(c, req)) });
+  res.json({ success: true, data: (await withCoursePlans(courses)).map((c) => withPublicThumbnail(c, req)) });
 });
 
 // GET /api/admin/courses/:id
@@ -100,6 +103,9 @@ router.post("/", async (req, res) => {
     })
     .returning({ id: coursesTable.id });
 
+  // Pro / Pro Max prices; a bad plan fails validation above, before the course is created
+  if (input.plans) await saveCoursePlans(created.id, input.plans);
+
   logger.info({ adminUid: req.auth?.uid, courseId: created.id }, "Course created");
   const course = await loadCourse(created.id);
   res.status(201).json({ success: true, data: withPublicThumbnail(course, req) });
@@ -109,6 +115,8 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const courseId = parseId(req.params.id);
   const input = updateCourseSchema.parse(req.body);
+  // Create course_plans (first use) before the transaction locks the course row
+  if (input.plans !== undefined) await ensureMentorshipSchema();
 
   const previousThumbnail = await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -152,6 +160,7 @@ router.patch("/:id", async (req, res) => {
     }
 
     await tx.update(coursesTable).set(patch).where(eq(coursesTable.id, courseId));
+    if (input.plans !== undefined) await saveCoursePlans(courseId, input.plans, tx);
     return input.thumbnail !== undefined && input.thumbnail !== existing.thumbnail ? existing.thumbnail : null;
   });
 

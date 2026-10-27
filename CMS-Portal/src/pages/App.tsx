@@ -19,7 +19,7 @@ import MentorDesk from './MentorDesk'
 import TeacherAssistantDesk from './TeacherAssistantDesk'
 import TeacherAssistantAnalysis from './TeacherAssistantAnalysis'
 import { handoffError } from '../handoff'
-
+import SupportContacts from './SupportContacts'
 import '../index.css'
 
 // Mentor Desk has its own URL: /mentorDesk
@@ -577,6 +577,9 @@ function App() {
               <div className={`nav-link ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => handleTabChange('tests')}>
                 Tests
               </div>
+              <div className={`nav-link ${activeTab === 'supportContacts' ? 'active' : ''}`} onClick={() => handleTabChange('supportContacts')}>
+                Support Contacts
+              </div>
               <div className={`nav-link ${activeTab === 'students' ? 'active' : ''}`} onClick={() => handleTabChange('students')}>
                 Student Management
               </div>
@@ -618,6 +621,7 @@ function App() {
                 {activeTab === 'golive' && 'Live Classes'}
                 {activeTab === 'notifications' && 'Notifications'}
                 {activeTab === 'tests' && 'Test Management'}
+                {activeTab === 'supportContacts' && 'Support Contacts'}
                 {activeTab === 'students' && 'User & Student Management'}
                 {activeTab === 'admins' && 'Manage Staff'}
                 {activeTab === 'taAnalytics' && 'Teacher Assistant Analysis'}
@@ -993,6 +997,12 @@ function App() {
             {activeTab === 'tests' && (
               <div className="animate-view">
                 <Tests showToast={showToast} />
+              </div>
+            )}
+
+            {activeTab === 'supportContacts' && (
+              <div className="animate-view">
+                <SupportContacts showToast={showToast} />
               </div>
             )}
 

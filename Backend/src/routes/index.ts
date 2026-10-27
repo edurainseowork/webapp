@@ -27,6 +27,7 @@ import mentorshipRouter from "./mentorship.js";
 import progressRouter from "./progress.js";
 import ebooksRouter from "./ebooks.js";
 import aiDoubtRouter from "./aiDoubt.js";
+import supportContactsRouter from "./supportContacts.js";
 import { restrictDeskRoles, authenticateToken } from "../middleware/auth.js";
 const router = Router();
 
@@ -57,6 +58,7 @@ router.use("/stats", statsRouter);
 router.use("/enrollments", enrollmentsRouter);
 router.use("/cms/tests", cmsTestsRouter);
 router.use("/tests", testsRouter);
+router.use("/support-contacts", supportContactsRouter);
 // Super Admin only: create and remove CMS admins
 router.use("/cms/admins", cmsAdminsRouter);
 // Desk APIs, each limited to its own role

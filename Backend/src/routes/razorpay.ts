@@ -9,6 +9,8 @@ import { calculateDiscount, checkCoupon, redeemCoupon } from "./coupons.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { logger } from "../lib/logger";
 import { reportAlternativeBillingToGoogle } from "./google-play.js";
+import { PLAN_NAMES, planIdSchema, planPrice } from "../lib/coursePlans";
+import { sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -70,7 +72,13 @@ router.post("/order", requireAuth, async (req, res) => {
     return;
   }
   const { courseId, couponCode } = parsed.data;
-
+  // Basic / Pro / Pro Max (optional; apps that don't send it buy Basic = the course price)
+  const planParsed = planIdSchema.safeParse(req.body?.plan ?? "basic");
+  if (!planParsed.success) {
+    res.status(400).json({ error: "Invalid plan" });
+    return;
+  }
+  const plan = planParsed.data;
   try {
     const user = await findUser(req.auth!.uid);
     if (!user) {
@@ -89,7 +97,12 @@ router.post("/order", requireAuth, async (req, res) => {
       return;
     }
 
-    let amount = course.price;
+    const listPrice = await planPrice(courseId, course.price, plan);
+    if (listPrice === null) {
+      res.status(400).json({ error: `This course has no ${PLAN_NAMES[plan]} plan` });
+      return;
+    }
+    let amount = listPrice;
     let couponId: number | null = null;
     if (couponCode) {
       const result = await checkCoupon(couponCode, courseId);
@@ -97,7 +110,7 @@ router.post("/order", requireAuth, async (req, res) => {
         res.status(result.status).json({ error: result.error });
         return;
       }
-      amount = calculateDiscount(course.price, result.coupon.discountPercent, result.coupon.maxDiscountAmount).finalPrice;
+      amount = calculateDiscount(listPrice, result.coupon.discountPercent, result.coupon.maxDiscountAmount).finalPrice;
       couponId = result.coupon.id;
     }
 
@@ -127,7 +140,7 @@ router.post("/order", requireAuth, async (req, res) => {
       amount,
       currency: "INR",
       receipt: `c${courseId}_u${user.id}_${Date.now()}`.slice(0, 40),
-      notes: { courseId: String(courseId), userId: String(user.id), ...(couponId ? { couponId: String(couponId) } : {}) },
+      notes: { courseId: String(courseId), userId: String(user.id), plan, ...(couponId ? { couponId: String(couponId) } : {}) },
     });
 
     await db.insert(paymentsTable).values({
@@ -138,6 +151,8 @@ router.post("/order", requireAuth, async (req, res) => {
       currency: "INR",
       couponId,
     });
+    // Which plan this order is for (payments has no plan column; course_plans table set up by planPrice)
+    await db.execute(sql`INSERT INTO payment_plans (razorpay_order_id, plan) VALUES (${order.id}, ${plan}) ON CONFLICT DO NOTHING`);
 
     res.json({
       success: true,
@@ -146,7 +161,8 @@ router.post("/order", requireAuth, async (req, res) => {
       amount,
       currency: "INR",
       keyId, // public key id only, safe for the app
-      courseTitle: course.title,
+      courseTitle: plan === "basic" ? course.title : `${course.title} (${PLAN_NAMES[plan]})`,
+      plan,
       prefill: { name: user.name ?? "", email: user.email },
     });
   } catch (error: any) {

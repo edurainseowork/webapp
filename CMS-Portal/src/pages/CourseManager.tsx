@@ -35,13 +35,46 @@ type FormState = {
   duration: string;
   totalLessons: string;
   isPurchasedBanner: boolean;
+  // Plans: Basic = price / originalPrice above; Pro and Pro Max are optional
+  basicFeatures: string;
+  proPrice: string;
+  proOriginalPrice: string;
+  proFeatures: string;
+  proMaxPrice: string;
+  proMaxOriginalPrice: string;
+  proMaxFeatures: string;
 };
 
 const emptyForm: FormState = {
   title: '', description: '', price: '', originalPrice: '', categoryId: '', publishNow: false,
   studentsEnrolled: '', duration: '', totalLessons: '', isPurchasedBanner: false,
+  basicFeatures: '', proPrice: '', proOriginalPrice: '', proFeatures: '', proMaxPrice: '', proMaxOriginalPrice: '', proMaxFeatures: '',
 };
 
+/** "What's included" textarea → list of lines (blank lines dropped). */
+const featureLines = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boolean);
+const MAX_FEATURES = 8;
+
+/** Checks one optional paid plan (Pro / Pro Max); returns an error message or null. */
+function validatePlan(name: string, price: string, mrp: string, features: string): string | null {
+  if (price === '') {
+    if (mrp !== '' || featureLines(features).length) return `Enter the ${name} price (or clear its other fields)`;
+    return null;
+  }
+  const p = Number(price);
+  if (!Number.isFinite(p) || p < 1) return `${name} price must be at least ₹1`;
+  if (mrp !== '') {
+    const m = Number(mrp);
+    if (!Number.isFinite(m) || m < p) return `${name} compare price must be greater than or equal to its price`;
+  }
+  return null;
+}
+
+const toPaidPlan = (price: string, mrp: string, features: string) =>
+  price === '' ? null : { price: rupeesToPaise(price), originalPrice: mrp === '' ? null : rupeesToPaise(mrp), features: featureLines(features) };
+
+// One editable mentor row: `photo` is the saved URL, `photoFile` a newly picked image
+// `uid` links the row to an invited mentor account; null for mentors typed in by hand earlier
 type MentorRow = { key: number; uid: string | null; name: string; experience: string; photo: string | null; photoFile: File | null; photoPreview: string | null };
 
 const MAX_MENTORS = 10;
@@ -184,6 +217,13 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       duration: course.duration ?? '',
       totalLessons: course.totalLessons != null ? String(course.totalLessons) : '',
       isPurchasedBanner: Boolean(course.isPurchasedBanner),
+      basicFeatures: (course.plans?.basic?.features ?? []).join('\n'),
+      proPrice: course.plans?.pro ? paiseToRupees(course.plans.pro.price) : '',
+      proOriginalPrice: course.plans?.pro?.originalPrice != null ? paiseToRupees(course.plans.pro.originalPrice) : '',
+      proFeatures: (course.plans?.pro?.features ?? []).join('\n'),
+      proMaxPrice: course.plans?.proMax ? paiseToRupees(course.plans.proMax.price) : '',
+      proMaxOriginalPrice: course.plans?.proMax?.originalPrice != null ? paiseToRupees(course.plans.proMax.originalPrice) : '',
+      proMaxFeatures: (course.plans?.proMax?.features ?? []).join('\n'),
     });
     setThumbnailFile(null);
     setBannerImageFile(null);
@@ -247,6 +287,15 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       const mrp = Number(form.originalPrice);
       if (!Number.isFinite(mrp) || mrp < price) return 'Original price must be greater than or equal to the price';
     }
+    const planError =
+      validatePlan('Pro', form.proPrice, form.proOriginalPrice, form.proFeatures) ??
+      validatePlan('Pro Max', form.proMaxPrice, form.proMaxOriginalPrice, form.proMaxFeatures);
+    if (planError) return planError;
+    for (const [name, text] of [['Basic', form.basicFeatures], ['Pro', form.proFeatures], ['Pro Max', form.proMaxFeatures]] as const) {
+      const lines = featureLines(text);
+      if (lines.length > MAX_FEATURES) return `${name}: up to ${MAX_FEATURES} "What's included" lines`;
+      if (lines.some((l) => l.length > 120)) return `${name}: each "What's included" line can be up to 120 characters`;
+    }
     if (!isValidCount(form.studentsEnrolled)) return 'Students enrolled must be a whole number';
     if (!isValidCount(form.totalLessons)) return 'Total lessons must be a whole number';
     if (mentors.some((m) => !m.name.trim() && (m.experience.trim() || m.photo || m.photoFile))) return 'Every mentor needs a name';
@@ -287,6 +336,11 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
         studentsEnrolled: toCount(form.studentsEnrolled),
         duration: form.duration.trim() || null,
         totalLessons: toCount(form.totalLessons),
+        plans: {
+          basic: { features: featureLines(form.basicFeatures) },
+          pro: toPaidPlan(form.proPrice, form.proOriginalPrice, form.proFeatures),
+          proMax: toPaidPlan(form.proMaxPrice, form.proMaxOriginalPrice, form.proMaxFeatures),
+        },
       };
 
       if (editing) {
@@ -464,6 +518,8 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     {formatINR(course.price)}
                     {course.originalPrice != null && course.originalPrice > course.price && <s style={{ marginLeft: '6px' }}>{formatINR(course.originalPrice)}</s>}
+                    {course.plans?.pro && <> • Pro {formatINR(course.plans.pro.price)}</>}
+                    {course.plans?.proMax && <> • Pro Max {formatINR(course.plans.proMax.price)}</>}
                     {' • '}{course.category} • {course.enrollmentCount} enrolled
                   </span>
                 </div>
@@ -538,15 +594,33 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
             <textarea rows={5} value={form.description} maxLength={5000} onChange={e => update({ description: e.target.value })} placeholder="What students will learn, who it is for, what is included..." className="input-field" style={inputStyle} />
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px', textAlign: 'right' }}>{form.description.length}/5000</p>
           </div>
-          <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Selling Price (INR)</label>
-              <input type="number" min="0" step="0.01" value={form.price} onChange={e => update({ price: e.target.value })} placeholder="999" className="input-field" style={inputStyle} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Original Price / MRP (optional)</label>
-              <input type="number" min="0" step="0.01" value={form.originalPrice} onChange={e => update({ originalPrice: e.target.value })} placeholder="1499" className="input-field" style={inputStyle} />
-            </div>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 'var(--space-md)' }}>
+            <h4 style={{ marginBottom: '4px' }}>Pricing Plans</h4>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-md)' }}>
+              Basic is required. Add a Pro and / or Pro Max price to show the plan cards (Basic, Pro, Pro Max) on the course page.
+              Leave Pro and Pro Max empty for a single price.
+            </p>
+            {([
+              { name: 'Basic', price: 'price', mrp: 'originalPrice', features: 'basicFeatures', pricePh: '999', mrpPh: '1499', required: true },
+              { name: 'Pro', price: 'proPrice', mrp: 'proOriginalPrice', features: 'proFeatures', pricePh: '1499', mrpPh: '2499', required: false },
+              { name: 'Pro Max', price: 'proMaxPrice', mrp: 'proMaxOriginalPrice', features: 'proMaxFeatures', pricePh: '2499', mrpPh: '3999', required: false },
+            ] as const).map((plan) => (
+              <div key={plan.name} style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: 'var(--space-md)', marginBottom: 'var(--space-sm)' }}>
+                <p style={{ fontWeight: 600, marginBottom: '8px' }}>{plan.name}{plan.required ? '' : ' (optional)'}</p>
+                <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>{plan.name} Price (INR)</label>
+                    <input type="number" min="0" step="0.01" value={form[plan.price]} onChange={e => update({ [plan.price]: e.target.value } as Partial<FormState>)} placeholder={plan.pricePh} aria-label={`${plan.name} price`} className="input-field" style={inputStyle} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>{plan.name} Compare Price / MRP (optional)</label>
+                    <input type="number" min="0" step="0.01" value={form[plan.mrp]} onChange={e => update({ [plan.mrp]: e.target.value } as Partial<FormState>)} placeholder={plan.mrpPh} aria-label={`${plan.name} compare price`} className="input-field" style={inputStyle} />
+                  </div>
+                </div>
+                <label style={{ ...labelStyle, marginTop: '10px' }}>What&apos;s included in {plan.name} (optional, one per line)</label>
+                <textarea rows={2} value={form[plan.features]} onChange={e => update({ [plan.features]: e.target.value } as Partial<FormState>)} placeholder={plan.name === 'Basic' ? 'Live & recorded lectures\nDaily practice problems' : `Everything in ${plan.name === 'Pro' ? 'Basic' : 'Pro'}\nWeekly full tests`} aria-label={`What's included in ${plan.name}`} className="input-field" style={inputStyle} />
+              </div>
+            ))}
           </div>
           <div>
             <label style={labelStyle}>{editing ? 'Replace Thumbnail (optional)' : 'Upload Thumbnail (From PC)'}</label>

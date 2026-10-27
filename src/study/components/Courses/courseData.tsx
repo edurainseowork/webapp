@@ -59,6 +59,34 @@ export interface Batch {
   studentsEnrolled: number | null;
   isPurchasedBanner: boolean;
   bannerImage: string | null;
+  /** Basic first, then Pro / Pro Max when the CMS has them; one entry = single-price course */
+  plans: CoursePlan[];
+}
+
+export type PlanId = 'basic' | 'pro' | 'proMax';
+
+export interface CoursePlan {
+  id: PlanId;
+  name: string;
+  /** Rupees */
+  price: number;
+  /** Rupees (equals price when the CMS has no compare price) */
+  mrp: number;
+  /** "What's included" lines from the CMS (may be empty) */
+  features: string[];
+}
+
+export const PLAN_NAMES: Record<PlanId, string> = { basic: 'Basic', pro: 'Pro', proMax: 'Pro Max' };
+
+function toPlans(course: CmsCourse, price: number, mrp: number): CoursePlan[] {
+  const plans: CoursePlan[] = [{ id: 'basic', name: PLAN_NAMES.basic, price, mrp, features: course.plans?.basic?.features ?? [] }];
+  for (const id of ['pro', 'proMax'] as const) {
+    const p = course.plans?.[id];
+    if (!p) continue;
+    const planPrice = paiseToRupees(p.price);
+    plans.push({ id, name: PLAN_NAMES[id], price: planPrice, mrp: Math.max(planPrice, paiseToRupees(p.originalPrice ?? p.price)), features: p.features ?? [] });
+  }
+  return plans;
 }
 
 export interface EnrolledCourse {
@@ -139,7 +167,8 @@ export function toBatch(course: CmsCourse, index: number): Batch {
   if (course.studentsEnrolled) features.push({ icon: Users, text: `${course.studentsEnrolled.toLocaleString('en-IN')}+ students enrolled` });
   if (!features.length) features.push({ icon: BookOpen, text: 'Full course access after enrolment' });
 
-  const chips = [category, course.duration, course.totalLessons ? plural(course.totalLessons, 'lesson') : null].filter(
+  const plans = toPlans(course, price, mrp);
+  const chips = [category, course.duration, course.totalLessons ? plural(course.totalLessons, 'lesson') : null, plans.length > 1 ? `${plans.length} plans` : null].filter(
     (chip): chip is string => !!chip
   );
 
@@ -173,6 +202,7 @@ export function toBatch(course: CmsCourse, index: number): Batch {
     studentsEnrolled: course.studentsEnrolled,
     isPurchasedBanner: Boolean(course.isPurchasedBanner),
     bannerImage: course.bannerImage || null,
+    plans,
   };
 }
 

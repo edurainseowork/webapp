@@ -5,6 +5,7 @@ import categoriesRouter from "./categories.js";
 import notificationsRouter from "./notifications.js";
 import mentorsRouter from "./mentors.js";
 import studentsRouter from "./students.js";
+import supportContactsRouter from "./supportContacts.js";
 // Everything under /api/admin requires a verified Firebase token with the admin claim.
 const router = Router();
 
@@ -14,4 +15,5 @@ router.use("/categories", categoriesRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/mentors", mentorsRouter);
 router.use("/students", studentsRouter);
+router.use("/support-contacts", supportContactsRouter);
 export default router;

@@ -79,6 +79,9 @@ export type CourseMentor = {
     /** Invited mentor account (Manage Users) this entry was picked from; null if typed in by hand */
     uid?: string | null;
 };
+/** Pro / Pro Max prices (paise) and what each plan includes. Basic = the course's price / originalPrice. */
+export type PaidPlan = { price: number; originalPrice: number | null; features: string[] };
+export type CoursePlans = { basic?: { features: string[] }; pro?: PaidPlan; proMax?: PaidPlan };
 
 export type AdminCourse = {
   id: number;
@@ -101,6 +104,7 @@ export type AdminCourse = {
   totalLessons: number | null;
   isPurchasedBanner?: boolean;
   bannerImage?: string | null;
+  plans?: CoursePlans;
 };
 
 export const MAX_UPLOAD_BYTES = 500 * 1024;

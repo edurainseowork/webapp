@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { coursePlansInput } from "./coursePlans";
 import { isLocalUploadPath } from "./media";
 
 // Prices are integers in paise (₹1 = 100). Upper bound: ₹10,00,000.
@@ -65,6 +66,8 @@ const courseFields = {
   totalLessons: optionalCount,
   isPurchasedBanner: z.boolean(),
   bannerImage: mentorPhoto,
+  // Pro / Pro Max prices and what each plan includes (Basic = price / originalPrice)
+  plans: coursePlansInput,
 };
 
 
@@ -87,7 +90,9 @@ export const createCourseSchema = z
     totalLessons: courseFields.totalLessons.optional(),
     isPurchasedBanner: courseFields.isPurchasedBanner.default(false),
     bannerImage: courseFields.bannerImage.default(null),
+    plans: courseFields.plans.optional(),
   })
+
   .strict()
   .refine(originalPriceNotBelowPrice, originalPriceIssue);
 

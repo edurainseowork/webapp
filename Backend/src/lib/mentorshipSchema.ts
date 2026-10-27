@@ -55,6 +55,35 @@ const STATEMENTS = [
   sql`CREATE INDEX IF NOT EXISTS lesson_progress_user_course_idx ON lesson_progress (user_id, course_id)`,
   sql`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS max_discount_amount integer`,
   sql`ALTER TABLE admin_notifications ADD COLUMN IF NOT EXISTS link text`,
+  sql`ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_purchased_banner boolean NOT NULL DEFAULT false`,
+  sql`ALTER TABLE courses ADD COLUMN IF NOT EXISTS banner_image text`,
+  sql`ALTER TABLE banners ADD COLUMN IF NOT EXISTS placement varchar(50) NOT NULL DEFAULT 'home'`,
+  sql`ALTER TABLE banners ADD COLUMN IF NOT EXISTS course_id integer`,
+  sql`ALTER TABLE banners ADD COLUMN IF NOT EXISTS title text`,
+  sql`ALTER TABLE banners ADD COLUMN IF NOT EXISTS link_url text`,
+  // CMS → Support Contacts; see migrations/0009_support_contacts.sql
+  sql`CREATE TABLE IF NOT EXISTS support_contacts (
+        id serial PRIMARY KEY,
+        label varchar(60) NOT NULL,
+        phone varchar(20) NOT NULL,
+        whatsapp boolean NOT NULL DEFAULT false,
+        sort_order integer NOT NULL DEFAULT 0,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now())`,
+  // Course plans (Basic / Pro / Pro Max); see migrations/0010_course_plans.sql
+  sql`CREATE TABLE IF NOT EXISTS course_plans (
+        course_id integer NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        plan varchar(10) NOT NULL CHECK (plan IN ('basic', 'pro', 'pro_max')),
+        price integer,
+        original_price integer,
+        features jsonb NOT NULL DEFAULT '[]'::jsonb,
+        updated_at timestamp NOT NULL DEFAULT now(),
+        PRIMARY KEY (course_id, plan))`,
+  // Plan bought with each Razorpay order (Basic / Pro / Pro Max)
+  sql`CREATE TABLE IF NOT EXISTS payment_plans (
+        razorpay_order_id text PRIMARY KEY,
+        plan varchar(10) NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now())`,
 ];
 
 let ready: Promise<void> | null = null;

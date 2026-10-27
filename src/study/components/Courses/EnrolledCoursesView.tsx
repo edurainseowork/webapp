@@ -365,6 +365,7 @@ export function EnrolledCoursesView({
               showFilters
               onOpenBatch={onOpenBatch}
               onBuyBatch={onBuyBatch}
+              isOwned={isOwned}
             />
           </section>
         </div>

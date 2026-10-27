@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { categoriesTable, coursesTable } from "@workspace/db/schema";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { publicCourseColumns, withPublicThumbnail } from "../lib/course-view";
+import { withCoursePlans } from "../lib/coursePlans";
 import { publicCourseQuerySchema } from "../lib/course-schemas";
 import { HttpError, parseId } from "../lib/http-error";
 import { optionalAuth } from "../middlewares/auth";
@@ -28,7 +29,9 @@ router.get("/", async (req, res) => {
     )
     .orderBy(asc(categoriesTable.sortOrder), desc(coursesTable.publishedAt), desc(coursesTable.id));
 
-  res.json(courses.map((c) => withPublicThumbnail(c, req)));
+  // plans: Pro / Pro Max prices (Basic = price / originalPrice)
+  res.json((await withCoursePlans(courses)).map((c) => withPublicThumbnail(c, req)));
+
 });
 
 // GET /api/courses/:id/content — Return items for a given course filtered optionally by parentId, sorted ascending by order
@@ -54,7 +57,8 @@ router.get("/:id", async (req, res) => {
   // Drafts answer 404, not 403, so their existence is not revealed.
   if (!course) throw new HttpError(404, "Course not found");
 
-  res.json(withPublicThumbnail(course, req));
+  const [withPlans] = await withCoursePlans([course]);
+  res.json(withPublicThumbnail(withPlans, req));
 });
 
 export default router;
