@@ -31,9 +31,12 @@ const isTeacherAssistantPath = () => {
   const p = window.location.pathname.replace(/\/+$/, '').toLowerCase();
   return p === TEACHER_ASSISTANT_PATH.toLowerCase() || p === '/teacherassistantdesk' || p === '/teacher-assistant';
 };
+
+const TOAST_DURATION_SEC = 5;
+
 type MeInfo = { isSuperAdmin: boolean; superAdminEmailUnverified: boolean }
 function App() {
-    // Whether to show Super Admin controls. Decided by the backend from the verified token;
+  // Whether to show Super Admin controls. Decided by the backend from the verified token;
   // every admin-management API checks it again on its own.
   const [me, setMe] = useState<MeInfo>({ isSuperAdmin: false, superAdminEmailUnverified: false });
   const [openCreateAdmin, setOpenCreateAdmin] = useState(false);
@@ -43,11 +46,14 @@ function App() {
     return 'courses';
   });
   const [openEBookModal, setOpenEBookModal] = useState(false);
-    // Role detected by RoleGuard from the verified Firebase token / backend (never from the URL)
-    const [cmsRole, setCmsRole] = useState<string | null>(null);
-    const isMentor = cmsRole === 'mentor';
-    const isTeacherAssistant = cmsRole === 'teacher_assistant';
-    const isStaff = cmsRole === 'admin' || cmsRole === 'faculty';
+  const [highlightEBookSection, setHighlightEBookSection] = useState(false);
+  const ebookUploadSectionRef = useRef<HTMLDivElement>(null);
+
+  // Role detected by RoleGuard from the verified Firebase token / backend (never from the URL)
+  const [cmsRole, setCmsRole] = useState<string | null>(null);
+  const isMentor = cmsRole === 'mentor';
+  const isTeacherAssistant = cmsRole === 'teacher_assistant';
+  const isStaff = cmsRole === 'admin' || cmsRole === 'faculty';
   const lastCmsTab = useRef('courses');
   const isFirstUrlSync = useRef(true);
   const [user, setUser] = useState<User | null>(null);
@@ -60,13 +66,41 @@ function App() {
   const [usersList, setUsersList] = useState<any[]>([]);
 
   const [coursesList, setCoursesList] = useState<AdminCourse[]>([]);
-  
-  // Toast State
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+  // Classplus-style Top-Right Toast State with Countdown Timer
+  const [toast, setToast] = useState<{ id: number; message: string; type: 'success' | 'error' } | null>(null);
+  const [toastCountdown, setToastCountdown] = useState<number>(TOAST_DURATION_SEC);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    const id = Date.now();
+    setToast({ id, message, type });
+    setToastCountdown(TOAST_DURATION_SEC);
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+    }, TOAST_DURATION_SEC * 1000);
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+    setToastCountdown(TOAST_DURATION_SEC);
+    const interval = setInterval(() => {
+      setToastCountdown((prev) => (prev > 1 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [toast?.id]);
+
+  // Smooth auto-scroll to E-Book Upload Section using useRef
+  const handleScrollToEBookUpload = () => {
+    setOpenEBookModal(true);
+    setHighlightEBookSection(true);
+    setTimeout(() => {
+      ebookUploadSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+    setTimeout(() => {
+      setHighlightEBookSection(false);
+    }, 1800);
   };
 
   // Upload Content State
@@ -257,8 +291,6 @@ function App() {
     }
   };
 
-
-
   const handleUploadBanner = async () => {
     if (!bannerFile) {
       showToast("Please select an image file first", "error");
@@ -271,8 +303,6 @@ function App() {
     
     setIsUploadingBanner(true);
     try {
-      // Banners store absolute URLs (the banners API predates server-relative paths).
-            // Images now come back as full S3 URLs; older local uploads are server-relative paths
       const uploadedUrl = await uploadFile(bannerFile);
       const imageUrl = uploadedUrl.startsWith('/') ? API_BASE_URL + uploadedUrl : uploadedUrl;
 
@@ -362,358 +392,443 @@ function App() {
         null
       ) : (
         <div className="layout">
-      {/* Toast Notification */}
-      {toast && (
-        <div style={{
-          position: 'fixed',
-          top: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: toast.type === 'success' ? 'var(--mint)' : '#ff5e5e',
-          color: toast.type === 'success' ? 'var(--navy)' : 'white',
-          padding: '12px 24px',
-          borderRadius: '8px',
-          fontWeight: 'bold',
-          zIndex: 9999,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px'
-        }}>
-          {toast.message}
-        </div>
-      )}
-
-      {/* Sidebar */}
-      <aside className="sidebar">
-        <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src={edurainLogo} alt="EduRain Logo" style={{ width: '32px', height: '32px', objectFit: 'contain', flexShrink: 0 }} />
-          <span>Edurain CMS</span>
-        </div>
-        <nav className="sidebar-nav">
-          <div className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-            Dashboard
-          </div>
-          <div className={`nav-link ${activeTab === 'courses' ? 'active' : ''}`} onClick={() => setActiveTab('courses')}>
-            Course Manager
-          </div>
-          <div className={`nav-link ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
-            Categories
-          </div>
-          <div className={`nav-link ${activeTab === 'content' ? 'active' : ''}`} onClick={() => setActiveTab('content')}>
-            Upload Content (PDF/Video/E-Books)
-          </div>
-          <div className={`nav-link ${activeTab === 'banners' ? 'active' : ''}`} onClick={() => setActiveTab('banners')}>
-            Manage Banners
-          </div>
-          <div className={`nav-link ${activeTab === 'coupons' ? 'active' : ''}`} onClick={() => setActiveTab('coupons')}>
-            Private/Public Coupons
-          </div>
-          <div className={`nav-link ${activeTab === 'golive' ? 'active' : ''}`} onClick={() => setActiveTab('golive')}>
-            Go Live (Google Meet)
-          </div>
-          <div className={`nav-link ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
-            Notifications
-          </div>
-          <div className={`nav-link ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => setActiveTab('tests')}>
-            Tests
-          </div>
-          {me.isSuperAdmin && (
-            <div className={`nav-link ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
-              Manage Users
-            </div>
-          )}
-          {me.isSuperAdmin && (
-            <button
-              type="button"
-              className={`nav-link ${activeTab === 'taAnalytics' ? 'active' : ''}`}
-              onClick={() => setActiveTab('taAnalytics')}
-              style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', cursor: 'pointer' }}
-            >
-              Teacher Assistant Analysis
-            </button>
-          )}
-          <div className={`nav-link ${activeTab === 'mentorDesk' ? 'active' : ''}`} onClick={() => setActiveTab('mentorDesk')}>
-            Mentor Desk
-          </div>
-          <div className={`nav-link ${activeTab === 'teacherAssistant' ? 'active' : ''}`} onClick={() => setActiveTab('teacherAssistant')}>
-            Teacher Assistant Desk
-          </div>
-        </nav>
-      </aside>
-
-      {/* Main Content */}
-      <main className="main-content">
-        <header className="page-header">
-          <h1 className="page-title">
-            {activeTab === 'dashboard' && 'Overview'}
-            {activeTab === 'courses' && 'Course Manager'}
-            {activeTab === 'categories' && 'Category Management'}
-            {activeTab === 'content' && 'Post-Purchase Content'}
-            {activeTab === 'banners' && 'Manage Homepage Banners'}
-            {activeTab === 'coupons' && 'Coupon Generator'}
-            {activeTab === 'golive' && 'Live Classes'}
-            {activeTab === 'notifications' && 'Notifications'}
-            {activeTab === 'tests' && 'Test Management'}
-            {activeTab === 'admins' && 'Manage Users'}
-            {activeTab === 'taAnalytics' && 'Teacher Assistant Analysis'}
-          </h1>
-          <div className="user-profile" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-          {me.isSuperAdmin && (
-              <button
-                onClick={() => { setActiveTab('admins'); setOpenCreateAdmin(true); }}
-                className="btn"
-                style={{ padding: '6px 12px' }}
-              >
-                + Invite User
-              </button>
-            )}
-            <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{user?.email}</span>
-            <button onClick={() => signOut(auth)} className="btn" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px' }}>Logout</button>
-          </div>
-        </header>
-        {me.superAdminEmailUnverified && (
-          <div className="glass-card" role="status" style={{ marginBottom: 'var(--space-lg)', border: '1px solid rgba(214,158,46,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-            <p style={{ color: 'white', fontSize: '0.9rem', lineHeight: 1.5 }}>
-              Verify your email address to unlock user management (inviting Admins, Mentors and Teacher Assistance).
-            </p>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button className="btn" style={{ padding: '6px 12px' }} onClick={handleSendVerification}>Send Verification Email</button>
-              <button className="btn" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px' }} onClick={handleVerifiedCheck}>I've Verified</button>
-            </div>
-          </div>
-        )}
-        {activeTab === 'dashboard' && (
-          <div className="animate-view">
-            <div className="dashboard-grid">
-              <div className="glass-card stat-card" role="status" aria-busy={isLoadingCourses}>
-                <span className="stat-label">Total Courses</span>
-                {isLoadingCourses ? (
-                  <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
-                ) : (
-                  <span className="stat-value">{coursesList.length}</span>
-                )}
-              </div>
-              <div className="glass-card stat-card" role="status" aria-busy={isLoadingCourses}>
-                <span className="stat-label">Published</span>
-                {isLoadingCourses ? (
-                  <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
-                ) : (
-                  <span className="stat-value">{coursesList.filter(c => c.isPublished).length}</span>
-                )}
-              </div>
-              <div className="glass-card stat-card" role="status" aria-busy={isLoadingStats}>
-                <span className="stat-label">Active Students</span>
-                {isLoadingStats ? (
-                  <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
-                ) : (
-                  <span className="stat-value">{activeStudents}</span>
-                )}
-              </div>
-              {Object.entries(contentStats).map(([k, v]) => (
-                <div key={k} className="glass-card stat-card" role="status" aria-busy={isLoadingStats}>
-                  <span className="stat-label" style={{ textTransform: 'capitalize' }}>
-                    {k.replace(/([A-Z])/g, ' $1')}
-                  </span>
-                  {isLoadingStats ? (
-                    <div className="skeleton-box" style={{ width: '60px', height: '48px', marginTop: '6px' }} />
-                  ) : (
-                    <span className="stat-value">{v}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="glass-card" style={{ minHeight: '300px', overflowX: 'auto', marginTop: 'var(--space-lg)' }}>
-              <h3 style={{ marginBottom: 'var(--space-md)' }}>Registered Students</h3>
-              {isLoadingStats ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} aria-busy="true" role="status">
-                  <div className="skeleton-box" style={{ width: '100%', height: '42px' }} />
-                  <div className="skeleton-box" style={{ width: '90%', height: '42px' }} />
-                  <div className="skeleton-box" style={{ width: '75%', height: '42px' }} />
-                </div>
-              ) : usersList.length === 0 ? (
-                <p style={{ color: 'var(--text-secondary)' }}>No students registered yet.</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Name</th>
-                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Email</th>
-                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Phone</th>
-                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Location</th>
-                      <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Joined</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usersList.map((u, i) => (
-                      <tr key={u.id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={{ padding: '12px 8px' }}>{u.name || '-'}</td>
-                        <td style={{ padding: '12px 8px' }}>{u.email}</td>
-                        <td style={{ padding: '12px 8px' }}>{u.phone || '-'}</td>
-                        <td style={{ padding: '12px 8px' }}>
-                          {[u.city, u.state].filter(Boolean).join(', ') || '-'}
-                        </td>
-                        <td style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>
-                          {new Date(u.createdAt).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'courses' && (
-          <div className="animate-view">
-            <CourseManager
-              courses={coursesList}
-              isLoading={isLoadingCourses}
-              reloadCourses={fetchCourses}
-              showToast={showToast}
-              onManageContent={(courseId) => {
-                setSelectedCourseForContent(String(courseId));
-                setActiveTab('content');
+          {/* Classplus-Style Top-Right Toast Notification with Countdown Progress Bar */}
+          {toast && (
+            <div
+              key={toast.id}
+              role="status"
+              aria-live="polite"
+              style={{
+                position: 'fixed',
+                top: '22px',
+                right: '24px',
+                minWidth: '320px',
+                maxWidth: '420px',
+                backgroundColor: toast.type === 'success' ? '#55b959' : '#ef4444',
+                color: '#ffffff',
+                borderRadius: '14px',
+                zIndex: 99999,
+                boxShadow:
+                  toast.type === 'success'
+                    ? '0 14px 32px rgba(85, 185, 89, 0.38)'
+                    : '0 14px 32px rgba(239, 68, 68, 0.38)',
+                overflow: 'hidden',
+                animation: 'toastSlideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards',
               }}
-            />
-          </div>
-        )}
-
-        {activeTab === 'categories' && (
-          <div className="animate-view">
-            <CategoryManager showToast={showToast} onCategoriesChanged={fetchCourses} />
-          </div>
-        )}
-
-        {activeTab === 'content' && (
-          <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-            <CourseContentManager
-              courses={coursesList}
-              selectedCourseId={selectedCourseForContent}
-              onSelectCourse={setSelectedCourseForContent}
-              showToast={showToast}
-              onOpenEBookUpload={() => setOpenEBookModal(true)}
-            />
-
-            <div id="upload-ebooks-section">
-              <EBookUploadManager
-                courses={coursesList}
-                selectedCourseId={selectedCourseForContent}
-                showToast={showToast}
-                isModalOpen={openEBookModal}
-                onCloseModal={() => setOpenEBookModal(false)}
-              />
-            </div>
-
-            <div className="glass-card">
-              <h3 style={{ marginBottom: 'var(--space-md)' }}>Create Weekly Test / Quiz</h3>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-md)', fontSize: '0.9rem' }}>
-                Note: In the app, this test will open in strict Full-Screen mode. If the user presses back, the test will end automatically and score will be submitted to AWS.
-              </p>
-              <form style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-                <input type="text" placeholder="Test Title (e.g. Thermodynamics Week 1)" style={{ padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }} />
-                <textarea rows={3} placeholder="Question 1 (Text format)" style={{ padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }} />
-                <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                  <input type="text" placeholder="Option A" style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }} />
-                  <input type="text" placeholder="Option B" style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }} />
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  padding: '14px 16px 15px 16px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                  <span
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      backgroundColor: '#ffffff',
+                      color: toast.type === 'success' ? '#55b959' : '#ef4444',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      fontWeight: 900,
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    {toast.type === 'success' ? '✓' : '!'}
+                  </span>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      fontSize: '0.92rem',
+                      lineHeight: 1.35,
+                      letterSpacing: '-0.1px',
+                    }}
+                  >
+                    {toast.message}
+                  </span>
                 </div>
-                <button type="button" className="btn" style={{ alignSelf: 'flex-start', marginTop: 'var(--space-sm)', background: 'transparent', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)' }}>+ Add Next Question</button>
-                <button type="button" className="btn" style={{ alignSelf: 'flex-start', marginTop: 'var(--space-md)' }}>Publish Test</button>
-              </form>
-            </div>
-          </div>
-        )}
 
-        {activeTab === 'banners' && (
-          <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-            <div className="glass-card">
-              <h3 style={{ marginBottom: 'var(--space-md)' }}>Uploaded Banners ({bannersList.length}/5)</h3>
-              {isLoadingBanners ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }} aria-busy="true" role="status">
-                  <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '12px' }} />
-                  <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '12px' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      backgroundColor: 'rgba(0, 0, 0, 0.16)',
+                      padding: '2px 7px',
+                      borderRadius: '999px',
+                    }}
+                  >
+                    {toastCountdown}s
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setToast(null)}
+                    aria-label="Close notification"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'rgba(255, 255, 255, 0.9)',
+                      fontSize: '1.15rem',
+                      lineHeight: 1,
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                    }}
+                  >
+                    ×
+                  </button>
                 </div>
-              ) : bannersList.length === 0 ? (
-                <p style={{ color: 'var(--text-secondary)' }}>No banners uploaded yet.</p>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  {bannersList.map(banner => (
-                    <div key={banner.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                      <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
-                      <button 
-                        onClick={() => handleDeleteBanner(banner.id)}
-                        style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
-                      >
-                        Delete
-                      </button>
+              </div>
+
+              {/* Animated Bottom Progress Bar */}
+              <div
+                style={{
+                  height: '4px',
+                  width: '100%',
+                  backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+                    animation: `toastProgressShrink ${TOAST_DURATION_SEC}s linear forwards`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Sidebar */}
+          <aside className="sidebar">
+            <div className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <img src={edurainLogo} alt="EduRain Logo" style={{ width: '32px', height: '32px', objectFit: 'contain', flexShrink: 0 }} />
+              <span>Edurain CMS</span>
+            </div>
+            <nav className="sidebar-nav">
+              <div className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+                Dashboard
+              </div>
+              <div className={`nav-link ${activeTab === 'courses' ? 'active' : ''}`} onClick={() => setActiveTab('courses')}>
+                Course Manager
+              </div>
+              <div className={`nav-link ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
+                Categories
+              </div>
+              <div className={`nav-link ${activeTab === 'content' ? 'active' : ''}`} onClick={() => setActiveTab('content')}>
+                Upload Content (PDF/Video/E-Books)
+              </div>
+              <div className={`nav-link ${activeTab === 'banners' ? 'active' : ''}`} onClick={() => setActiveTab('banners')}>
+                Manage Banners
+              </div>
+              <div className={`nav-link ${activeTab === 'coupons' ? 'active' : ''}`} onClick={() => setActiveTab('coupons')}>
+                Private/Public Coupons
+              </div>
+              <div className={`nav-link ${activeTab === 'golive' ? 'active' : ''}`} onClick={() => setActiveTab('golive')}>
+                Go Live (Google Meet)
+              </div>
+              <div className={`nav-link ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
+                Notifications
+              </div>
+              <div className={`nav-link ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => setActiveTab('tests')}>
+                Tests
+              </div>
+              {me.isSuperAdmin && (
+                <div className={`nav-link ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
+                  Manage Users
+                </div>
+              )}
+              {me.isSuperAdmin && (
+                <button
+                  type="button"
+                  className={`nav-link ${activeTab === 'taAnalytics' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('taAnalytics')}
+                  style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', cursor: 'pointer' }}
+                >
+                  Teacher Assistant Analysis
+                </button>
+              )}
+              <div className={`nav-link ${activeTab === 'mentorDesk' ? 'active' : ''}`} onClick={() => setActiveTab('mentorDesk')}>
+                Mentor Desk
+              </div>
+              <div className={`nav-link ${activeTab === 'teacherAssistant' ? 'active' : ''}`} onClick={() => setActiveTab('teacherAssistant')}>
+                Teacher Assistant Desk
+              </div>
+            </nav>
+          </aside>
+
+          {/* Main Content */}
+          <main className="main-content">
+            <header className="page-header">
+              <h1 className="page-title">
+                {activeTab === 'dashboard' && 'Overview'}
+                {activeTab === 'courses' && 'Course Manager'}
+                {activeTab === 'categories' && 'Category Management'}
+                {activeTab === 'content' && 'Post-Purchase Content'}
+                {activeTab === 'banners' && 'Manage Homepage Banners'}
+                {activeTab === 'coupons' && 'Coupon Generator'}
+                {activeTab === 'golive' && 'Live Classes'}
+                {activeTab === 'notifications' && 'Notifications'}
+                {activeTab === 'tests' && 'Test Management'}
+                {activeTab === 'admins' && 'Manage Users'}
+                {activeTab === 'taAnalytics' && 'Teacher Assistant Analysis'}
+              </h1>
+              <div className="user-profile" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                {me.isSuperAdmin && (
+                  <button
+                    onClick={() => { setActiveTab('admins'); setOpenCreateAdmin(true); }}
+                    className="btn"
+                    style={{ padding: '6px 12px' }}
+                  >
+                    + Invite User
+                  </button>
+                )}
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{user?.email}</span>
+                <button onClick={() => signOut(auth)} className="btn" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px' }}>Logout</button>
+              </div>
+            </header>
+            {me.superAdminEmailUnverified && (
+              <div className="glass-card" role="status" style={{ marginBottom: 'var(--space-lg)', border: '1px solid rgba(214,158,46,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                <p style={{ color: 'white', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                  Verify your email address to unlock user management (inviting Admins, Mentors and Teacher Assistance).
+                </p>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button className="btn" style={{ padding: '6px 12px' }} onClick={handleSendVerification}>Send Verification Email</button>
+                  <button className="btn" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px' }} onClick={handleVerifiedCheck}>I've Verified</button>
+                </div>
+              </div>
+            )}
+            {activeTab === 'dashboard' && (
+              <div className="animate-view">
+                <div className="dashboard-grid">
+                  <div className="glass-card stat-card" role="status" aria-busy={isLoadingCourses}>
+                    <span className="stat-label">Total Courses</span>
+                    {isLoadingCourses ? (
+                      <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
+                    ) : (
+                      <span className="stat-value">{coursesList.length}</span>
+                    )}
+                  </div>
+                  <div className="glass-card stat-card" role="status" aria-busy={isLoadingCourses}>
+                    <span className="stat-label">Published</span>
+                    {isLoadingCourses ? (
+                      <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
+                    ) : (
+                      <span className="stat-value">{coursesList.filter(c => c.isPublished).length}</span>
+                    )}
+                  </div>
+                  <div className="glass-card stat-card" role="status" aria-busy={isLoadingStats}>
+                    <span className="stat-label">Active Students</span>
+                    {isLoadingStats ? (
+                      <div className="skeleton-box" style={{ width: '80px', height: '48px', marginTop: '6px' }} />
+                    ) : (
+                      <span className="stat-value">{activeStudents}</span>
+                    )}
+                  </div>
+                  {Object.entries(contentStats).map(([k, v]) => (
+                    <div key={k} className="glass-card stat-card" role="status" aria-busy={isLoadingStats}>
+                      <span className="stat-label" style={{ textTransform: 'capitalize' }}>
+                        {k.replace(/([A-Z])/g, ' $1')}
+                      </span>
+                      {isLoadingStats ? (
+                        <div className="skeleton-box" style={{ width: '60px', height: '48px', marginTop: '6px' }} />
+                      ) : (
+                        <span className="stat-value">{v}</span>
+                      )}
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <div className="glass-card">
-              <h3 style={{ marginBottom: 'var(--space-md)' }}>Upload New Banner</h3>
-              <form style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-                <div style={{ border: '2px dashed rgba(255,255,255,0.2)', padding: 'var(--space-xl)', textAlign: 'center', borderRadius: 'var(--radius-md)' }}>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>Select Banner Image</p>
-                  <input type="file" accept="image/*" onChange={e => setBannerFile(e.target.files?.[0] || null)} className="input-field" style={{ width: '100%', padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', cursor: 'pointer' }} />
+                <div className="glass-card" style={{ minHeight: '300px', overflowX: 'auto', marginTop: 'var(--space-lg)' }}>
+                  <h3 style={{ marginBottom: 'var(--space-md)' }}>Registered Students</h3>
+                  {isLoadingStats ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} aria-busy="true" role="status">
+                      <div className="skeleton-box" style={{ width: '100%', height: '42px' }} />
+                      <div className="skeleton-box" style={{ width: '90%', height: '42px' }} />
+                      <div className="skeleton-box" style={{ width: '75%', height: '42px' }} />
+                    </div>
+                  ) : usersList.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)' }}>No students registered yet.</p>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Name</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Email</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Phone</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Location</th>
+                          <th style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Joined</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usersList.map((u, i) => (
+                          <tr key={u.id || i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <td style={{ padding: '12px 8px' }}>{u.name || '-'}</td>
+                            <td style={{ padding: '12px 8px' }}>{u.email}</td>
+                            <td style={{ padding: '12px 8px' }}>{u.phone || '-'}</td>
+                            <td style={{ padding: '12px 8px' }}>
+                              {[u.city, u.state].filter(Boolean).join(', ') || '-'}
+                            </td>
+                            <td style={{ padding: '12px 8px', color: 'var(--text-secondary)' }}>
+                              {new Date(u.createdAt).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
-                
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Note: These banners are used for notices and will appear as a sliding carousel on the top of the mobile app home screen.
-                </p>
+              </div>
+            )}
 
-                <button type="button" onClick={handleUploadBanner} disabled={isUploadingBanner || !bannerFile} className="btn" style={{ alignSelf: 'flex-start' }}>
-                  {isUploadingBanner ? 'Uploading...' : 'Upload & Set Live'}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
+            {activeTab === 'courses' && (
+              <div className="animate-view">
+                <CourseManager
+                  courses={coursesList}
+                  isLoading={isLoadingCourses}
+                  reloadCourses={fetchCourses}
+                  showToast={showToast}
+                  onManageContent={(courseId) => {
+                    setSelectedCourseForContent(String(courseId));
+                    setActiveTab('content');
+                  }}
+                />
+              </div>
+            )}
 
-        {activeTab === 'coupons' && (
-          <div className="animate-view">
-            <Coupons user={user!} coursesList={coursesList} showToast={showToast} />
-          </div>
-        )}
+            {activeTab === 'categories' && (
+              <div className="animate-view">
+                <CategoryManager showToast={showToast} onCategoriesChanged={fetchCourses} />
+              </div>
+            )}
 
-        {activeTab === 'golive' && (
-          <div className="animate-view">
-            <GoLive user={user!} coursesList={coursesList} showToast={showToast} />
-          </div>
-        )}
+            {activeTab === 'content' && (
+              <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+                <CourseContentManager
+                  courses={coursesList}
+                  selectedCourseId={selectedCourseForContent}
+                  onSelectCourse={setSelectedCourseForContent}
+                  showToast={showToast}
+                  onOpenEBookUpload={handleScrollToEBookUpload}
+                />
 
-        {activeTab === 'notifications' && (
-          <div className="animate-view">
-            <Notifications showToast={showToast} />
-          </div>
-        )}
+                <div
+                  ref={ebookUploadSectionRef}
+                  id="upload-ebooks-section"
+                  className={highlightEBookSection ? 'ebook-scroll-highlight' : ''}
+                  style={{ borderRadius: '20px', scrollMarginTop: '24px' }}
+                >
+                  <EBookUploadManager
+                    courses={coursesList}
+                    selectedCourseId={selectedCourseForContent}
+                    showToast={showToast}
+                    isModalOpen={openEBookModal}
+                    onCloseModal={() => setOpenEBookModal(false)}
+                  />
+                </div>
+              </div>
+            )}
 
-        {activeTab === 'tests' && (
-          <div className="animate-view">
-            <Tests showToast={showToast} />
-          </div>
-        )}
-        {activeTab === 'admins' && me.isSuperAdmin && (
-          <div className="animate-view">
-            <ManageAdmins
-              showToast={showToast}
-              openCreate={openCreateAdmin}
-              onCreateOpened={() => setOpenCreateAdmin(false)}
-            />
-          </div>
-        )}
-        {activeTab === 'taAnalytics' && me.isSuperAdmin && (
-          <div className="animate-view">
-            <TeacherAssistantAnalysis />
-          </div>
-        )}
-      </main>
-    </div>
+            {activeTab === 'banners' && (
+              <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+                <div className="glass-card">
+                  <h3 style={{ marginBottom: 'var(--space-md)' }}>Uploaded Banners ({bannersList.length}/5)</h3>
+                  {isLoadingBanners ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }} aria-busy="true" role="status">
+                      <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '12px' }} />
+                      <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '12px' }} />
+                    </div>
+                  ) : bannersList.length === 0 ? (
+                    <p style={{ color: 'var(--text-secondary)' }}>No banners uploaded yet.</p>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      {bannersList.map(banner => (
+                        <div key={banner.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                          <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
+                          <button 
+                            onClick={() => handleDeleteBanner(banner.id)}
+                            style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="glass-card">
+                  <h3 style={{ marginBottom: 'var(--space-md)' }}>Upload New Banner</h3>
+                  <form style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                    <div style={{ border: '2px dashed rgba(255,255,255,0.2)', padding: 'var(--space-xl)', textAlign: 'center', borderRadius: 'var(--radius-md)' }}>
+                      <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>Select Banner Image</p>
+                      <input type="file" accept="image/*" onChange={e => setBannerFile(e.target.files?.[0] || null)} className="input-field" style={{ width: '100%', padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', cursor: 'pointer' }} />
+                    </div>
+                    
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      Note: These banners are used for notices and will appear as a sliding carousel on the top of the mobile app home screen.
+                    </p>
+
+                    <button type="button" onClick={handleUploadBanner} disabled={isUploadingBanner || !bannerFile} className="btn" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      {isUploadingBanner && (
+                        <svg className="cms-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" />
+                        </svg>
+                      )}
+                      {isUploadingBanner ? 'Uploading...' : 'Upload & Set Live'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'coupons' && (
+              <div className="animate-view">
+                <Coupons user={user!} coursesList={coursesList} showToast={showToast} />
+              </div>
+            )}
+
+            {activeTab === 'golive' && (
+              <div className="animate-view">
+                <GoLive user={user!} coursesList={coursesList} showToast={showToast} />
+              </div>
+            )}
+
+            {activeTab === 'notifications' && (
+              <div className="animate-view">
+                <Notifications showToast={showToast} />
+              </div>
+            )}
+
+            {activeTab === 'tests' && (
+              <div className="animate-view">
+                <Tests showToast={showToast} />
+              </div>
+            )}
+            {activeTab === 'admins' && me.isSuperAdmin && (
+              <div className="animate-view">
+                <ManageAdmins
+                  showToast={showToast}
+                  openCreate={openCreateAdmin}
+                  onCreateOpened={() => setOpenCreateAdmin(false)}
+                />
+              </div>
+            )}
+            {activeTab === 'taAnalytics' && me.isSuperAdmin && (
+              <div className="animate-view">
+                <TeacherAssistantAnalysis />
+              </div>
+            )}
+          </main>
+        </div>
       )}
-  </RoleGuard>
+    </RoleGuard>
   )
 }
 

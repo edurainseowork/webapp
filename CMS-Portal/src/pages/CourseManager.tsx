@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   apiFetch,
   uploadFile,
@@ -41,13 +41,10 @@ const emptyForm: FormState = {
   studentsEnrolled: '', duration: '', totalLessons: '',
 };
 
-// One editable mentor row: `photo` is the saved URL, `photoFile` a newly picked image
-// `uid` links the row to an invited mentor account; null for mentors typed in by hand earlier
 type MentorRow = { key: number; uid: string | null; name: string; experience: string; photo: string | null; photoFile: File | null; photoPreview: string | null };
 
 const MAX_MENTORS = 10;
 
-/** One line for the course page, taken from the mentor's "About Mentor" (max 120 characters). */
 const experienceFromAbout = (about: string | null) => {
   const line = (about ?? '').split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? '';
   if (line.length <= 120) return line;
@@ -80,20 +77,34 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const [mentors, setMentors] = useState<MentorRow[]>([]);
-    // Invited mentors (Manage Users) to pick from
-    const [mentorOptions, setMentorOptions] = useState<MentorOption[] | null>(null);
-    const [mentorOptionsError, setMentorOptionsError] = useState<string | null>(null);
+  const [mentorOptions, setMentorOptions] = useState<MentorOption[] | null>(null);
+  const [mentorOptionsError, setMentorOptionsError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingTimer, setSavingTimer] = useState<number>(0);
   const [busyCourseId, setBusyCourseId] = useState<number | null>(null);
+  const formSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     apiFetch<{ data: Category[] }>('/admin/categories')
       .then((res) => setCategories(res.data))
       .catch((e) => showToast('Failed to load categories: ' + e.message, 'error'));
-      apiFetch<{ data: MentorOption[] }>('/admin/mentors')
+    apiFetch<{ data: MentorOption[] }>('/admin/mentors')
       .then((res) => setMentorOptions(res.data))
       .catch((e) => setMentorOptionsError('Could not load mentors: ' + e.message));
   }, []);
+
+  // Countdown timer while saving course
+  useEffect(() => {
+    if (!isSaving) {
+      setSavingTimer(0);
+      return;
+    }
+    setSavingTimer(5);
+    const interval = setInterval(() => {
+      setSavingTimer((prev) => (prev > 1 ? prev - 1 : 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isSaving]);
 
   useEffect(() => {
     if (!thumbnailFile) {
@@ -114,8 +125,7 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       if (row?.photoPreview) URL.revokeObjectURL(row.photoPreview);
       return rows.filter((r) => r.key !== key);
     });
-  // Tick = add the mentor to the course (name from their account, experience from "About Mentor");
-  // untick = remove them
+
   const toggleMentor = (option: MentorOption) => {
     const existing = mentors.find((m) => m.uid === option.uid);
     if (existing) return removeMentor(existing.key);
@@ -163,7 +173,9 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
     setThumbnailFile(null);
     clearMentors();
     setMentors((course.mentors ?? []).map(newMentorRow));
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    setTimeout(() => {
+      formSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   const pickThumbnail = (file: File | null) => {
@@ -225,7 +237,7 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       const thumbnail = thumbnailFile ? await uploadFile(thumbnailFile) : undefined;
       const mentorList: CourseMentor[] = [];
       for (const m of mentors) {
-        if (!m.name.trim()) continue; // blank rows are ignored
+        if (!m.name.trim()) continue;
         mentorList.push({
           uid: m.uid,
           name: m.name.trim(),
@@ -248,10 +260,10 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
 
       if (editing) {
         await apiFetch(`/admin/courses/${editing.id}`, { method: 'PATCH', body: payload });
-        showToast('Course updated', 'success');
+        showToast('Course updated successfully', 'success');
       } else {
         await apiFetch('/admin/courses', { method: 'POST', body: { ...payload, isPublished: form.publishNow } });
-        showToast(form.publishNow ? 'Course published!' : 'Course saved as draft', 'success');
+        showToast(form.publishNow ? 'Course published successfully!' : 'Course saved as draft', 'success');
       }
       resetForm();
       await reloadCourses();
@@ -266,7 +278,7 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
     setBusyCourseId(course.id);
     try {
       await apiFetch(`/admin/courses/${course.id}/publish`, { method: 'PATCH', body: { isPublished: !course.isPublished } });
-      showToast(course.isPublished ? 'Course unpublished' : 'Course published', 'success');
+      showToast(course.isPublished ? 'Course unpublished' : 'Course published successfully', 'success');
       await reloadCourses();
     } catch (e: any) {
       showToast('Error: ' + e.message, 'error');
@@ -377,7 +389,7 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       </div>
 
       {/* Create / Edit Course Form */}
-      <div className="glass-card">
+      <div ref={formSectionRef} className="glass-card" style={{ scrollMarginTop: '24px' }}>
         <h3 style={{ marginBottom: 'var(--space-md)' }}>{editing ? `Edit Course: ${editing.title}` : 'Create New Course'}</h3>
         {categories.length === 0 && (
           <p style={{ color: '#ffb35e', marginBottom: 'var(--space-md)', fontSize: '0.9rem' }}>No categories yet — add one in the Categories tab first.</p>
@@ -454,14 +466,14 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
                   </div>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                    <input type="text" maxLength={80} value={mentor.name} readOnly={!!mentor.uid} title={mentor.uid ? 'Name comes from the mentor\'s account (Manage Users)' : undefined} onChange={e => updateMentor(mentor.key, { name: e.target.value })} placeholder={`Mentor ${index + 1} name`} className="input-field" style={{ ...inputStyle, flex: 1, ...(mentor.uid ? { opacity: 0.85, cursor: 'default' } : {}) }} />
+                      <input type="text" maxLength={80} value={mentor.name} readOnly={!!mentor.uid} title={mentor.uid ? 'Name comes from the mentor\'s account (Manage Users)' : undefined} onChange={e => updateMentor(mentor.key, { name: e.target.value })} placeholder={`Mentor ${index + 1} name`} className="input-field" style={{ ...inputStyle, flex: 1, ...(mentor.uid ? { opacity: 0.85, cursor: 'default' } : {}) }} />
                       <input type="text" maxLength={120} value={mentor.experience} onChange={e => updateMentor(mentor.key, { experience: e.target.value })} placeholder="Experience (one line), e.g. 15+ years teaching JEE Maths" className="input-field" style={{ ...inputStyle, flex: 2 }} />
                     </div>
                     {mentor.uid && mentorOptions && !mentorOptions.some((o) => o.uid === mentor.uid) ? (
-                   <p role="alert" style={{ color: '#ff8a8a', fontSize: '0.75rem' }}>This account is no longer a mentor. Remove it before saving.</p>
-                 ) : !mentor.uid ? (
-                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Added by hand earlier (not linked to a mentor account). You can remove it and select the mentor from the list.</p>
-                 ) : null}
+                      <p role="alert" style={{ color: '#ff8a8a', fontSize: '0.75rem' }}>This account is no longer a mentor. Remove it before saving.</p>
+                    ) : !mentor.uid ? (
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Added by hand earlier (not linked to a mentor account). You can remove it and select the mentor from the list.</p>
+                    ) : null}
                     <div style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center' }}>
                       <input type="file" accept="image/png, image/jpeg, image/webp" onChange={e => { pickMentorPhoto(mentor, e.target.files?.[0] || null); e.target.value = ''; }} className="input-field" style={{ ...inputStyle, padding: '7px', cursor: 'pointer', flex: 1 }} />
                       {(mentor.photoPreview || mentor.photo) && (
@@ -487,12 +499,40 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
               Publish immediately (otherwise saved as a draft, hidden from the app)
             </label>
           )}
-          <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-            <button type="submit" disabled={isSaving} className="btn" style={{ alignSelf: 'flex-start', marginTop: 'var(--space-sm)' }}>
-              {isSaving ? 'Saving...' : editing ? 'Save Changes' : form.publishNow ? 'Publish Course' : 'Save Draft'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="btn"
+              style={{
+                alignSelf: 'flex-start',
+                marginTop: 'var(--space-sm)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '10px',
+                background: editing ? '#0ea5e9' : 'var(--accent-primary)',
+                borderRadius: '999px',
+                padding: '10px 24px',
+              }}
+            >
+              {isSaving ? (
+                <>
+                  <svg className="cms-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" />
+                  </svg>
+                  <span>Saving… {savingTimer > 0 ? `(${savingTimer}s)` : ''}</span>
+                </>
+              ) : editing ? (
+                <span>Update Course Details →</span>
+              ) : form.publishNow ? (
+                <span>Publish Course →</span>
+              ) : (
+                <span>Save Draft</span>
+              )}
             </button>
             {editing && (
-              <button type="button" onClick={resetForm} className="btn" style={{ alignSelf: 'flex-start', marginTop: 'var(--space-sm)', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)' }}>
+              <button type="button" onClick={resetForm} className="btn" style={{ alignSelf: 'flex-start', marginTop: 'var(--space-sm)', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '999px' }}>
                 Cancel
               </button>
             )}

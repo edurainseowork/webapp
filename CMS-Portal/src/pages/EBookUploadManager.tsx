@@ -42,9 +42,8 @@ export default function EBookUploadManager({
 }: EBookUploadManagerProps) {
   const [ebooks, setEbooks] = useState<EBookItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Form states
+  // Form states (rendered inline at bottom + auto-scrolled via useRef)
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('Physics');
   const [customSubject, setCustomSubject] = useState('');
@@ -52,12 +51,16 @@ export default function EBookUploadManager({
   const [totalPages, setTotalPages] = useState('120');
   const [isCourseBook, setIsCourseBook] = useState(true);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveCountdown, setSaveCountdown] = useState<number>(0);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [formHighlighted, setFormHighlighted] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const toast = useCallback(
     (msg: string, type: 'success' | 'error' = 'success') => {
@@ -70,12 +73,38 @@ export default function EBookUploadManager({
     [externalToast]
   );
 
-  // Sync external modal state if controlled
+  // Smoothly scroll down to the bottom upload form using useRef + scrollIntoView
+  const scrollToUploadForm = useCallback(() => {
+    uploadRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFormHighlighted(true);
+    setTimeout(() => {
+      titleInputRef.current?.focus();
+    }, 350);
+    setTimeout(() => {
+      setFormHighlighted(false);
+    }, 1800);
+  }, []);
+
+  // When parent triggers `isModalOpen`, auto-scroll to the inline upload form
   useEffect(() => {
-    if (externalModalOpen !== undefined) {
-      setIsModalOpen(externalModalOpen);
+    if (externalModalOpen) {
+      scrollToUploadForm();
+      if (onCloseModal) onCloseModal();
     }
-  }, [externalModalOpen]);
+  }, [externalModalOpen, scrollToUploadForm, onCloseModal]);
+
+  // Countdown timer while saving / uploading
+  useEffect(() => {
+    if (!isSaving) {
+      setSaveCountdown(0);
+      return;
+    }
+    setSaveCountdown(8);
+    const interval = setInterval(() => {
+      setSaveCountdown((prev) => (prev > 1 ? prev - 1 : 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isSaving]);
 
   // Sync initial course
   useEffect(() => {
@@ -103,23 +132,6 @@ export default function EBookUploadManager({
     fetchEBooks();
   }, [fetchEBooks]);
 
-  const handleOpenModal = () => {
-    setTitle('');
-    setSelectedFile(null);
-    setUploadProgress(0);
-    setIsUploading(false);
-    if (selectedCourseId) {
-      setCourseId(String(selectedCourseId));
-    }
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    if (isUploading) return;
-    setIsModalOpen(false);
-    if (onCloseModal) onCloseModal();
-  };
-
   const handleFileSelect = (file: File) => {
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
       toast('Please upload a valid PDF document (.pdf)', 'error');
@@ -141,6 +153,13 @@ export default function EBookUploadManager({
     }
   };
 
+  const resetUploadForm = () => {
+    setTitle('');
+    setSelectedFile(null);
+    setUploadProgress(0);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -152,7 +171,7 @@ export default function EBookUploadManager({
       return;
     }
 
-    setIsUploading(true);
+    setIsSaving(true);
     setUploadProgress(10);
 
     try {
@@ -196,15 +215,15 @@ export default function EBookUploadManager({
 
       if (res.success) {
         setUploadProgress(100);
-        toast(`E-Book "${title.trim()}" published to student portal!`, 'success');
-        handleCloseModal();
+        toast(`E-Book "${title.trim()}" saved & published successfully!`, 'success');
+        resetUploadForm();
         fetchEBooks();
       }
     } catch (err: any) {
       console.error('[EBookUploadManager] Upload error:', err);
-      toast(`Failed to upload e-book: ${err.message || 'Server error'}`, 'error');
+      toast(`Error occurred: ${err.message || 'Failed to upload e-book'}`, 'error');
     } finally {
-      setIsUploading(false);
+      setIsSaving(false);
       setUploadProgress(0);
     }
   };
@@ -232,25 +251,26 @@ export default function EBookUploadManager({
 
   return (
     <div className="glass-card" style={styles.cardContainer}>
-      {/* 1. Header Banner */}
+      {/* 1. Header Banner with Auto-Scroll Trigger Button */}
       <div style={styles.headerRow}>
         <div>
           <div style={styles.badgeRow}>
             <span style={styles.kicker}>DIGITAL LIBRARY MANAGEMENT</span>
-            <span style={styles.liveBadge}>● Synced to Web Portal</span>
+            <span style={styles.liveBadge}>● Synced to AWS S3 &amp; Web Portal</span>
           </div>
           <h2 style={styles.title}>UPLOAD E-BOOKS</h2>
           <p style={styles.subtitle}>
-            Upload PDF textbooks, reference modules, and formula handbooks so students can read and download them directly from the web portal.
+            Upload PDF textbooks, reference modules, and formula handbooks directly to AWS S3 so students can read them inside the web portal.
           </p>
         </div>
 
         <button
-          onClick={handleOpenModal}
+          type="button"
+          onClick={scrollToUploadForm}
           className="btn"
           style={styles.uploadBtn}
         >
-          <span style={{ fontSize: '1.2rem' }}>📖</span> + Upload New E-Book
+          <span style={{ fontSize: '1.15rem' }}>📖</span> Upload E-Book ↓
         </button>
       </div>
 
@@ -281,12 +301,12 @@ export default function EBookUploadManager({
       ) : ebooks.length === 0 ? (
         <div style={styles.emptyState}>
           <div style={styles.emptyIcon}>📚</div>
-          <h4 style={{ color: '#ffffff', marginBottom: '6px', fontSize: '1.1rem' }}>No E-Books Uploaded Yet</h4>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', maxWidth: '420px', margin: '0 auto 1.2rem auto' }}>
-            Click the button above to upload PDF textbooks and reference materials. They will immediately become available in the student's E-Book tab.
+          <h4 style={{ color: '#ffffff', marginBottom: '6px', fontSize: '1.05rem' }}>No E-Books Available Yet</h4>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', maxWidth: '420px', margin: '0 auto 1rem auto' }}>
+            Use the upload form below to publish your first PDF e-book to the student library.
           </p>
-          <button onClick={handleOpenModal} className="btn" style={styles.uploadBtnSmall}>
-            + Upload First E-Book
+          <button type="button" onClick={scrollToUploadForm} className="btn" style={styles.uploadBtnSmall}>
+            ↓ Scroll to Upload Form
           </button>
         </div>
       ) : (
@@ -328,6 +348,7 @@ export default function EBookUploadManager({
                   View / Open PDF ↗
                 </a>
                 <button
+                  type="button"
                   onClick={() => handleDeleteEBook(book.id, book.title)}
                   disabled={deletingId === book.id}
                   style={styles.deleteBtn}
@@ -341,200 +362,220 @@ export default function EBookUploadManager({
         </div>
       )}
 
-      {/* 4. Upload E-Book Modal */}
-      {isModalOpen && (
-        <div style={styles.modalBackdrop} onClick={() => !isUploading && handleCloseModal()}>
-          <div className="glass-card" style={styles.modalBox} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
+      {/* 4. Bottom Inline Upload E-Book Form Section (Target of useRef scrollIntoView) */}
+      <div
+        ref={uploadRef}
+        className={formHighlighted ? 'ebook-scroll-highlight' : ''}
+        style={{
+          ...styles.inlineFormCard,
+          borderColor: formHighlighted ? '#8b5cf6' : 'rgba(255, 255, 255, 0.14)',
+        }}
+      >
+        <div style={styles.modalHeader}>
+          <div>
+            <span style={styles.modalKicker}>AWS S3 E-BOOK UPLOAD FORM</span>
+            <h3 style={styles.modalTitle}>Add &amp; Publish New E-Book</h3>
+          </div>
+          {isSaving && saveCountdown > 0 && (
+            <span style={styles.timerBadge}>
+              ⏱ Uploading… {saveCountdown}s
+            </span>
+          )}
+        </div>
+
+        <form onSubmit={handleUploadSubmit} style={{ marginTop: '1.1rem' }}>
+          {/* PDF File Drag and Drop */}
+          <div
+            style={{
+              ...styles.dropZone,
+              borderColor: isDragOver ? '#8b5cf6' : 'rgba(255, 255, 255, 0.2)',
+              backgroundColor: isDragOver ? 'rgba(139, 92, 246, 0.12)' : 'rgba(0, 0, 0, 0.22)',
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setIsDragOver(false);
+            }}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  handleFileSelect(e.target.files[0]);
+                }
+              }}
+            />
+
+            <div style={{ fontSize: '2.2rem', marginBottom: '6px' }}>📄</div>
+            {selectedFile ? (
               <div>
-                <span style={styles.modalKicker}>PORTAL ASSET UPLOAD</span>
-                <h3 style={styles.modalTitle}>Upload E-Book to Portal</h3>
+                <p style={{ color: '#ffffff', fontWeight: 600, fontSize: '0.95rem' }}>
+                  {selectedFile.name}
+                </p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '2px' }}>
+                  {formatBytes(selectedFile.size)} • Click to change PDF file
+                </p>
               </div>
-              <button onClick={handleCloseModal} disabled={isUploading} style={styles.closeBtn}>
-                ✕
-              </button>
+            ) : (
+              <div>
+                <p style={{ color: '#ffffff', fontWeight: 600, fontSize: '0.95rem' }}>
+                  Click to choose E-Book PDF or drag &amp; drop here
+                </p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>
+                  Direct AWS S3 upload • PDF files up to 100MB supported
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Book Title */}
+          <div style={styles.fieldGroup}>
+            <label style={styles.inputLabel}>Book Title *</label>
+            <input
+              ref={titleInputRef}
+              type="text"
+              placeholder="e.g. Modern Physics for JEE Advanced"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              style={styles.modalInput}
+              required
+            />
+          </div>
+
+          {/* Subject & Course Selection */}
+          <div style={styles.rowFields}>
+            <div style={{ flex: 1 }}>
+              <label style={styles.inputLabel}>Subject / Domain</label>
+              <select
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                style={styles.modalSelect}
+              >
+                <option value="Physics">Physics</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Mathematics">Mathematics</option>
+                <option value="Biology">Biology</option>
+                <option value="General">General Science</option>
+                <option value="Other">Other / Custom</option>
+              </select>
             </div>
 
-            <form onSubmit={handleUploadSubmit} style={{ marginTop: '1.2rem' }}>
-              {/* PDF File Drag and Drop */}
-              <div
-                style={{
-                  ...styles.dropZone,
-                  borderColor: isDragOver ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.2)',
-                  backgroundColor: isDragOver ? 'rgba(23, 90, 103, 0.2)' : 'rgba(0, 0, 0, 0.2)',
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(false);
-                }}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
+            <div style={{ flex: 1.2 }}>
+              <label style={styles.inputLabel}>Target Course (Optional)</label>
+              <select
+                value={courseId}
+                onChange={(e) => setCourseId(e.target.value)}
+                style={styles.modalSelect}
               >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFileSelect(e.target.files[0]);
-                    }
-                  }}
-                />
-
-                <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📄</div>
-                {selectedFile ? (
-                  <div>
-                    <p style={{ color: '#ffffff', fontWeight: 600, fontSize: '0.95rem' }}>
-                      {selectedFile.name}
-                    </p>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '2px' }}>
-                      {formatBytes(selectedFile.size)} • Click to change file
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <p style={{ color: '#ffffff', fontWeight: 600, fontSize: '0.95rem' }}>
-                      Click to choose PDF or drag &amp; drop here
-                    </p>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>
-                      PDF files up to 100MB supported
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Book Title */}
-              <div style={styles.fieldGroup}>
-                <label style={styles.inputLabel}>Book Title *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Modern Physics for JEE Advanced"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  style={styles.modalInput}
-                  required
-                />
-              </div>
-
-              {/* Subject & Course Selection */}
-              <div style={styles.rowFields}>
-                <div style={{ flex: 1 }}>
-                  <label style={styles.inputLabel}>Subject / Domain</label>
-                  <select
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    style={styles.modalSelect}
-                  >
-                    <option value="Physics">Physics</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="Mathematics">Mathematics</option>
-                    <option value="Biology">Biology</option>
-                    <option value="General">General Science</option>
-                    <option value="Other">Other / Custom</option>
-                  </select>
-                </div>
-
-                <div style={{ flex: 1.2 }}>
-                  <label style={styles.inputLabel}>Target Course (Optional)</label>
-                  <select
-                    value={courseId}
-                    onChange={(e) => setCourseId(e.target.value)}
-                    style={styles.modalSelect}
-                  >
-                    <option value="">-- All Courses / General --</option>
-                    {courses.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {subject === 'Other' && (
-                <div style={styles.fieldGroup}>
-                  <label style={styles.inputLabel}>Specify Custom Subject</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Robotics, Astronomy"
-                    value={customSubject}
-                    onChange={(e) => setCustomSubject(e.target.value)}
-                    style={styles.modalInput}
-                  />
-                </div>
-              )}
-
-              {/* Total Pages & Course Book Checkbox */}
-              <div style={styles.rowFields}>
-                <div style={{ flex: 1 }}>
-                  <label style={styles.inputLabel}>Estimated Total Pages</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="5000"
-                    value={totalPages}
-                    onChange={(e) => setTotalPages(e.target.value)}
-                    style={styles.modalInput}
-                  />
-                </div>
-
-                <div style={{ flex: 1.2, display: 'flex', alignItems: 'center', marginTop: '1.4rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#ffffff', fontSize: '0.88rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={isCourseBook}
-                      onChange={(e) => setIsCourseBook(e.target.checked)}
-                      style={{ width: '16px', height: '16px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
-                    />
-                    Mark as Course Book
-                  </label>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              {isUploading && (
-                <div style={styles.progressBox}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.8rem', color: '#ffffff' }}>
-                    <span>Uploading E-Book PDF to S3…</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div style={styles.progressBarTrack}>
-                    <div style={{ ...styles.progressBarFill, width: `${uploadProgress}%` }} />
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div style={styles.modalActions}>
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  disabled={isUploading}
-                  style={styles.cancelBtn}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isUploading || !selectedFile || !title.trim()}
-                  className="btn"
-                  style={{
-                    ...styles.submitBtn,
-                    opacity: isUploading || !selectedFile || !title.trim() ? 0.6 : 1,
-                  }}
-                >
-                  {isUploading ? 'Publishing E-Book…' : 'Publish to Student Portal'}
-                </button>
-              </div>
-            </form>
+                <option value="">-- All Courses / General --</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
-      )}
+
+          {subject === 'Other' && (
+            <div style={styles.fieldGroup}>
+              <label style={styles.inputLabel}>Specify Custom Subject</label>
+              <input
+                type="text"
+                placeholder="e.g. Robotics, Astronomy"
+                value={customSubject}
+                onChange={(e) => setCustomSubject(e.target.value)}
+                style={styles.modalInput}
+              />
+            </div>
+          )}
+
+          {/* Total Pages & Course Book Checkbox */}
+          <div style={styles.rowFields}>
+            <div style={{ flex: 1 }}>
+              <label style={styles.inputLabel}>Estimated Total Pages</label>
+              <input
+                type="number"
+                min="1"
+                max="5000"
+                value={totalPages}
+                onChange={(e) => setTotalPages(e.target.value)}
+                style={styles.modalInput}
+              />
+            </div>
+
+            <div style={{ flex: 1.2, display: 'flex', alignItems: 'center', marginTop: '1.4rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#ffffff', fontSize: '0.88rem' }}>
+                <input
+                  type="checkbox"
+                  checked={isCourseBook}
+                  onChange={(e) => setIsCourseBook(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#8b5cf6', cursor: 'pointer' }}
+                />
+                Mark as Course Recommended Book
+              </label>
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          {isSaving && (
+            <div style={styles.progressBox}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.8rem', color: '#ffffff' }}>
+                <span>Uploading E-Book PDF to AWS S3…</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div style={styles.progressBarTrack}>
+                <div style={{ ...styles.progressBarFill, width: `${uploadProgress}%` }} />
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons with Inline Loading Spinner */}
+          <div style={styles.modalActions}>
+            {(selectedFile || title) && !isSaving && (
+              <button
+                type="button"
+                onClick={resetUploadForm}
+                style={styles.cancelBtn}
+              >
+                Reset
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={isSaving || !selectedFile || !title.trim()}
+              className="btn"
+              style={{
+                ...styles.submitBtn,
+                opacity: isSaving || !selectedFile || !title.trim() ? 0.65 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              {isSaving ? (
+                <>
+                  <svg className="cms-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" />
+                  </svg>
+                  <span>Saving &amp; Uploading… ({uploadProgress}%)</span>
+                </>
+              ) : (
+                <span>Save &amp; Publish E-Book →</span>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -564,7 +605,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.75rem',
     fontWeight: 700,
     letterSpacing: '0.08em',
-    color: 'var(--accent-primary, #175a67)',
+    color: '#a78bfa',
     textTransform: 'uppercase',
   },
   liveBadge: {
@@ -598,6 +639,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     backgroundColor: '#8b5cf6',
     border: 'none',
+    borderRadius: '999px',
     boxShadow: '0 4px 14px rgba(139, 92, 246, 0.35)',
     cursor: 'pointer',
   },
@@ -606,6 +648,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.85rem',
     fontWeight: 600,
     backgroundColor: '#8b5cf6',
+    borderRadius: '999px',
   },
   statsBar: {
     display: 'flex',
@@ -637,14 +680,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   emptyState: {
     textAlign: 'center',
-    padding: '3rem 1.5rem',
+    padding: '2.2rem 1.5rem',
     backgroundColor: 'rgba(0, 0, 0, 0.15)',
     borderRadius: '12px',
     border: '1px dashed rgba(255, 255, 255, 0.1)',
+    marginBottom: '1.5rem',
   },
   emptyIcon: {
-    fontSize: '3rem',
-    marginBottom: '0.8rem',
+    fontSize: '2.5rem',
+    marginBottom: '0.5rem',
   },
   spinner: {
     width: '36px',
@@ -659,6 +703,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
     gap: '1rem',
+    marginBottom: '1.75rem',
   },
   bookCard: {
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -759,33 +804,21 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
-  modalBackdrop: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    backdropFilter: 'blur(8px)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 99999,
-    padding: '1.5rem',
-  },
-  modalBox: {
+  inlineFormCard: {
     width: '100%',
-    maxWidth: '520px',
-    padding: '2rem',
-    backgroundColor: '#0d1520',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
+    padding: '1.6rem',
+    backgroundColor: 'rgba(13, 21, 32, 0.85)',
+    border: '1px solid rgba(255, 255, 255, 0.14)',
     borderRadius: '16px',
-    boxShadow: '0 24px 60px rgba(0, 0, 0, 0.7)',
+    scrollMarginTop: '24px',
+    transition: 'border-color 0.3s ease, box-shadow 0.3s ease',
   },
   modalHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '10px',
   },
   modalKicker: {
     fontSize: '0.72rem',
@@ -795,26 +828,27 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase',
   },
   modalTitle: {
-    fontSize: '1.25rem',
+    fontSize: '1.2rem',
     fontWeight: 700,
     color: '#ffffff',
     marginTop: '2px',
   },
-  closeBtn: {
-    background: 'none',
-    border: 'none',
-    color: 'var(--text-secondary)',
-    fontSize: '1.3rem',
-    cursor: 'pointer',
-    padding: '4px',
+  timerBadge: {
+    fontSize: '0.78rem',
+    fontWeight: 700,
+    color: '#c4b5fd',
+    backgroundColor: 'rgba(139, 92, 246, 0.18)',
+    border: '1px solid rgba(139, 92, 246, 0.35)',
+    padding: '4px 12px',
+    borderRadius: '999px',
   },
   dropZone: {
     border: '2px dashed rgba(255, 255, 255, 0.2)',
     borderRadius: '12px',
-    padding: '1.8rem 1.2rem',
+    padding: '1.5rem 1.2rem',
     textAlign: 'center',
     cursor: 'pointer',
-    marginBottom: '1.2rem',
+    marginBottom: '1.1rem',
     transition: 'all 0.2s ease',
   },
   fieldGroup: {
@@ -878,24 +912,24 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'flex-end',
     gap: '10px',
-    marginTop: '1.5rem',
+    marginTop: '1.25rem',
   },
   cancelBtn: {
     padding: '10px 18px',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     border: '1px solid rgba(255, 255, 255, 0.15)',
     color: '#ffffff',
-    borderRadius: '8px',
+    borderRadius: '999px',
     fontSize: '0.88rem',
     fontWeight: 500,
     cursor: 'pointer',
   },
   submitBtn: {
-    padding: '10px 20px',
-    backgroundColor: '#8b5cf6',
+    padding: '10px 24px',
+    backgroundColor: '#0ea5e9',
     border: 'none',
     color: '#ffffff',
-    borderRadius: '8px',
+    borderRadius: '999px',
     fontSize: '0.88rem',
     fontWeight: 700,
     cursor: 'pointer',
