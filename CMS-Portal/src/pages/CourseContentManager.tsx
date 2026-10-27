@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiFetch, type AdminCourse } from '../api';
 import { getUploadPresignedUrl, uploadFileWithProgress, uploadTeacherVideo } from '../services/uploadService';
+import CustomSelect from '../components/CustomSelect';
 
 export type ContentType = 'folder' | 'video' | 'pdf' | 'note';
 
@@ -670,18 +671,19 @@ export default function CourseContentManager({
 
           <div style={styles.coursePickerBox}>
             <label style={styles.pickerLabel}>Switch Target Course:</label>
-            <select
+            <CustomSelect
+              options={courses.map((course) => ({
+                value: course.id,
+                label: course.title,
+                category: course.category,
+                badge: course.isPublished ? 'Published' : 'Draft',
+              }))}
               value={activeCourseId}
-              onChange={(e) => handleCourseChange(e.target.value)}
-              style={styles.courseSelect}
-            >
-              <option value="">-- Choose Course --</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title} {course.isPublished ? '✓' : '(Draft)'}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => handleCourseChange(val ? String(val) : '')}
+              placeholder="-- Choose Course to Manage --"
+              searchPlaceholder="Type course name or category..."
+              width={340}
+            />
           </div>
         </div>
 

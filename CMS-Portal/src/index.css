@@ -193,6 +193,51 @@ body::before {
   -webkit-backdrop-filter: blur(8px);
 }
 
+/* Modern High-Taste Select & Dropdown Styling */
+select, .select-field, select.input-field {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: rgba(18, 20, 26, 0.88);
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ff7676' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+  padding-right: 42px !important;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+select:hover, .select-field:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background-color: rgba(24, 28, 36, 0.95);
+}
+
+select:focus, .select-field:focus {
+  outline: none;
+  border-color: rgba(255, 94, 94, 0.55);
+  box-shadow: 0 0 0 3px rgba(255, 94, 94, 0.15), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+select option {
+  background-color: #12141a !important;
+  color: #ffffff !important;
+  padding: 12px 14px !important;
+  font-size: 0.9rem !important;
+}
+
+select option:checked {
+  background-color: #ff5e5e !important;
+  color: #ffffff !important;
+}
+
 .main-content {
   flex: 1;
   padding: var(--space-xl) var(--space-xxl);

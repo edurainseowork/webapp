@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiFetch, type AdminCourse } from '../api'
+import CustomSelect from '../components/CustomSelect'
 
 type StudentEnrollment = {
   id: number
@@ -172,20 +173,21 @@ export default function StudentManager({ coursesList, showToast, onSendDirectNot
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginBottom: '16px' }}>
               Assign a batch or course to <strong>{selectedStudentForGrant.name || selectedStudentForGrant.email}</strong>.
             </p>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Select Course / Batch</label>
-              <select
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Select Course / Batch</label>
+              <CustomSelect
+                options={coursesList.map((c) => ({
+                  value: c.id,
+                  label: c.title,
+                  category: c.category,
+                  badge: c.isPublished ? 'Live' : 'Draft',
+                }))}
                 value={grantCourseId}
-                onChange={(e) => setGrantCourseId(e.target.value ? Number(e.target.value) : '')}
-                style={{ ...inputStyle, width: '100%', cursor: 'pointer' }}
-              >
-                <option value="">-- Choose a course --</option>
-                {coursesList.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title} ({c.category})
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setGrantCourseId(val ? Number(val) : '')}
+                placeholder="-- Choose a course / batch --"
+                searchPlaceholder="Search course name or category (e.g. JEE, NEET)..."
+                clearable
+              />
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
