@@ -38,7 +38,7 @@ export function CourseStoreView({
   const batchesRef = useRef<HTMLElement>(null);
   useSearchShortcut(searchRef);
 
-  const { status, error, reload, batches, filters } = useCatalog(goalKey);
+  const { status, error, reload, batches, filters, isOwned } = useCatalog(goalKey);
   const q = (searchQuery ?? query).trim().toLowerCase();
 
   // Free courses (published as free in the CMS)
@@ -69,6 +69,7 @@ export function CourseStoreView({
               query={q}
               onOpenBatch={onOpenBatch}
               onBuyBatch={onBuyBatch}
+              isOwned={isOwned}
             />
           </section>
 
@@ -115,7 +116,7 @@ export function CourseStoreView({
                           onClick={() => onOpenBatch(demo.id)}
                           className="mt-4 w-full flex items-center justify-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold py-2.5 rounded-lg transition-all active:scale-[0.98]"
                         >
-                          Start Free Course
+                          {isOwned(demo.id) ? 'Enrolled — Continue' : 'Start Free Course'}
                           <ArrowUpRight className="w-3.5 h-3.5" />
                         </button>
                       </div>

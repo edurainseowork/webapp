@@ -25,6 +25,18 @@ export interface CmsCourse {
   studentsEnrolled: number | null;
   duration: string | null;
   totalLessons: number | null;
+  /** Pro / Pro Max (paise) and what each plan includes; Basic = price / originalPrice. Missing on old backends. */
+  plans?: {
+    basic?: { features: string[] };
+    pro?: CmsPaidPlan;
+    proMax?: CmsPaidPlan;
+  };
+}
+
+export interface CmsPaidPlan {
+  price: number;
+  originalPrice: number | null;
+  features: string[];
 }
 
 export interface CmsCategory {

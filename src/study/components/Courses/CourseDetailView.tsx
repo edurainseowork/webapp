@@ -28,10 +28,11 @@ import {
   RefreshCw,
   ExternalLink,
 } from 'lucide-react';
-import { Batch, Chapter, Subject, buildSyllabus, lectureIcon } from './courseData';
+import { Batch, Chapter, CoursePlan, PlanId, Subject, buildSyllabus, lectureIcon } from './courseData';
 import { Toast, discountPct, formatINR, useToast } from './CourseShared';
 import { enrollInCourse, fetchCompletedLessons, fetchCourseContent, markLessonDone } from '../../lib/courses';
-
+import { useSupportContacts } from '../../lib/support';
+import { SupportContactList } from '../Support/SupportContactList';
 type TabId = 'description' | 'syllabus' | 'tests' | 'community';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -122,6 +123,97 @@ function ChapterRow({
     </div>
   );
 }
+/* ------------------------------------------------------------------ */
+/*  Plan cards (Basic / Pro / Pro Max) — prices from the CMS           */
+/* ------------------------------------------------------------------ */
+
+const PLAN_STYLE: Record<PlanId, { tag: string; tagClass: string; suffix: string }> = {
+  basic: { tag: 'Essential Prep', tagClass: 'bg-[#EAF3F1] text-[#175A67]', suffix: 'Full Validity' },
+  pro: { tag: 'Best Value for Rankers', tagClass: 'bg-sky-100 text-sky-700', suffix: 'Recommended' },
+  proMax: { tag: 'Complete Package', tagClass: 'bg-amber-50 text-amber-700', suffix: 'All-inclusive' },
+};
+
+/** The plan shown as "Most Popular" and selected first: Pro when offered, otherwise the first one. */
+const recommendedPlan = (plans: CoursePlan[]): PlanId => (plans.some((p) => p.id === 'pro') ? 'pro' : plans[0]?.id ?? 'basic');
+
+function PlanCard({
+  plan,
+  previous,
+  selected,
+  popular,
+  fallbackFeatures,
+  onSelect,
+}: {
+  plan: CoursePlan;
+  /** Name of the plan below this one ("Everything in Basic, plus:") */
+  previous: string | null;
+  selected: boolean;
+  popular: boolean;
+  /** Shown on Basic when the CMS has no "What's included" lines (duration, lessons, mentors) */
+  fallbackFeatures: Batch['features'];
+  onSelect: () => void;
+}) {
+  const style = PLAN_STYLE[plan.id];
+  const off = discountPct(plan.price, plan.mrp);
+  const showFallback = plan.id === 'basic' && plan.features.length === 0;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={`relative text-left bg-white rounded-2xl p-4 border-2 transition-all ${
+        selected ? 'border-[#175A67] shadow-[0_12px_32px_rgba(23,90,103,0.18)]' : 'border-transparent hover:border-[#175A67]/25'
+      }`}
+    >
+      {popular && (
+        <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-bold uppercase tracking-wider bg-[#0F3B42] text-white px-2.5 py-1 rounded-full whitespace-nowrap">
+          Most Popular
+        </span>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${style.tagClass}`}>{style.tag}</span>
+        <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selected ? 'border-[#175A67]' : 'border-slate-300'}`}>
+          {selected && <span className="w-2.5 h-2.5 rounded-full bg-[#175A67]" />}
+        </span>
+      </div>
+      <p className="flex items-center gap-1.5 text-lg font-semibold mt-3">
+        {plan.name}
+        {popular && <Star className="w-4 h-4 text-[#175A67] fill-[#175A67]" />}
+      </p>
+      <p className="flex items-baseline gap-2 mt-3">
+        <span className="text-2xl font-bold">{plan.price === 0 ? 'Free' : formatINR(plan.price)}</span>
+        {plan.mrp > plan.price && <span className="text-xs text-slate-400 line-through">{formatINR(plan.mrp)}</span>}
+      </p>
+      <p className={`text-[11px] font-bold mt-0.5 ${plan.id === 'basic' ? 'text-red-500' : 'text-[#175A67]'}`}>
+        {off > 0 ? `${off}% OFF • ` : ''}
+        {style.suffix}
+      </p>
+
+      <div className="border-t border-slate-100 mt-4 pt-4 space-y-2.5">
+        {previous && (
+          <p className="flex items-start gap-2 text-[11px] font-semibold text-[#0B1C30]">
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#175A67] shrink-0 mt-px" />
+            Everything in {previous}
+            {plan.features.length ? ', plus:' : ''}
+          </p>
+        )}
+        {plan.features.map((text) => (
+          <p key={text} className="flex items-start gap-2 text-[11px] text-slate-600">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#175A67] shrink-0 mt-px" />
+            {text}
+          </p>
+        ))}
+        {showFallback &&
+          fallbackFeatures.map((feature) => (
+            <p key={feature.text} className="flex items-start gap-2 text-[11px] text-slate-600">
+              <feature.icon className="w-3.5 h-3.5 text-[#175A67] shrink-0 mt-px" />
+              {feature.text}
+            </p>
+          ))}
+      </div>
+    </button>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Main view                                                           */
@@ -148,6 +240,7 @@ export function CourseDetailView({
 }: CourseDetailViewProps) {
   const [activeTab, setActiveTab] = useState<TabId>('description');
   const [syllabus, setSyllabus] = useState<SyllabusState>({ status: 'loading' });
+  const { contacts: supportContacts } = useSupportContacts();
     // Lessons this student has opened (✓ Done); also counted on the profile's Syllabus Velocity
     const [doneLessons, setDoneLessons] = useState<Set<string>>(() => new Set());
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
@@ -161,8 +254,14 @@ export function CourseDetailView({
   const subjectsRef = useRef<HTMLElement>(null);
   const breakdownRef = useRef<HTMLElement>(null);
 
-  const isFree = batch.price === 0;
-  const hasDiscount = batch.mrp > batch.price;
+  // Plans (Basic / Pro / Pro Max) are offered when the CMS has a Pro or Pro Max price; owners see their course card
+  const showPlans = batch.plans.length > 1 && !isEnrolled;
+  const [planId, setPlanId] = useState<PlanId>(() => recommendedPlan(batch.plans));
+  const selectedPlan = (showPlans ? batch.plans.find((p) => p.id === planId) : null) ?? { id: 'basic' as const, name: 'Basic', price: batch.price, mrp: batch.mrp, features: [] };
+  const price = selectedPlan.price;
+  const mrp = selectedPlan.mrp;
+  const isFree = price === 0;
+  const hasDiscount = mrp > price;
   const subjects = syllabus.status === 'ready' ? syllabus.subjects : [];
   const subject = subjects.find((s) => s.id === activeSubjectId) ?? subjects[0] ?? null;
 
@@ -234,6 +333,11 @@ export function CourseDetailView({
 
   const handleEnroll = async () => {
     if (enrolling) return;
+    // A paid Pro / Pro Max must never fall through to the free Basic enrolment
+    if (showPlans && selectedPlan.id !== 'basic' && !isFree) {
+      showToast(`Online payment for ${selectedPlan.name} is coming soon.`);
+      return;
+    }
     setEnrolling(true);
     const result = await enrollInCourse(batch.courseId);
     setEnrolling(false);
@@ -355,6 +459,27 @@ export function CourseDetailView({
           {/* What's included + summary */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
             <section ref={plansRef} className="scroll-mt-16">
+            {showPlans ? (
+                <>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#175A67]">Enrollment Pathways</p>
+                  <h2 className="text-xl sm:text-2xl font-bold tracking-tight mt-1">Choose a Plan tailored for your preparation</h2>
+
+                  <div className={`grid grid-cols-1 gap-4 mt-6 items-start ${batch.plans.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+                    {batch.plans.map((plan, i) => (
+                      <PlanCard
+                        key={plan.id}
+                        plan={plan}
+                        previous={i > 0 ? batch.plans[i - 1].name : null}
+                        selected={plan.id === selectedPlan.id}
+                        popular={plan.id === recommendedPlan(batch.plans) && plan.id !== 'basic'}
+                        fallbackFeatures={batch.features}
+                        onSelect={() => setPlanId(plan.id)}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
               <p className="text-[10px] font-bold uppercase tracking-wider text-[#175A67]">Course Overview</p>
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight mt-1">What you get with this course</h2>
 
@@ -388,6 +513,8 @@ export function CourseDetailView({
                   ))}
                 </div>
               </div>
+              </>
+              )}
 
               {batch.mentors.length > 0 && (
                 <div className="mt-6">
@@ -422,15 +549,19 @@ export function CourseDetailView({
 
               <div className="mt-4 rounded-xl border border-slate-200/80 p-4">
                 <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 leading-relaxed">
-                  {hasDiscount ? 'Special offer price' : 'Course fee'}
+                  {showPlans
+                    ? `${hasDiscount ? 'Special offer price' : 'Plan fee'} (EduRain ${selectedPlan.name}${selectedPlan.id === recommendedPlan(batch.plans) && selectedPlan.id !== 'basic' ? ' • Recommended' : ''})`
+                    : hasDiscount
+                    ? 'Special offer price'
+                    : 'Course fee'}
                 </p>
                 <p className="flex flex-wrap items-baseline gap-2 mt-1.5">
-                  <span className="text-3xl font-bold">{isFree ? 'Free' : formatINR(batch.price)}</span>
+                  <span className="text-3xl font-bold">{isFree ? 'Free' : formatINR(price)}</span>
                   {hasDiscount && (
                     <>
-                      <span className="text-xs text-slate-400 line-through">{formatINR(batch.mrp)}</span>
+                      <span className="text-xs text-slate-400 line-through">{formatINR(mrp)}</span>
                       <span className="text-[10px] font-bold bg-red-50 text-red-600 px-1.5 py-0.5 rounded">
-                        {discountPct(batch.price, batch.mrp)}% OFF
+                        {discountPct(price, mrp)}% OFF
                       </span>
                     </>
                   )}
@@ -439,7 +570,7 @@ export function CourseDetailView({
                   <>
                     <div className="flex items-center justify-between text-xs mt-3">
                       <span className="text-slate-500">Instant Net Savings:</span>
-                      <span className="font-bold text-emerald-700">SAVE {formatINR(batch.mrp - batch.price)}</span>
+                      <span className="font-bold text-emerald-700">SAVE {formatINR(mrp - price)}</span>
                     </div>
                   </>
                 )}
@@ -466,7 +597,7 @@ export function CourseDetailView({
                     </>
                   ) : (
                     <>
-                      {isFree ? 'ENROLL FOR FREE' : 'ENROLL NOW'}
+                      {isFree ? 'ENROLL FOR FREE' : showPlans ? `ENROLL IN ${selectedPlan.name.toUpperCase()}` : 'ENROLL NOW'}
                       <Zap className="w-4 h-4 fill-current" />
                     </>
                   )}
@@ -497,17 +628,16 @@ export function CourseDetailView({
                 ))}
               </ul>
 
-              <div className="mt-4 flex items-center gap-3 rounded-xl border border-slate-200/80 p-3">
-                <span className="w-9 h-9 rounded-full bg-sky-50 text-[#175A67] flex items-center justify-center shrink-0">
-                  <PhoneCall className="w-4 h-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[11px] text-slate-500">Need guidance before joining?</span>
-                  <a href="tel:+919876543210" className="block text-[11px] font-semibold text-[#175A67] hover:underline">
-                    +91 98765 43210 • Call Student Advisor
-                  </a>
-                </span>
-              </div>
+              {/* Support numbers from CMS → Support Contacts (hidden until one is added) */}
+              {supportContacts.length > 0 && (
+                <div className="mt-4 rounded-xl border border-slate-200/80 p-3">
+                  <p className="flex items-center gap-2 text-[11px] text-slate-500 mb-2">
+                    <PhoneCall className="w-3.5 h-3.5 text-[#175A67]" />
+                    Need guidance before joining?
+                  </p>
+                  <SupportContactList contacts={supportContacts} compact />
+                </div>
+              )}
             </aside>
           </div>
 

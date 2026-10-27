@@ -28,8 +28,7 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { useAuth } from '../../AuthGate';
-import { apiFetch } from '../../lib/api';
-import { saveGoal, type StudentGoal } from '../../lib/goal';
+import type { StudentGoal } from '../../lib/goal';
 import {
   PHOTO_MAX_BYTES,
   PHOTO_TYPES,
@@ -49,12 +48,11 @@ import {
 
 interface ProfileViewProps {
   onBack: () => void;
-  /** The student's goal (target exam), shared with the goal popup and the top bar */
+  /** The student's goal (target exam), chosen in the goal popup; read-only here */
   goal: StudentGoal | null;
-  onGoalSaved: (goal: StudentGoal) => void;
+  /** Keeps the top-bar avatar in step with the profile photo */
+  onPhotoChange?: (url: string | null) => void;
 }
-
-type Category = { id: number; name: string; slug: string };
 
 type Draft = {
   name: string;
@@ -62,7 +60,6 @@ type Draft = {
   gender: Gender | '';
   city: string;
   state: string;
-  goalId: number | null;
 };
 
 const GENDERS: { value: Gender | ''; label: string }[] = [
@@ -160,11 +157,10 @@ const formatNumber = (n: number) => n.toLocaleString('en-IN');
 /*  Main view                                                           */
 /* ------------------------------------------------------------------ */
 
-export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
+export function ProfileView({ onBack, goal, onPhotoChange }: ProfileViewProps) {
   const { updateSessionName } = useAuth();
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
@@ -191,11 +187,15 @@ export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
 
   useEffect(() => {
     void load();
-    apiFetch<Category[]>('/categories')
-      .then((list) => setCategories(Array.isArray(list) ? list : []))
-      .catch(() => setCategories([]));
     return () => window.clearTimeout(toastTimer.current);
   }, []);
+
+  // Show the same photo in the top bar (after load, upload and remove)
+  const photo = profile?.profilePhoto;
+  useEffect(() => {
+    if (photo !== undefined) onPhotoChange?.(photo);
+  }, [photo, onPhotoChange]);
+
 
   const startEdit = () => {
     if (!profile) return;
@@ -205,7 +205,7 @@ export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
       gender: profile.gender ?? '',
       city: profile.city ?? '',
       state: profile.state ?? '',
-      goalId: goal?.id ?? null,
+      
     });
     setFormError(null);
     setIsEditing(true);
@@ -241,10 +241,7 @@ export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
         city: draft.city.trim() || null,
         state: draft.state.trim() || null,
       });
-      if (draft.goalId && draft.goalId !== goal?.id) {
-        const category = categories.find((c) => c.id === draft.goalId);
-        if (category) onGoalSaved(await saveGoal(category));
-      }
+
       setProfile(saved);
       if (saved.name) updateSessionName(saved.name);
       setIsEditing(false);
@@ -401,9 +398,7 @@ export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
                   {goal.name}
                 </span>
               ) : (
-                <button onClick={startEdit} className="text-[11px] font-bold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full hover:bg-amber-200">
-                  Set your target exam
-                </button>
+                <span className="text-[11px] font-bold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full">Target exam not set</span>
               )}
               <span className="flex items-center gap-1 text-[11px] font-semibold text-[#2A707C]">
                 <CalendarDays className="w-3 h-3" />
@@ -492,7 +487,7 @@ export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
           </div>
           <div>
             <h3 className="font-semibold text-[#0B1C30] text-sm sm:text-base">Personal &amp; Academic Details</h3>
-            <p className="text-xs text-[#2A707C] mt-0.5">Manage your contact details, location and target exam.</p>
+            <p className="text-xs text-[#2A707C] mt-0.5">Manage your contact details and location.</p>
           </div>
         </div>
 
@@ -503,7 +498,7 @@ export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
           </p>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <DetailCard label="Full Name" icon={User}>
             {isEditing && draft ? (
               <input className={inputClass} value={draft.name} maxLength={80} onChange={(e) => update('name')(e.target.value)} aria-label="Full name" />
@@ -527,13 +522,8 @@ export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
             )}
           </DetailCard>
 
-          <DetailCard label="Email Address" icon={Mail}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-[#0B1C30] text-sm truncate" title={profile.email}>
-                {profile.email}
-              </span>
-              <span className="text-[10px] font-semibold text-[#2A707C] shrink-0">Login email</span>
-            </div>
+          <DetailCard label="Target Exam & Stream" icon={GraduationCap}>
+            <span className={`font-semibold text-sm truncate block ${goal ? 'text-[#003441]' : 'text-[#70787C]'}`}>{goal?.name ?? 'Not set'}</span>
           </DetailCard>
 
           <DetailCard label="Gender" icon={User}>
@@ -566,28 +556,13 @@ export function ProfileView({ onBack, goal, onGoalSaved }: ProfileViewProps) {
             )}
           </DetailCard>
 
-          <DetailCard label="Target Exam & Stream" icon={GraduationCap}>
-            {isEditing && draft ? (
-              <select
-                className={inputClass}
-                value={draft.goalId ?? ''}
-                onChange={(e) => update('goalId')(e.target.value ? Number(e.target.value) : null)}
-                aria-label="Target exam"
-                disabled={categories.length === 0}
-              >
-                {!draft.goalId && <option value="">Choose your target exam</option>}
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <button onClick={startEdit} className="flex items-center justify-between w-full text-left group">
-                <span className={`font-semibold text-sm truncate ${goal ? 'text-[#003441]' : 'text-[#70787C]'}`}>{goal?.name ?? 'Not set'}</span>
-                <span className="text-xs font-bold text-[#175A67] group-hover:underline shrink-0 ml-2">Change</span>
-              </button>
-            )}
+          <DetailCard label="Email Address" icon={Mail}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-[#0B1C30] text-sm truncate" title={profile.email}>
+                {profile.email}
+              </span>
+              <span className="text-[10px] font-semibold text-[#2A707C] shrink-0">Login email</span>
+            </div>
           </DetailCard>
         </div>
       </div>

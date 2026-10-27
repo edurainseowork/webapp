@@ -23,6 +23,7 @@ import {
   ChevronDown,
   User,
   ShoppingBag,
+  Headphones,
   LogOut,
   Lock,
   Award
@@ -35,8 +36,9 @@ import { ProfileView } from './components/Profile-section/ProfileView';
 import { LibraryView } from './components/LibraryView';
 import { CohortGoalModal } from './components/Modals/CohortGoalModal';
 import { fetchGoal, saveGoal, type StudentGoal } from './lib/goal';
-import { recordActivity } from './lib/profile';
+import { fetchProfile, recordActivity } from './lib/profile';
 import { PurchasesModal } from './components/Modals/PurchasesModal';
+import { SupportModal } from './components/Modals/SupportModal';
 import { PurchasesView } from './components/PurchasesView';
 import { PiView } from './components/PiView';
 import { TestSeriesView } from './components/TestSeriesView';
@@ -82,6 +84,7 @@ export function App() {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isPurchasesModalOpen, setIsPurchasesModalOpen] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   // Notifications
@@ -221,6 +224,17 @@ export function App() {
     recordActivity();
   }, [session.uid]);
 
+  // Profile photo for the top-bar avatar (initials until the student adds one)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchProfile()
+      .then((p) => !cancelled && setAvatarUrl(p.profilePhoto))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [session.uid]);
   // After login: load the saved goal once; students who haven't picked one yet get the goal popup.
   // Returning students with a goal land on Daily Drop (they can change the goal from the top navigation).
   const goalLoadedFor = useRef<string | null>(null);
@@ -469,11 +483,14 @@ export function App() {
               title={session.name}
             >
               <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-[#175A67] to-[#2A707C] p-0.5 shadow-sm">
-                <div className="w-full h-full rounded-full bg-[#EAE3DE] flex items-center justify-center text-xs font-bold text-[#175A67]">
-                  {initials}
-                </div>
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="w-full h-full rounded-full object-cover bg-[#EAE3DE]" onError={() => setAvatarUrl(null)} />
+                ) : (
+                  <div className="w-full h-full rounded-full bg-[#EAE3DE] flex items-center justify-center text-xs font-bold text-[#175A67]">
+                    {initials}
+                  </div>
+                )}
               </div>
-              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#10B981] ring-2 ring-[#EAE3DE]" />
             </div>
 
             {isProfileDropdownOpen && (
@@ -501,6 +518,16 @@ export function App() {
                 >
                   <ShoppingBag className="w-4 h-4" />
                   My Purchases
+                </button>
+                <button
+                  onClick={() => {
+                    setIsProfileDropdownOpen(false);
+                    setIsSupportOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm font-semibold text-[#175A67] hover:bg-[#175A67]/5 transition-colors"
+                >
+                  <Headphones className="w-4 h-4" />
+                  Help &amp; Support
                 </button>
                 <div className="border-t border-[#175A67]/10 mt-1 pt-1">
                   <button
@@ -859,10 +886,7 @@ export function App() {
             <ProfileView
               onBack={() => navigateTo('study-central')}
               goal={goal}
-              onGoalSaved={(saved) => {
-                setGoal(saved);
-                setSelectedBatch(saved.name);
-              }}
+              onPhotoChange={setAvatarUrl}
             />
           ) : activeNav === 'library' ? (
             <LibraryView
@@ -1045,6 +1069,8 @@ export function App() {
         isOpen={isPurchasesModalOpen}
         onClose={() => setIsPurchasesModalOpen(false)}
       />
+      
+      <SupportModal isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} />
 
       <CohortGoalModal
         isOpen={isGoalModalOpen}

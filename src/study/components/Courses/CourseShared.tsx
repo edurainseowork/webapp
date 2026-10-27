@@ -76,7 +76,7 @@ const STATUS_DOTS: Record<StatusTone, string> = {
   flash: 'bg-amber-400',
 };
 
-export function BatchCard({ batch, onOpen, onBuy }: { batch: Batch; onOpen: () => void; onBuy: () => void }) {
+export function BatchCard({ batch, onOpen, onBuy, owned = false }: { batch: Batch; onOpen: () => void; onBuy: () => void; owned?: boolean }) {
   const tone = HEADER_TONES[batch.tone];
   return (
     <article
@@ -142,15 +142,30 @@ export function BatchCard({ batch, onOpen, onBuy }: { batch: Batch; onOpen: () =
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onBuy();
-                }}
-                className="bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold px-4 py-2 rounded-full transition-all active:scale-95"
-              >
-                Buy Now
-              </button>
+              {owned ? (
+                // Already purchased: no Buy Now; opens the course
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpen();
+                  }}
+                  title="You are enrolled in this course"
+                  className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold px-4 py-2 rounded-full transition-all active:scale-95"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Enrolled
+                </button>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onBuy();
+                  }}
+                  className="bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold px-4 py-2 rounded-full transition-all active:scale-95"
+                >
+                  Buy Now
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -173,6 +188,8 @@ interface BatchCatalogProps {
   onFilterChange?: (filterId: string) => void;
   onOpenBatch: (batchId: string) => void;
   onBuyBatch: (batchId: string) => void;
+  /** Courses the student already bought show "Enrolled" instead of "Buy Now" */
+  isOwned?: (batchId: string) => boolean;
 }
 
 export function BatchCatalog({
@@ -184,6 +201,7 @@ export function BatchCatalog({
   onFilterChange,
   onOpenBatch,
   onBuyBatch,
+  isOwned,
 }: BatchCatalogProps) {
   const [ownFilter, setOwnFilter] = useState('all');
   const filter = controlledFilter ?? ownFilter;
@@ -240,7 +258,7 @@ export function BatchCatalog({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {visible.map((batch) => (
-            <BatchCard key={batch.id} batch={batch} onOpen={() => onOpenBatch(batch.id)} onBuy={() => onBuyBatch(batch.id)} />
+            <BatchCard key={batch.id} batch={batch} owned={isOwned?.(batch.id) ?? false} onOpen={() => onOpenBatch(batch.id)} onBuy={() => onBuyBatch(batch.id)} />
           ))}
         </div>
       )}
