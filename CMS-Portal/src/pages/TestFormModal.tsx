@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { apiFetch } from '../api'
 import Modal from '../components/Modal'
+import CustomSelect from '../components/CustomSelect'
 import {
   downloadQuestionTemplate, ghostButton, inputStyle, labelStyle, mutedText, postCsv, toIso, toLocalParts,
   type TestCourse, type TestItem, type UploadResult,
@@ -133,10 +134,26 @@ function TestFormModal({ courses, initialCourseId, test, onClose, onSaved, showT
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-md)' }}>
         <div style={{ gridColumn: '1 / -1' }}>
           <label style={labelStyle}>Course *</label>
-          <select value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={isEdit} style={inputStyle}>
-            <option value="">Select a course</option>
-            {courses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
-          </select>
+          <CustomSelect
+            options={courses.map((course) => ({
+              value: String(course.id),
+              label: course.title,
+              category: course.category,
+              badge: course.isPublished ? 'Published' : 'Draft',
+            }))}
+            value={courseId}
+            onChange={(val) => {
+              const nextId = String(val ?? '');
+              setCourseId(nextId);
+              const picked = courses.find((c) => String(c.id) === nextId);
+              if (picked?.category && !targetBatch.trim()) {
+                setTargetBatch(picked.category);
+              }
+            }}
+            placeholder="Select a course..."
+            searchPlaceholder="Search course or category..."
+            disabled={isEdit}
+          />
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <label style={labelStyle}>Test Title *</label>
@@ -180,10 +197,16 @@ function TestFormModal({ courses, initialCourseId, test, onClose, onSaved, showT
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <label style={labelStyle}>Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value as 'DRAFT' | 'SCHEDULED')} disabled={locked} style={inputStyle}>
-            <option value="DRAFT">Draft (not visible to students)</option>
-            <option value="SCHEDULED">Schedule (goes live automatically at the publish time)</option>
-          </select>
+          <CustomSelect
+            options={[
+              { value: 'DRAFT', label: 'Draft (not visible to students)', badge: 'Hidden' },
+              { value: 'SCHEDULED', label: 'Schedule (goes live automatically at the publish time)', badge: 'Auto-Live' },
+            ]}
+            value={status}
+            onChange={(val) => setStatus((val || 'DRAFT') as 'DRAFT' | 'SCHEDULED')}
+            disabled={locked}
+            searchable={false}
+          />
           <p style={{ ...mutedText, marginTop: '6px', fontSize: '0.78rem' }}>
             There is no lock/unlock button: a scheduled test becomes live at the publish time{closeDate ? ' and closes at the close time' : ''}, by the server clock.
           </p>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { CouponBody } from '@workspace/api-zod'
+import { API_BASE_URL } from '../api'
+import CustomSelect from '../components/CustomSelect'
 
 type Course = { id: number; title: string; category: string }
 
@@ -23,7 +25,7 @@ type CouponsProps = {
   showToast: (message: string, type?: 'success' | 'error') => void
 }
 
-const API_URL = 'http://localhost:5000/api'
+const API_URL = `${API_BASE_URL}/api`
 
 const inputStyle = { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' } as const
 const labelStyle = { display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' } as const
@@ -217,10 +219,15 @@ function Coupons({ user, coursesList, showToast }: CouponsProps) {
           <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Coupon Type</label>
-              <select value={isPublic ? 'public' : 'private'} onChange={e => setIsPublic(e.target.value === 'public')} style={inputStyle}>
-                <option value="public">Public (Visible to everyone)</option>
-                <option value="private">Private (Hidden, applies only via link/code)</option>
-              </select>
+              <CustomSelect
+                options={[
+                  { value: 'public', label: 'Public (Visible to everyone)', badge: 'Public' },
+                  { value: 'private', label: 'Private (Hidden, applies only via link/code)', badge: 'Private' },
+                ]}
+                value={isPublic ? 'public' : 'private'}
+                onChange={(val) => setIsPublic(val === 'public')}
+                searchable={false}
+              />
             </div>
             {!isPublic && (
               <div style={{ flex: 1 }}>

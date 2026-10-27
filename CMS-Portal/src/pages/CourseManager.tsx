@@ -11,6 +11,7 @@ import {
   type CourseMentor,
 } from '../api'
 import MentorPicker, { type MentorOption } from '../components/MentorPicker'
+import CustomSelect, { getCategoryBadgeStyle } from '../components/CustomSelect'
 const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' };
 const labelStyle: React.CSSProperties = { display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' };
 
@@ -435,14 +436,23 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
               Select which course is featured as the hero banner card on the student's <b>"Your Enrolled Courses"</b> (Purchases) page.
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <select
-              value={courses.find(c => c.isPurchasedBanner)?.id || ''}
-              onChange={async (e) => {
-                const targetId = Number(e.target.value);
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '280px' }}>
+            <CustomSelect
+              options={[
+                { value: '', label: '-- Auto (Highest Discount Offer) --' },
+                ...courses.map((c) => ({
+                  value: String(c.id),
+                  label: `${c.isPurchasedBanner ? '★ ' : ''}${c.title}`,
+                  category: c.category,
+                  badge: c.isPublished ? 'Published' : 'Draft',
+                })),
+              ]}
+              value={String(courses.find((c) => c.isPurchasedBanner)?.id || '')}
+              onChange={async (val) => {
+                const targetId = Number(val);
                 try {
                   if (!targetId) {
-                    for (const c of courses.filter(c => c.isPurchasedBanner)) {
+                    for (const c of courses.filter((c) => c.isPurchasedBanner)) {
                       await apiFetch(`/admin/courses/${c.id}/purchased-banner`, { method: 'PATCH', body: { isPurchasedBanner: false } });
                     }
                     showToast('Reset banner to auto-selection', 'success');
@@ -455,29 +465,44 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
                   showToast('Error: ' + err.message, 'error');
                 }
               }}
-              style={{ ...inputStyle, width: 'auto', minWidth: '240px', padding: '8px 12px', fontSize: '0.85rem', borderColor: 'rgba(245,158,11,0.4)' }}
-            >
-              <option value="">-- Auto (Highest Discount Offer) --</option>
-              {courses.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.isPurchasedBanner ? '★ ' : ''}{c.title} ({c.isPublished ? 'Published' : 'Draft'})
-                </option>
-              ))}
-            </select>
+              placeholder="-- Auto (Highest Discount Offer) --"
+              searchPlaceholder="Search course or category..."
+            />
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)', flexWrap: 'wrap', alignItems: 'center' }}>
           <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search courses..." style={{ ...inputStyle, flex: 2, minWidth: '180px', width: 'auto' }} />
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} style={{ ...inputStyle, flex: 1, minWidth: '140px', width: 'auto' }}>
-            <option value="all">All statuses</option>
-            <option value="published">Published</option>
-            <option value="draft">Drafts</option>
-          </select>
-          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: '140px', width: 'auto' }}>
-            <option value="">All categories</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div style={{ flex: 1, minWidth: '170px' }}>
+            <CustomSelect
+              options={[
+                { value: 'all', label: 'All statuses' },
+                { value: 'published', label: 'Published', badge: 'Live' },
+                { value: 'draft', label: 'Drafts', badge: 'Hidden' },
+              ]}
+              value={statusFilter}
+              onChange={(val) => setStatusFilter((val || 'all') as typeof statusFilter)}
+              searchable={false}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: '190px' }}>
+            <CustomSelect
+              options={[
+                { value: '', label: 'All categories' },
+                ...categories.map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                  category: c.name,
+                  badge: `${c.courseCount} course(s)`,
+                })),
+              ]}
+              value={categoryFilter}
+              onChange={(val) => setCategoryFilter(String(val ?? ''))}
+              placeholder="All categories"
+              searchPlaceholder="Search category..."
+              clearable
+            />
+          </div>
         </div>
 
         {isLoading && visibleCourses.length === 0 ? (
@@ -512,6 +537,19 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
                     {course.isPurchasedBanner && (
                       <span style={{ fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 8px', borderRadius: '999px', background: '#f59e0b', color: '#000' }}>
                         ★ PURCHASES BANNER
+                      </span>
+                    )}
+                    {course.category && (
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          ...getCategoryBadgeStyle(course.category),
+                        }}
+                      >
+                        {course.category.toUpperCase()}
                       </span>
                     )}
                   </div>
@@ -584,10 +622,18 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
           </div>
           <div>
             <label style={labelStyle}>Category</label>
-            <select value={form.categoryId} onChange={e => update({ categoryId: e.target.value })} className="input-field" style={inputStyle}>
-              <option value="">Select category...</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <CustomSelect
+              options={categories.map((c) => ({
+                value: String(c.id),
+                label: c.name,
+                category: c.name,
+                badge: `${c.courseCount} course(s)`,
+              }))}
+              value={form.categoryId}
+              onChange={(val) => update({ categoryId: String(val ?? '') })}
+              placeholder="Select category..."
+              searchPlaceholder="Search category..."
+            />
           </div>
           <div>
             <label style={labelStyle}>Description</label>

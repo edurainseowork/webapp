@@ -4,6 +4,7 @@ import { auth } from '../firebase'
 import { apiFetch, ApiError, uploadFile, MAX_UPLOAD_BYTES } from '../api'
 
 import Modal from '../components/Modal'
+import CustomSelect from '../components/CustomSelect'
 import { badgeStyle, dangerButton, formatDateTime, ghostButton, inputStyle, labelStyle, mutedText, tableStyle, tdStyle, thStyle } from './testsShared'
 
 export type StaffRole = 'admin' | 'mentor' | 'teacher_assistant'
@@ -562,9 +563,14 @@ function ManageAdmins({ showToast, openCreate, onCreateOpened }: ManageAdminsPro
               </div>
               <div style={{ flex: '1 1 120px' }}>
                 <label style={labelStyle} htmlFor="mp-minutes">Session length</label>
-                <select id="mp-minutes" value={profileForm.sessionMinutes} onChange={(e) => setProfileForm({ ...profileForm, sessionMinutes: Number(e.target.value) })} style={{ ...inputStyle, marginBottom: '14px' }}>
-                  {SESSION_LENGTHS.map((m) => <option key={m} value={m}>{m} min</option>)}
-                </select>
+                <div style={{ marginBottom: '14px' }}>
+                  <CustomSelect
+                    options={SESSION_LENGTHS.map((m) => ({ value: m, label: `${m} min` }))}
+                    value={profileForm.sessionMinutes}
+                    onChange={(val) => setProfileForm({ ...profileForm, sessionMinutes: Number(val) })}
+                    searchable={false}
+                  />
+                </div>
               </div>
             </div>
 

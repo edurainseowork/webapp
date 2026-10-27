@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api'
 import Modal from '../components/Modal'
+import CustomSelect from '../components/CustomSelect'
 import TestFormModal, { UploadSummary } from './TestFormModal'
 import TestResults from './TestResults'
 import {
@@ -157,10 +158,18 @@ function QuestionsPanel({ test, locked, showToast, onChanged }: { test: TestItem
         <h3>Questions ({questions.length})</h3>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search questions" style={{ ...inputStyle, width: '200px' }} />
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ ...inputStyle, width: '190px' }}>
-            <option value="">All types</option>
-            {QUESTION_TYPES.map((type) => <option key={type} value={type}>{QUESTION_TYPE_LABELS[type]}</option>)}
-          </select>
+          <CustomSelect
+            options={[
+              { value: '', label: 'All types' },
+              ...QUESTION_TYPES.map((type) => ({ value: type, label: QUESTION_TYPE_LABELS[type] })),
+            ]}
+            value={typeFilter}
+            onChange={(val) => setTypeFilter(String(val ?? ''))}
+            placeholder="All types"
+            searchable={false}
+            width={195}
+            clearable
+          />
           <button className="btn" style={ghostButton} onClick={() => setSortDesc(!sortDesc)}>Order {sortDesc ? '↓' : '↑'}</button>
           <button className="btn" disabled={locked} onClick={() => setEditing('new')}>+ Add Question</button>
         </div>
@@ -296,9 +305,12 @@ function QuestionFormModal({ test, question, defaultOrder, showToast, onClose, o
         </div>
         <div>
           <label style={labelStyle}>Question Type *</label>
-          <select value={type} onChange={(e) => setType(e.target.value as QuestionType)} style={inputStyle}>
-            {QUESTION_TYPES.map((t) => <option key={t} value={t}>{QUESTION_TYPE_LABELS[t]}</option>)}
-          </select>
+          <CustomSelect
+            options={QUESTION_TYPES.map((t) => ({ value: t, label: QUESTION_TYPE_LABELS[t] }))}
+            value={type}
+            onChange={(val) => setType((val || 'multiple_choice') as QuestionType)}
+            searchable={false}
+          />
         </div>
       </div>
       {type === 'comprehension' && (

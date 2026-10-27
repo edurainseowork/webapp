@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch, uploadFile, type AdminCourse } from '../api';
 import { uploadMediaToS3 } from '../services/uploadService';
+import CustomSelect from '../components/CustomSelect';
 
 export interface EBookItem {
   id: string;
@@ -454,34 +455,39 @@ export default function EBookUploadManager({
           <div style={styles.rowFields}>
             <div style={{ flex: 1 }}>
               <label style={styles.inputLabel}>Subject / Domain</label>
-              <select
+              <CustomSelect
+                options={[
+                  { value: 'Physics', label: 'Physics' },
+                  { value: 'Chemistry', label: 'Chemistry' },
+                  { value: 'Mathematics', label: 'Mathematics' },
+                  { value: 'Biology', label: 'Biology' },
+                  { value: 'General', label: 'General Science' },
+                  { value: 'Other', label: 'Other / Custom' },
+                ]}
                 value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                style={styles.modalSelect}
-              >
-                <option value="Physics">Physics</option>
-                <option value="Chemistry">Chemistry</option>
-                <option value="Mathematics">Mathematics</option>
-                <option value="Biology">Biology</option>
-                <option value="General">General Science</option>
-                <option value="Other">Other / Custom</option>
-              </select>
+                onChange={(val) => setSubject(String(val || 'Physics'))}
+                searchable={false}
+              />
             </div>
 
             <div style={{ flex: 1.2 }}>
               <label style={styles.inputLabel}>Target Course (Optional)</label>
-              <select
+              <CustomSelect
+                options={[
+                  { value: '', label: '-- All Courses / General --' },
+                  ...courses.map((c) => ({
+                    value: String(c.id),
+                    label: c.title,
+                    category: c.category,
+                    badge: c.isPublished ? 'Published' : 'Draft',
+                  })),
+                ]}
                 value={courseId}
-                onChange={(e) => setCourseId(e.target.value)}
-                style={styles.modalSelect}
-              >
-                <option value="">-- All Courses / General --</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setCourseId(String(val ?? ''))}
+                placeholder="-- All Courses / General --"
+                searchPlaceholder="Search course or category..."
+                clearable
+              />
             </div>
           </div>
 

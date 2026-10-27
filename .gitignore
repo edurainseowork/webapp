@@ -31,3 +31,6 @@ dist-ssr
 
 
 *.tsbuildinfo
+*.pem
+*.key
+*.p12

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../api'
 import TestFormModal from './TestFormModal'
 import TestDetails, { type DetailsTab } from './TestDetails'
+import CustomSelect from '../components/CustomSelect'
 import {
   StatusBadge, dangerButton, formatDate, formatDateTime, formatTime, ghostButton, inputStyle, mutedText, tableStyle, tdStyle, thStyle,
   type TestCourse, type TestItem,
@@ -163,15 +164,39 @@ function Tests({ showToast }: TestsProps) {
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="Search test or course" style={{ ...inputStyle, width: '220px' }} />
               {view.kind === 'all' && (
-                <select value={courseFilter} onChange={(e) => { setCourseFilter(e.target.value); setPage(1) }} style={{ ...inputStyle, width: '200px' }}>
-                  <option value="">All courses</option>
-                  {courses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
-                </select>
+                <CustomSelect
+                  options={[
+                    { value: '', label: 'All courses' },
+                    ...courses.map((course) => ({
+                      value: String(course.id),
+                      label: course.title,
+                      category: course.category,
+                      badge: course.isPublished ? 'Published' : 'Draft',
+                    })),
+                  ]}
+                  value={courseFilter}
+                  onChange={(val) => { setCourseFilter(String(val ?? '')); setPage(1) }}
+                  placeholder="All courses"
+                  searchPlaceholder="Search course or category..."
+                  width={230}
+                  clearable
+                />
               )}
-              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} style={{ ...inputStyle, width: '160px' }}>
-                <option value="">All statuses</option>
-                {['DRAFT', 'SCHEDULED', 'PUBLISHED', 'COMPLETED'].map((status) => <option key={status} value={status}>{status}</option>)}
-              </select>
+              <CustomSelect
+                options={[
+                  { value: '', label: 'All statuses' },
+                  ...(['DRAFT', 'SCHEDULED', 'PUBLISHED', 'COMPLETED'] as const).map((status) => ({
+                    value: status,
+                    label: status,
+                  })),
+                ]}
+                value={statusFilter}
+                onChange={(val) => { setStatusFilter(String(val ?? '')); setPage(1) }}
+                placeholder="All statuses"
+                searchable={false}
+                width={175}
+                clearable
+              />
             </div>
           </div>
 

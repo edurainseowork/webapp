@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../api'
 import Modal from '../components/Modal'
+import CustomSelect from '../components/CustomSelect'
 import {
   ANSWER_COLORS, QUESTION_TYPE_LABELS, QuestionBody, SUBMISSION_REASON_LABELS, badgeStyle, formatDate, formatDateTime, formatMarks, formatTime, ghostButton,
   inputStyle, mutedText, tableStyle, tdStyle, thStyle,
@@ -152,16 +153,30 @@ function TestResults({ test, showToast }: { test: TestItem; showToast: (message:
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="Search student / email / ID" style={{ ...inputStyle, width: '200px' }} />
-            <select value={reason} onChange={(e) => { setReason(e.target.value); setPage(1) }} style={{ ...inputStyle, width: '190px' }}>
-              <option value="">All submission reasons</option>
-              {Object.entries(SUBMISSION_REASON_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
+            <CustomSelect
+              options={[
+                { value: '', label: 'All submission reasons' },
+                ...Object.entries(SUBMISSION_REASON_LABELS).map(([key, label]) => ({ value: key, label })),
+              ]}
+              value={reason}
+              onChange={(val) => { setReason(String(val ?? '')); setPage(1) }}
+              placeholder="All submission reasons"
+              searchable={false}
+              width={205}
+              clearable
+            />
             <input type="number" value={minScore} onChange={(e) => { setMinScore(e.target.value); setPage(1) }} placeholder="Min score" style={{ ...inputStyle, width: '100px' }} />
             <input type="number" value={maxScore} onChange={(e) => { setMaxScore(e.target.value); setPage(1) }} placeholder="Max score" style={{ ...inputStyle, width: '100px' }} />
-            <select value={sort} onChange={(e) => setSort(e.target.value as 'score' | 'time')} style={{ ...inputStyle, width: '170px' }}>
-              <option value="score">Sort by score (rank)</option>
-              <option value="time">Sort by submission time</option>
-            </select>
+            <CustomSelect
+              options={[
+                { value: 'score', label: 'Sort by score (rank)' },
+                { value: 'time', label: 'Sort by submission time' },
+              ]}
+              value={sort}
+              onChange={(val) => setSort((val || 'score') as 'score' | 'time')}
+              searchable={false}
+              width={195}
+            />
           </div>
         </div>
 

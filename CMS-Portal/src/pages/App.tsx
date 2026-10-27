@@ -20,17 +20,53 @@ import TeacherAssistantDesk from './TeacherAssistantDesk'
 import TeacherAssistantAnalysis from './TeacherAssistantAnalysis'
 import { handoffError } from '../handoff'
 import SupportContacts from './SupportContacts'
+import CustomSelect from '../components/CustomSelect'
 import '../index.css'
 
-// Mentor Desk has its own URL: /mentorDesk
+// Mentor Desk & Teacher Assistant Desk paths
 const MENTOR_DESK_PATH = '/mentorDesk';
-const isMentorDeskPath = () => window.location.pathname.replace(/\/+$/, '').toLowerCase() === MENTOR_DESK_PATH.toLowerCase();
-
-// Teacher Assistant Desk has its own URL: /teacherAssistant
 const TEACHER_ASSISTANT_PATH = '/teacherAssistant';
-const isTeacherAssistantPath = () => {
-  const p = window.location.pathname.replace(/\/+$/, '').toLowerCase();
-  return p === TEACHER_ASSISTANT_PATH.toLowerCase() || p === '/teacherassistantdesk' || p === '/teacher-assistant';
+
+// Dedicated route path for every CMS page (Classplus-style multi-page URL routing)
+const TAB_TO_PATH: Record<string, string> = {
+  dashboard: '/dashboard',
+  courses: '/courses',
+  categories: '/categories',
+  content: '/content',
+  banners: '/banners',
+  coupons: '/coupons',
+  golive: '/go-live',
+  notifications: '/notifications',
+  tests: '/tests',
+  supportContacts: '/support-contacts',
+  students: '/students',
+  admins: '/manage-staff',
+  taAnalytics: '/ta-analytics',
+  mentorDesk: MENTOR_DESK_PATH,
+  teacherAssistant: TEACHER_ASSISTANT_PATH,
+};
+
+const pathToTab = (pathname: string): string => {
+  const clean = pathname.replace(/\/+$/, '').toLowerCase();
+  if (!clean || clean === '/') return 'courses';
+  if (clean === '/dashboard') return 'dashboard';
+  if (clean === '/courses' || clean === '/course-manager') return 'courses';
+  if (clean === '/categories') return 'categories';
+  if (clean === '/content' || clean === '/upload-content') return 'content';
+  if (clean === '/banners' || clean === '/manage-banners') return 'banners';
+  if (clean === '/coupons') return 'coupons';
+  if (clean === '/go-live' || clean === '/golive') return 'golive';
+  if (clean === '/notifications') return 'notifications';
+  if (clean === '/tests') return 'tests';
+  if (clean === '/support-contacts' || clean === '/support') return 'supportContacts';
+  if (clean === '/students' || clean === '/student-management') return 'students';
+  if (clean === '/manage-staff' || clean === '/admins') return 'admins';
+  if (clean === '/ta-analytics' || clean === '/teacher-assistant-analysis') return 'taAnalytics';
+  if (clean === MENTOR_DESK_PATH.toLowerCase()) return 'mentorDesk';
+  if (clean === TEACHER_ASSISTANT_PATH.toLowerCase() || clean === '/teacherassistantdesk' || clean === '/teacher-assistant') {
+    return 'teacherAssistant';
+  }
+  return 'courses';
 };
 
 const TOAST_DURATION_SEC = 5;
@@ -40,12 +76,9 @@ function App() {
   // Whether to show Super Admin controls. Decided by the backend from the verified token;
   // every admin-management API checks it again on its own.
   const [me, setMe] = useState<MeInfo>({ isSuperAdmin: false, superAdminEmailUnverified: false });
+  const [meLoaded, setMeLoaded] = useState(false);
   const [openCreateAdmin, setOpenCreateAdmin] = useState(false);
-  const [activeTab, setActiveTab] = useState(() => {
-    if (isMentorDeskPath()) return 'mentorDesk';
-    if (isTeacherAssistantPath()) return 'teacherAssistant';
-    return 'courses';
-  });
+  const [activeTab, setActiveTab] = useState(() => pathToTab(window.location.pathname));
   const [isPageLoading, setIsPageLoading] = useState(false);
   const pageLoadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -196,12 +229,15 @@ function App() {
       setMe({ isSuperAdmin: data.user?.isSuperAdmin === true, superAdminEmailUnverified: data.user?.superAdminEmailUnverified === true });
     } catch {
       setMe({ isSuperAdmin: false, superAdminEmailUnverified: false });
+    } finally {
+      setMeLoaded(true);
     }
   };
 
   useEffect(() => {
     let cancelled = false;
     if (user) {
+      setMeLoaded(false);
       apiFetch<{ user?: Partial<MeInfo> }>('/auth/me')
         .then((data) => {
           if (!cancelled) {
@@ -209,25 +245,30 @@ function App() {
               isSuperAdmin: data.user?.isSuperAdmin === true,
               superAdminEmailUnverified: data.user?.superAdminEmailUnverified === true,
             });
+            setMeLoaded(true);
           }
         })
         .catch(() => {
           if (!cancelled) {
             setMe({ isSuperAdmin: false, superAdminEmailUnverified: false });
+            setMeLoaded(true);
           }
         });
     } else {
       setMe({ isSuperAdmin: false, superAdminEmailUnverified: false });
+      setMeLoaded(false);
     }
     return () => {
       cancelled = true;
     };
   }, [user]);
 
-  // Leave the admin page if the signed-in account is not the Super Admin
+  // Leave the Super Admin pages if the signed-in account is confirmed not to be the Super Admin
   useEffect(() => {
-    if ((activeTab === 'admins' || activeTab === 'taAnalytics') && !me.isSuperAdmin) setActiveTab('dashboard');
-  }, [activeTab, me.isSuperAdmin]);
+    if (meLoaded && (activeTab === 'admins' || activeTab === 'taAnalytics') && !me.isSuperAdmin) {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, me.isSuperAdmin, meLoaded]);
 
   const handleSendVerification = async () => {
     if (!auth.currentUser) return;
@@ -246,10 +287,11 @@ function App() {
     await fetchMe();
     if (!auth.currentUser.emailVerified) showToast('Email not verified yet — open the link in the verification email first', 'error');
   };
-  // Keep the address bar in sync: /mentorDesk for Mentor Desk, /teacherAssistant for Teacher Assistant, / for the other CMS tabs
+
+  // Keep the address bar in sync with every CMS page route (/dashboard, /courses, /categories, ..., /manage-staff)
   useEffect(() => {
     if (activeTab !== 'mentorDesk' && activeTab !== 'teacherAssistant') lastCmsTab.current = activeTab;
-    const path = activeTab === 'mentorDesk' ? MENTOR_DESK_PATH : activeTab === 'teacherAssistant' ? TEACHER_ASSISTANT_PATH : '/';
+    const path = TAB_TO_PATH[activeTab] || '/courses';
     if (window.location.pathname !== path) {
       const url = path + window.location.search;
       if (isFirstUrlSync.current) window.history.replaceState(null, '', url);
@@ -257,6 +299,7 @@ function App() {
     }
     isFirstUrlSync.current = false;
   }, [activeTab]);
+
   // Mentor accounts only ever see the Mentor Desk: whatever URL or Back button, they stay on /mentorDesk
   useEffect(() => {
     if (isMentor && activeTab !== 'mentorDesk') setActiveTab('mentorDesk');
@@ -267,30 +310,36 @@ function App() {
     if (isTeacherAssistant && activeTab !== 'teacherAssistant') setActiveTab('teacherAssistant');
   }, [isTeacherAssistant, activeTab]);
 
-  // Browser back / forward buttons
+  // Browser back / forward buttons navigate smoothly across all CMS routes
   useEffect(() => {
-    const onPopState = () =>
-      setActiveTab((prev) => (
-        isMentorDeskPath() ? 'mentorDesk' :
-        isTeacherAssistantPath() ? 'teacherAssistant' :
-        (prev === 'mentorDesk' || prev === 'teacherAssistant') ? lastCmsTab.current : prev
-      ));
+    const onPopState = () => {
+      const nextTab = pathToTab(window.location.pathname);
+      setActiveTab((prev) => {
+        if (prev === nextTab) return prev;
+        if (pageLoadingTimeoutRef.current) clearTimeout(pageLoadingTimeoutRef.current);
+        setIsPageLoading(true);
+        pageLoadingTimeoutRef.current = setTimeout(() => {
+          setIsPageLoading(false);
+        }, 200);
+        return nextTab;
+      });
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // CMS data is only loaded for admins and faculty (mentors have no access to it)
+  // CMS data is dynamically loaded for admins and faculty across all pages that use courses/stats/banners
   useEffect(() => {
-    if (!isStaff) return;
-    if (user && (activeTab === 'courses' || activeTab === 'dashboard' || activeTab === 'content')) {
+    if (!isStaff || !user) return;
+    const tabsNeedingCourses = ['courses', 'dashboard', 'content', 'banners', 'coupons', 'golive', 'students'];
+    if (tabsNeedingCourses.includes(activeTab)) {
       fetchCourses();
-      if (activeTab === 'dashboard') {
-        fetchStats();
-      }
     }
-    if (user && activeTab === 'banners') {
+    if (activeTab === 'dashboard') {
+      fetchStats();
+    }
+    if (activeTab === 'banners') {
       fetchBanners();
-      fetchCourses();
     }
   }, [activeTab, user, isStaff]);
 
@@ -914,16 +963,22 @@ function App() {
                         <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
                           <div style={{ flex: 1, minWidth: '220px' }}>
                             <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Link to Course (Optional)</label>
-                            <select
+                            <CustomSelect
+                              options={[
+                                { value: '', label: '-- No linked course (Display Graphic Only) --' },
+                                ...coursesList.map((c) => ({
+                                  value: String(c.id),
+                                  label: c.title,
+                                  category: c.category,
+                                  badge: c.isPublished ? 'Published' : 'Draft',
+                                })),
+                              ]}
                               value={bannerLinkedCourseId}
-                              onChange={e => setBannerLinkedCourseId(e.target.value)}
-                              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                            >
-                              <option value="">-- No linked course (Display Graphic Only) --</option>
-                              {coursesList.map(c => (
-                                <option key={c.id} value={c.id}>{c.title} ({c.category})</option>
-                              ))}
-                            </select>
+                              onChange={(val) => setBannerLinkedCourseId(String(val ?? ''))}
+                              placeholder="-- No linked course (Display Graphic Only) --"
+                              searchPlaceholder="Search course or category..."
+                              clearable
+                            />
                           </div>
                           <div style={{ flex: 1, minWidth: '220px' }}>
                             <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Banner Title / Caption (Optional)</label>
