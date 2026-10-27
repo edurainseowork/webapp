@@ -9,17 +9,19 @@ import {
   Play,
   ExternalLink,
   Download,
+  Bookmark,
   RefreshCw,
-  Search,
   X,
   Layers,
   ChevronRight,
   ArrowLeft,
   AlertCircle,
   Eye,
+  Swords,
 } from 'lucide-react';
 import { SubPageHeader, type BreadcrumbCrumb } from './SubPageHeader';
 import { apiFetch, ApiError } from '../lib/api';
+import { toggleSavePdf, getSavedPdfs, onSavedPdfsChange } from '../utils/bookmarkStorage';
 
 export type ContentType = 'folder' | 'video' | 'pdf' | 'note' | 'quiz';
 
@@ -48,6 +50,7 @@ interface LibraryViewProps {
   onOpenUpgrade?: () => void;
   onBack?: () => void;
   searchQuery?: string;
+  onOpenEbooks?: () => void;
 }
 
 function isVimeoUrl(url: string): boolean {
@@ -61,7 +64,7 @@ function getVimeoEmbedUrl(url: string): string {
   return url;
 }
 
-export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: LibraryViewProps) {
+export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpenEbooks }: LibraryViewProps) {
   // Course State
   const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
@@ -75,12 +78,32 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: Lib
   // Navigation & Filtering inside Course Material
   const [currentFolder, setCurrentFolder] = useState<ContentItem | null>(null);
   const [typeFilter, setTypeFilter] = useState<'all' | 'folder' | 'pdf' | 'video'>('all');
-  const [localSearch, setLocalSearch] = useState('');
 
   // Modals & Feedback
   const [activeVideo, setActiveVideo] = useState<ContentItem | null>(null);
   const [activeNote, setActiveNote] = useState<ContentItem | null>(null);
+  const [activePdf, setActivePdf] = useState<ContentItem | null>(null);
+  const [savedPdfIds, setSavedPdfIds] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sync = () => setSavedPdfIds(getSavedPdfs().map((p) => p.id));
+    sync();
+    return onSavedPdfsChange(sync);
+  }, []);
+
+  const handleToggleSavePdf = (item: ContentItem) => {
+    const isSaved = toggleSavePdf({
+      id: String(item.id),
+      title: item.title,
+      mediaUrl: item.mediaUrl || '',
+      courseTitle: selectedCourse?.title,
+      courseId: item.courseId,
+      fileSize: item.fileSize,
+      savedAt: new Date().toISOString(),
+    });
+    showToast(isSaved ? `Saved "${item.title}" to Your Saved PDF in Bookmarks` : `Removed "${item.title}" from Saved PDFs`);
+  };
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -158,7 +181,7 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: Lib
   }, [items]);
 
   // Filter items by search, current folder level, and type
-  const effectiveSearch = (localSearch || globalSearchQuery).trim().toLowerCase();
+  const effectiveSearch = globalSearchQuery.trim().toLowerCase();
 
   const displayedItems = useMemo(() => {
     // If user is searching, search across the entire course hierarchy
@@ -201,7 +224,7 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: Lib
         showToast('PDF file URL is not available yet.');
         return;
       }
-      window.open(item.mediaUrl, '_blank', 'noopener,noreferrer');
+      setActivePdf(item);
       return;
     }
 
@@ -284,36 +307,11 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: Lib
             <BookOpen className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold text-[#0B1C30]">Your Class Material</h1>
-              <span className="text-[10px] font-bold bg-[#EAF3F1] text-[#175A67] border border-[#175A67]/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                Live CMS Sync
-              </span>
-            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-[#0B1C30]">Your Class Material</h1>
             <p className="text-xs sm:text-sm text-[#2A707C] mt-0.5 font-medium">
               {selectedCourse ? selectedCourse.title : 'Your Daily Class Notes and Recorded Lectures'}
             </p>
           </div>
-        </div>
-
-        {/* Local Search Input */}
-        <div className="relative w-full md:w-64 shrink-0">
-          <Search className="w-4 h-4 text-[#2A707C] absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search notes & lectures…"
-            value={localSearch}
-            onChange={(e) => setLocalSearch(e.target.value)}
-            className="w-full pl-9 pr-8 py-2 rounded-xl text-xs bg-white/90 border border-slate-200/80 text-[#0B1C30] placeholder-[#2A707C]/60 focus:outline-none focus:ring-2 focus:ring-[#175A67]/30 transition-all"
-          />
-          {localSearch && (
-            <button
-              onClick={() => setLocalSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -561,18 +559,28 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: Lib
                         <span>View Notes</span>
                       </button>
 
-                      {item.mediaUrl && (
-                        <a
-                          href={item.mediaUrl}
-                          download
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-xl text-[#175A67] hover:bg-slate-100 transition-colors"
-                          title="Download PDF"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleSavePdf(item);
+                        }}
+                        className={`p-2 rounded-xl transition-all cursor-pointer ${
+                          savedPdfIds.includes(String(item.id))
+                            ? 'text-amber-500 bg-amber-50 hover:bg-amber-100'
+                            : 'text-[#175A67] hover:bg-slate-100'
+                        }`}
+                        title={
+                          savedPdfIds.includes(String(item.id))
+                            ? 'Saved in Bookmarks (Click to remove)'
+                            : 'Save to Your Saved PDF in Bookmarks'
+                        }
+                      >
+                        <Bookmark
+                          className={`w-4 h-4 ${
+                            savedPdfIds.includes(String(item.id)) ? 'fill-current' : ''
+                          }`}
+                        />
+                      </button>
                     </div>
                   </div>
                 );
@@ -600,6 +608,31 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: Lib
             })}
           </div>
         )}
+      </section>
+
+      {/* 4b. YOUR E BOOK Tab (Moved into Class Material after content) */}
+      <section className="space-y-3 pt-2">
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-[#175A67]" />
+          <h2 className="text-base sm:text-lg font-bold text-[#0B1C30]">Your E-Book</h2>
+        </div>
+        <div
+          onClick={onOpenEbooks}
+          className="bg-white/60 hover:bg-white/85 backdrop-blur-md border border-white/80 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.05)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.09)] transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col items-center justify-between min-h-[190px] sm:min-h-[220px] w-full sm:w-[260px] active:scale-[0.98]"
+        >
+          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#175A67] text-white rounded-2xl flex items-center justify-center shadow-md mb-2 sm:mb-3">
+            <Swords className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+          </div>
+          <div className="text-center">
+            <h3 className="font-bold text-[#175A67] text-center text-base sm:text-lg">Your Ebook</h3>
+            <p className="text-xs text-center mt-1 text-[#10B981] font-bold">
+              LIVE NOW
+            </p>
+          </div>
+          <span className="text-[#175A67] text-xs text-center block mt-2 sm:mt-3 font-semibold hover:underline">
+            Enter Library &gt;
+          </span>
+        </div>
       </section>
 
       {/* 5. Embedded Video Player Modal */}
@@ -691,6 +724,66 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '' }: Lib
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 6b. Protected In-App PDF Reader Modal (Device Download Disabled) */}
+      {activePdf && (
+        <div className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
+          <div className="bg-[#0B1C30] rounded-3xl overflow-hidden max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl border border-white/10">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-[#0F3B42] text-white border-b border-white/10">
+              <div className="flex items-center gap-2.5 min-w-0 pr-4">
+                <FileText className="w-5 h-5 text-teal-300 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm sm:text-base truncate">{activePdf.title}</h3>
+                  <p className="text-[11px] text-teal-200/80 flex items-center gap-1.5">
+                    <span>🔒 Protected Study Material</span>
+                    <span>•</span>
+                    <span>Device download disabled</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => handleToggleSavePdf(activePdf)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    savedPdfIds.includes(String(activePdf.id))
+                      ? 'bg-amber-400 text-slate-900 font-bold'
+                      : 'bg-white/15 hover:bg-white/25 text-white'
+                  }`}
+                  title="Save to your Bookmarks"
+                >
+                  <Bookmark
+                    className={`w-3.5 h-3.5 ${
+                      savedPdfIds.includes(String(activePdf.id)) ? 'fill-current' : ''
+                    }`}
+                  />
+                  <span className="hidden sm:inline">
+                    {savedPdfIds.includes(String(activePdf.id)) ? 'Saved in Bookmarks' : 'Save to Bookmarks'}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActivePdf(null)}
+                  className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Close viewer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Embedded PDF iframe with toolbar disabled */}
+            <div className="flex-1 bg-slate-900 relative">
+              <iframe
+                src={`${activePdf.mediaUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                className="w-full h-full border-0"
+                title={activePdf.title}
+              />
+            </div>
           </div>
         </div>
       )}

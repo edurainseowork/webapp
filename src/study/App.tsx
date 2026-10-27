@@ -25,7 +25,9 @@ import {
   ShoppingBag,
   LogOut,
   Lock,
-  Award
+  Award,
+  Radio,
+  Target,
 } from 'lucide-react';
 import { UpgradeModal } from './components/Modals/UpgradeModal';
 import { DoubtSolverModal } from './components/Modals/DoubtSolverModal';
@@ -48,6 +50,7 @@ import { useAuth } from './AuthGate';
 import { CoursesHub } from './components/Courses/CoursesHub';
 import { MentorshipHub } from './components/Mentorship/MentorshipHub';
 import { CourseTestSeriesView } from './components/CourseTestSeriesView';
+import { LiveClassesView } from './components/LiveClassesView';
 import { VaultResource, NotificationItem } from './types';
 
 export function App() {
@@ -73,6 +76,7 @@ export function App() {
   const [isBookDoubtSessionOpen, setIsBookDoubtSessionOpen] = useState(false);
   const [isBookmarksPageOpen, setIsBookmarksPageOpen] = useState(false);
   const [isEbookLibraryOpen, setIsEbookLibraryOpen] = useState(false);
+  const [isLiveClassesOpen, setIsLiveClassesOpen] = useState(false);
   const [isCourseTestsOpen, setIsCourseTestsOpen] = useState(false);
 
   const [isMyCoursesOpen, setIsMyCoursesOpen] = useState(false);
@@ -135,6 +139,7 @@ export function App() {
     setIsPurchasesPageOpen(false);
     setIsMentorshipOpen(false);
     setIsCourseTestsOpen(false);
+    setIsLiveClassesOpen(false);
   };
 
   const syncRouteFromUrl = () => {
@@ -167,6 +172,8 @@ export function App() {
       setIsMyCoursesOpen(true);
     } else if (path.endsWith('/purchases')) {
       setIsPurchasesPageOpen(true);
+    } else if (path.endsWith('/live-classes')) {
+      setIsLiveClassesOpen(true);
     } else if (path.endsWith('/mentorship')) {
       setIsMentorshipOpen(true);
     } else if (path.endsWith('/batch-tests') || path.endsWith('/course-tests')) {
@@ -189,10 +196,11 @@ export function App() {
     }
   };
 
-  const openSubView = (type: 'ebooks' | 'bookmarks' | 'doubts' | 'ai-mentor' | 'my-courses' | 'purchases' | 'mentorship' | 'batch-tests') => {
+  const openSubView = (type: 'ebooks' | 'bookmarks' | 'doubts' | 'ai-mentor' | 'my-courses' | 'purchases' | 'mentorship' | 'batch-tests' | 'live-classes') => {
     resetSubViews();
     setSearchQuery('');
     if (type === 'ebooks') setIsEbookLibraryOpen(true);
+    else if (type === 'live-classes') setIsLiveClassesOpen(true);
     else if (type === 'bookmarks') setIsBookmarksPageOpen(true);
     else if (type === 'doubts') setIsBookDoubtSessionOpen(true);
     else if (type === 'ai-mentor') setIsAiMentorPageOpen(true);
@@ -231,6 +239,9 @@ export function App() {
       .then((saved) => {
         if (goalLoadedFor.current !== session.uid) return; // signed out meanwhile
         setGoal(saved);
+        if (saved) {
+          setSelectedBatch(saved.name);
+        }
         if (!saved) {
           setIsGoalModalOpen(true);
           return;
@@ -250,6 +261,7 @@ export function App() {
     if (activeNav === 'pi') return 'Search in Daily Drop';
     if (activeNav === 'test-series') return 'Search in All India Test Pass';
     if (isEbookLibraryOpen) return 'Search in E-Books';
+    if (isLiveClassesOpen) return 'Search live classes…';
     if (isAiMentorPageOpen) return 'Search in EduAI';
     if (isBookmarksPageOpen) return 'Search in Bookmarks';
     return 'Search in Resources';
@@ -300,17 +312,17 @@ export function App() {
       rating: 4.8,
     },
     {
-      id: 'vault-combat',
-      title: 'Your Ebook',
-      subject: 'Mock Tests',
-      second_text: '',
+      id: 'vault-live-classes',
+      title: 'Your Live Class',
+      subject: 'Live Sessions',
+      second_text: 'Interactive Classes',
       countLabel: 'LIVE NOW',
-      tags: ['Full Syllabus', 'Real NTA Engine', 'AIR Predictor'],
-      iconType: 'combat',
+      tags: ['Live Stream', 'Doubt Solving', 'Teacher Connect'],
+      iconType: 'live',
       isLive: true,
       statusText: 'LIVE NOW',
-      description: 'Live 3-hour adaptive mock test mirroring actual JEE Advanced CBT interface with instant percentile and weak area diagnosis.',
-      downloadSize: 'Online CBT',
+      description: 'Join live interactive classes directly with expert educators with real-time doubt resolution.',
+      downloadSize: 'Live Stream',
       rating: 5.0,
     },
     {
@@ -599,32 +611,21 @@ export function App() {
                 {session.name}
               </button>
 
-              {/* Batch Selector inside mobile drawer */}
+              {/* Cohort Selector inside mobile drawer */}
               <div className="mt-2 relative">
                 <button
-                  onClick={() => setIsDrawerBatchOpen(!isDrawerBatchOpen)}
-                  className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-white/70 border border-[#175A67]/20 text-xs font-semibold text-[#175A67]"
+                  onClick={() => {
+                    setIsGoalModalOpen(true);
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-white/70 border border-[#175A67]/20 text-xs font-semibold text-[#175A67] hover:bg-white/90 transition-all shadow-sm"
                 >
-                  <span>{selectedBatch}</span>
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-                {isDrawerBatchOpen && (
-                  <div className="mt-1 w-full rounded-xl bg-[#EAE3DE] border border-[#175A67]/30 shadow-lg p-1">
-                    {batches.map((b) => (
-                      <button
-                        key={b}
-                        onClick={() => {
-                          setSelectedBatch(b);
-                          setIsDrawerBatchOpen(false);
-                        }}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold ${selectedBatch === b ? 'bg-[#175A67] text-white' : 'text-[#175A67] hover:bg-white/60'
-                          }`}
-                      >
-                        {b}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <Target className="w-3.5 h-3.5 text-[#175A67]" />
+                    <span>{goal?.name ?? selectedBatch}</span>
                   </div>
-                )}
+                  <ChevronRight className="w-3.5 h-3.5 text-[#2A707C]" />
+                </button>
               </div>
             </div>
 
@@ -638,7 +639,7 @@ export function App() {
                   navigateTo('study-central');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
+                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isLiveClassesOpen && !isMyCoursesOpen
                   ? 'bg-[#175A67] text-white shadow-sm'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
@@ -723,7 +724,7 @@ export function App() {
             <div className="space-y-1">
               <button
                 onClick={() => navigateTo('study-central')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isMyCoursesOpen
+                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isLiveClassesOpen && !isMyCoursesOpen
                   ? 'bg-[#175A67] text-white shadow-md'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
@@ -840,6 +841,12 @@ export function App() {
               }}
               searchQuery={searchQuery}
             />
+          ) : isLiveClassesOpen ? (
+            <LiveClassesView
+              onBack={() => setIsLiveClassesOpen(false)}
+              selectedBatch={selectedBatch}
+              searchQuery={searchQuery}
+            />
           ) : isCourseTestsOpen ? (
             <CourseTestSeriesView
               onBack={() => setIsCourseTestsOpen(false)}
@@ -865,6 +872,7 @@ export function App() {
           ) : activeNav === 'library' ? (
             <LibraryView
               onBack={() => navigateTo('study-central')}
+              onOpenEbooks={() => openSubView('ebooks')}
             />
           ) : activeNav === 'pi' ? (
             <PiView
@@ -881,6 +889,8 @@ export function App() {
               selectedBatch={selectedBatch}
               searchQuery={searchQuery}
               goalCategoryId={goal?.id ?? null}
+              goalName={goal?.name ?? null}
+              onChangeGoal={() => setIsGoalModalOpen(true)}
               onExit={() => navigateTo('study-central')}
             />
           ) : activeNav === 'test-series' ? (
@@ -961,6 +971,7 @@ export function App() {
                       book: BookOpen,
                       archive: Library,
                       combat: Swords,
+                      live: Radio,
                       analytics: Crosshair
                     };
                     const IconComp = iconMap[item.iconType] || BookOpen;
@@ -973,6 +984,8 @@ export function App() {
                             openSubView('bookmarks');
                           } else if (item.id === 'vault-chemistry') {
                             navigateTo('library');
+                          } else if (item.id === 'vault-live-classes') {
+                            openSubView('live-classes');
                           } else if (item.id === 'vault-combat') {
                             openSubView('ebooks');
                           } else if (item.id === 'vault-math') {
@@ -1053,9 +1066,9 @@ export function App() {
           const saved = await saveGoal(category);
           setGoal(saved);
           setSelectedBatch(category.name);
-          // Changed from the Mentorship page: stay there (its mentors follow the new goal);
+          // Changed from the Mentorship page or Courses page: stay there;
           // otherwise go to Daily Drop for the new goal
-          if (!isMentorshipOpen) navigateTo('pi');
+          if (!isMentorshipOpen && activeNav !== 'courses') navigateTo('pi');
         }}
       />
 

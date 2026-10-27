@@ -19,13 +19,13 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-// Multipart storage for CMS local uploads
+// Multipart storage for CMS uploads (images, PDFs, textbooks)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 500 * 1024, // 500 KB limit for images
+    fileSize: 100 * 1024 * 1024, // 100 MB limit for PDFs and images
     files: 1,
-    fields: 5,
+    fields: 10,
   },
 });
 
@@ -77,7 +77,13 @@ router.post(
   requireAdminOrFaculty,
   (req: Request, res: Response, next: NextFunction): void => {
     if (req.is("multipart/form-data")) {
-      upload.single("image")(req, res, next);
+      upload.any()(req, res, (err) => {
+        if (err) return next(err);
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+          req.file = req.files[0];
+        }
+        next();
+      });
       return;
     }
     next();

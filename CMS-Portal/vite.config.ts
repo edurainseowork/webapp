@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: true,
     port: 5174,
+    strictPort: true,
   },
   resolve: {
     alias: {

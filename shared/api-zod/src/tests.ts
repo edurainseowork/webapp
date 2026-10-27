@@ -22,11 +22,12 @@ export const SUBMISSION_REASONS = [
   "TIME_EXPIRED",
   "CHEATING_APP_MINIMIZED",
   "CHEATING_SCREEN_EXIT",
+  "CHEATING_TAB_SWITCH",
   "ADMIN_SUBMISSION",
 ] as const;
 export type SubmissionReason = (typeof SUBMISSION_REASONS)[number];
 
-export const VIOLATION_TYPES = ["APP_MINIMIZED", "SCREEN_EXIT"] as const;
+export const VIOLATION_TYPES = ["APP_MINIMIZED", "SCREEN_EXIT", "TAB_SWITCH"] as const;
 
 export const MAX_TEST_DURATION_MINUTES = 600;
 export const MAX_QUESTION_MARKS = 100;

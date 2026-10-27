@@ -8,12 +8,14 @@ export default defineConfig({
       name: 'redirect-to-study',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          if (req.url === '/') {
-            res.writeHead(302, { Location: '/study/' });
+          const cleanUrl = (req.url || '').split('?')[0];
+          if (cleanUrl === '' || cleanUrl === '/' || cleanUrl === '/study') {
+            const query = (req.url || '').includes('?') ? (req.url || '').slice((req.url || '').indexOf('?')) : '';
+            res.writeHead(302, { Location: `/study/${query}` });
             res.end();
             return;
           }
-          if (req.url && req.url.startsWith('/study/') && !req.url.includes('.')) {
+          if (req.url && (req.url.startsWith('/study/') || req.url === '/study') && !req.url.includes('.')) {
             req.url = '/study/index.html';
           }
           // Role desks live outside /study but are the same single-page app
@@ -26,8 +28,9 @@ export default defineConfig({
     }
   ],
   server: {
-    host: '0.0.0.0',
+    host: true,
     port: 5173,
+    strictPort: true,
   },
   build: {
     rollupOptions: {

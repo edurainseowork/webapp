@@ -13,10 +13,23 @@ import {
   BookOpen,
   Heart,
   BookMarked,
+  FileText,
+  Trash2,
+  Eye,
+  Lock,
+  X,
 } from 'lucide-react';
 import { SubPageHeader } from './SubPageHeader';
 import { EBook } from './EBookLibraryView';
-import { getBookmarkedBooks, removeBookmark, onBookmarksChange } from '../utils/bookmarkStorage';
+import {
+  getBookmarkedBooks,
+  removeBookmark,
+  onBookmarksChange,
+  SavedPdf,
+  getSavedPdfs,
+  removeSavedPdf,
+  onSavedPdfsChange,
+} from '../utils/bookmarkStorage';
 
 /* ------------------------------------------------------------------ */
 /*  Types & mock data                                                  */
@@ -84,6 +97,10 @@ export function BookmarksView({
   onBrowseEbooks,
 }: BookmarksViewProps) {
   const [bookmarkedBooks, setBookmarkedBooks] = useState<EBook[]>([]);
+  const [savedPdfs, setSavedPdfs] = useState<SavedPdf[]>([]);
+  const [isSavedPdfsOpen, setIsSavedPdfsOpen] = useState(false);
+  const [activeViewerPdf, setActiveViewerPdf] = useState<SavedPdf | null>(null);
+  const [activeReadingBook, setActiveReadingBook] = useState<EBook | null>(null);
 
   useEffect(() => {
     setBookmarkedBooks(getBookmarkedBooks());
@@ -91,6 +108,14 @@ export function BookmarksView({
       setBookmarkedBooks(getBookmarkedBooks());
     });
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    setSavedPdfs(getSavedPdfs());
+    const unsubPdfs = onSavedPdfsChange(() => {
+      setSavedPdfs(getSavedPdfs());
+    });
+    return unsubPdfs;
   }, []);
 
   const q = searchQuery.trim().toLowerCase();
@@ -104,6 +129,14 @@ export function BookmarksView({
       !q ||
       b.title.toLowerCase().includes(q) ||
       b.subject.toLowerCase().includes(q)
+  );
+
+  const filteredSavedPdfs = savedPdfs.filter(
+    (p) =>
+      !q ||
+      p.title.toLowerCase().includes(q) ||
+      (p.courseTitle && p.courseTitle.toLowerCase().includes(q)) ||
+      (p.subject && p.subject.toLowerCase().includes(q))
   );
 
   return (
@@ -221,7 +254,13 @@ export function BookmarksView({
                   </div>
 
                   <button
-                    onClick={() => onOpenEbook?.(book)}
+                    onClick={() => {
+                      if (onOpenEbook) {
+                        onOpenEbook(book);
+                      } else {
+                        setActiveReadingBook(book);
+                      }
+                    }}
                     className="mt-4 w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95 shadow-sm"
                   >
                     <BookOpen className="w-3.5 h-3.5" />
@@ -308,33 +347,53 @@ export function BookmarksView({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div className="bg-white rounded-2xl p-5 shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-white/80">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] text-[#175A67] flex items-center justify-center shrink-0">
-                <Files className="w-4.5 h-4.5" />
+          {/* Your Saved PDF */}
+          <div className="bg-white rounded-2xl p-5 shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-white/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] text-[#175A67] flex items-center justify-center shrink-0">
+                    <Files className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-[#0B1C30]">Your Saved PDF</h3>
+                    <p className="text-[11px] text-[#2A707C]">
+                      Saved notes &amp; formula sheets ({savedPdfs.length} saved)
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold bg-[#175A67]/10 text-[#175A67] px-2.5 py-0.5 rounded-full">
+                  {savedPdfs.length}
+                </span>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-[#0B1C30]">Your Saved PDF</h3>
-                <p className="text-[11px] text-[#2A707C]">Downloaded notes &amp; formula sheets</p>
+              <div className="text-[11px] text-[#175A67] bg-[#EAF3F1]/80 border border-[#175A67]/15 rounded-xl p-2.5 mb-4 flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                <span>Protected notes • Device downloads disabled. Study inside the portal.</span>
               </div>
             </div>
             <button
-              onClick={onOpenPdfViewer}
-              className="w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95"
+              onClick={() => {
+                setIsSavedPdfsOpen(true);
+                onOpenPdfViewer?.();
+              }}
+              className="w-full flex items-center justify-center gap-1.5 bg-[#0F3B42] hover:bg-[#0b2c31] text-white font-bold text-xs py-2.5 rounded-xl transition-all active:scale-95 shadow-sm"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              Open PDF Viewer
+              Open PDF Viewer ({savedPdfs.length})
             </button>
           </div>
 
-          <div className="bg-white rounded-2xl p-5 shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-white/80">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-[#EAF3F1] text-[#175A67] flex items-center justify-center shrink-0">
-                <Play className="w-4.5 h-4.5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-[#0B1C30]">Watch Later</h3>
-                <p className="text-[11px] text-[#2A707C]">Lectures queued for weekend revision</p>
+          {/* Watch Later */}
+          <div className="bg-white rounded-2xl p-5 shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-white/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] text-[#175A67] flex items-center justify-center shrink-0">
+                  <Play className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-[#0B1C30]">Watch Later</h3>
+                  <p className="text-[11px] text-[#2A707C]">Lectures queued for weekend revision</p>
+                </div>
               </div>
             </div>
             <button
@@ -347,6 +406,218 @@ export function BookmarksView({
           </div>
         </div>
       </section>
+
+      {/* 6. Saved PDFs Collection Modal */}
+      {isSavedPdfsOpen && (
+        <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-fadeIn">
+          <div className="bg-[#EAE3DE] border border-[#175A67]/20 rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-white/80 border-b border-[#175A67]/15">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#175A67] text-white flex items-center justify-center shadow-sm">
+                  <Files className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-lg text-[#0B1C30]">Your Saved PDFs</h3>
+                    <span className="text-xs font-bold bg-[#175A67]/10 text-[#175A67] px-2 py-0.5 rounded-full">
+                      {savedPdfs.length}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#2A707C]">In-app study collection • Device download is disabled</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSavedPdfsOpen(false)}
+                className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-black/5 transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content List */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-3">
+              {filteredSavedPdfs.length === 0 ? (
+                <div className="bg-white/80 rounded-2xl p-8 text-center border border-white/80 shadow-sm">
+                  <div className="w-12 h-12 rounded-2xl bg-[#175A67]/10 text-[#175A67] flex items-center justify-center mx-auto mb-3">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-base text-[#0B1C30]">
+                    {q ? 'No saved PDFs match your search' : 'No saved PDFs yet'}
+                  </h4>
+                  <p className="text-xs text-[#2A707C] mt-1.5 max-w-md mx-auto leading-relaxed">
+                    {q
+                      ? 'Try searching with a different term.'
+                      : 'Students cannot download PDFs to their devices. Instead, open "Your Class Material" or "Your E-Book" and click the bookmark icon on any PDF notes to save it here for in-app reading.'}
+                  </p>
+                  {onGoLibrary && !q && (
+                    <button
+                      onClick={() => {
+                        setIsSavedPdfsOpen(false);
+                        onGoLibrary();
+                      }}
+                      className="mt-4 px-4 py-2 rounded-xl bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-bold transition-all shadow-sm active:scale-95 inline-flex items-center gap-1.5"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      Browse Class Material
+                    </button>
+                  )}
+                </div>
+              ) : (
+                filteredSavedPdfs.map((pdf) => (
+                  <div
+                    key={pdf.id}
+                    className="bg-white rounded-2xl p-4 border border-white/80 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-sm text-[#0B1C30] truncate" title={pdf.title}>
+                          {pdf.title}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#2A707C]">
+                          {pdf.subject && (
+                            <span className="font-semibold bg-[#175A67]/10 text-[#175A67] px-2 py-0.5 rounded-md">
+                              {pdf.subject}
+                            </span>
+                          )}
+                          {pdf.courseTitle && (
+                            <span className="truncate max-w-[150px]">{pdf.courseTitle}</span>
+                          )}
+                          {pdf.fileSize && <span>• {pdf.fileSize}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setActiveViewerPdf(pdf)}
+                        className="px-3.5 py-2 rounded-xl bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-bold transition-all shadow-sm active:scale-95 flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Study</span>
+                      </button>
+                      <button
+                        onClick={() => removeSavedPdf(pdf.id)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="Remove from saved PDFs"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 bg-white/60 border-t border-[#175A67]/10 text-[11px] text-[#2A707C] flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-[#175A67]" />
+                Device downloads disabled • In-app study only
+              </span>
+              <span>EduRain Revision Hub</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Protected In-App PDF Reader Modal */}
+      {activeViewerPdf && (
+        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
+          <div className="bg-[#0B1C30] rounded-3xl overflow-hidden max-w-5xl w-full h-[92vh] flex flex-col shadow-2xl border border-white/10">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-[#0F3B42] text-white border-b border-white/10">
+              <div className="flex items-center gap-2.5 min-w-0 pr-4">
+                <FileText className="w-5 h-5 text-teal-300 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm sm:text-base truncate">{activeViewerPdf.title}</h3>
+                  <p className="text-[11px] text-teal-200/80 flex items-center gap-1.5">
+                    <Lock className="w-3 h-3" />
+                    <span>Protected Study Material</span>
+                    <span>•</span>
+                    <span>Device download disabled</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    removeSavedPdf(activeViewerPdf.id);
+                    setActiveViewerPdf(null);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 text-xs font-semibold flex items-center gap-1 transition-colors"
+                  title="Remove from saved PDFs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Remove</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveViewerPdf(null)}
+                  className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+                  title="Close viewer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* PDF Viewer Frame */}
+            <div className="flex-1 bg-slate-900 relative">
+              <iframe
+                src={`${activeViewerPdf.mediaUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                className="w-full h-full border-0 select-none"
+                title={activeViewerPdf.title}
+                onContextMenu={(e) => e.preventDefault()}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Protected In-App E-Book Reader Modal */}
+      {activeReadingBook && (
+        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
+          <div className="bg-[#0B1C30] rounded-3xl overflow-hidden max-w-5xl w-full h-[92vh] flex flex-col shadow-2xl border border-white/10">
+            <div className="flex items-center justify-between px-5 py-3.5 bg-[#0F3B42] text-white border-b border-white/10">
+              <div className="flex items-center gap-2.5 min-w-0 pr-4">
+                <BookOpen className="w-5 h-5 text-teal-300 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm sm:text-base truncate">{activeReadingBook.title}</h3>
+                  <p className="text-[11px] text-teal-200/80 flex items-center gap-1.5">
+                    <Lock className="w-3 h-3" />
+                    <span>Protected Study E-Book</span>
+                    <span>•</span>
+                    <span>Device download disabled</span>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setActiveReadingBook(null)}
+                className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+                title="Close reader"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 bg-slate-900 relative">
+              <iframe
+                src={`${activeReadingBook.pdfUrl || ''}#toolbar=0&navpanes=0&scrollbar=1`}
+                className="w-full h-full border-0 select-none"
+                title={activeReadingBook.title}
+                onContextMenu={(e) => e.preventDefault()}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -113,22 +113,24 @@ export function AuthGate({ children }: { children: ReactNode }) {
       const next = await loadSession(user);
       if (run !== current) return; // a newer sign-in/out happened meanwhile
       setSession(next);
-      // An email or phone that belongs to a CMS admin/faculty account goes to the CMS
-      if (isCmsRole(next.role) && CMS_URL) {
+      // In production, an email or phone that belongs to a CMS admin/faculty account goes to the CMS.
+      // In local development, allow developers to view and test the web frontend without being forcibly redirected.
+      const shouldRedirectCms = !import.meta.env.DEV || new URLSearchParams(window.location.search).get('redirect') === 'cms';
+      if (isCmsRole(next.role) && CMS_URL && shouldRedirectCms) {
         setPhase('redirecting');
         const target = await cmsUrlWithHandoff();
         if (run === current) window.location.replace(target);
         return;
       }
-      // Mentors work in the CMS Mentor Desk (they have no other CMS access)
-      if (next.role === 'mentor' && CMS_URL) {
+      // Mentors work in the CMS Mentor Desk (they have no other CMS access in production)
+      if (next.role === 'mentor' && CMS_URL && shouldRedirectCms) {
         setPhase('redirecting');
         const target = await cmsUrlWithHandoff('/mentorDesk');
         if (run === current) window.location.replace(target);
         return;
       }
-      // Teacher Assistants work in the CMS Teacher Assistant Desk (they have no other CMS access)
-      if (next.role === 'teacher_assistant' && CMS_URL) {
+      // Teacher Assistants work in the CMS Teacher Assistant Desk (they have no other CMS access in production)
+      if (next.role === 'teacher_assistant' && CMS_URL && shouldRedirectCms) {
         setPhase('redirecting');
         const target = await cmsUrlWithHandoff('/teacherAssistant');
         if (run === current) window.location.replace(target);

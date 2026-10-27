@@ -6,6 +6,7 @@ import { apiFetch, uploadFile, API_BASE_URL, type AdminCourse } from '../api'
 import CourseManager from './CourseManager'
 import CategoryManager from './CategoryManager'
 import CourseContentManager from './CourseContentManager'
+import EBookUploadManager from './EBookUploadManager'
 import RoleGuard from '../components/RoleGuard'
 import type { AllowedRole } from '../components/RoleGuard'
 import Coupons from './Coupons'
@@ -41,6 +42,7 @@ function App() {
     if (isTeacherAssistantPath()) return 'teacherAssistant';
     return 'courses';
   });
+  const [openEBookModal, setOpenEBookModal] = useState(false);
     // Role detected by RoleGuard from the verified Firebase token / backend (never from the URL)
     const [cmsRole, setCmsRole] = useState<string | null>(null);
     const isMentor = cmsRole === 'mentor';
@@ -399,7 +401,7 @@ function App() {
             Categories
           </div>
           <div className={`nav-link ${activeTab === 'content' ? 'active' : ''}`} onClick={() => setActiveTab('content')}>
-            Upload Content (PDF/Video/Test)
+            Upload Content (PDF/Video/E-Books)
           </div>
           <div className={`nav-link ${activeTab === 'banners' ? 'active' : ''}`} onClick={() => setActiveTab('banners')}>
             Manage Banners
@@ -591,7 +593,18 @@ function App() {
               selectedCourseId={selectedCourseForContent}
               onSelectCourse={setSelectedCourseForContent}
               showToast={showToast}
+              onOpenEBookUpload={() => setOpenEBookModal(true)}
             />
+
+            <div id="upload-ebooks-section">
+              <EBookUploadManager
+                courses={coursesList}
+                selectedCourseId={selectedCourseForContent}
+                showToast={showToast}
+                isModalOpen={openEBookModal}
+                onCloseModal={() => setOpenEBookModal(false)}
+              />
+            </div>
 
             <div className="glass-card">
               <h3 style={{ marginBottom: 'var(--space-md)' }}>Create Weekly Test / Quiz</h3>
