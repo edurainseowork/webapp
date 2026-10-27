@@ -47,15 +47,14 @@ const inputStyle = {
 
 const labelStyle = { display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' } as const
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
-const DEFAULT_CATEGORIES = ['JEE', 'NEET', 'Foundation']
 
 function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }: NotificationsProps) {
   // Mode: 'broadcast' | 'category' | 'direct'
   const [mode, setMode] = useState<'broadcast' | 'category' | 'direct'>(initialTargetStudent ? 'direct' : 'broadcast')
   
-  // Category Mode state
-  const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES)
-  const [selectedCategory, setSelectedCategory] = useState<string>('JEE')
+  // Category Mode state (dynamically loaded from database)
+  const [availableCategories, setAvailableCategories] = useState<string[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
 
   // Direct Student Mode state
   const [selectedStudent, setSelectedStudent] = useState<TargetStudentInfo | null>(initialTargetStudent || null)
@@ -75,16 +74,30 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
   const [history, setHistory] = useState<AdminNotification[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
 
-  // Load available categories
+  // Load categories directly from database without duplicates
   useEffect(() => {
     apiFetch<{ data: Array<{ id: number; name: string }> }>('/admin/categories')
       .then((res) => {
         if (res.data && res.data.length > 0) {
-          const names = Array.from(new Set([...DEFAULT_CATEGORIES, ...res.data.map((c) => c.name)]))
-          setAvailableCategories(names)
+          const seen = new Set<string>()
+          const list: string[] = []
+          for (const item of res.data) {
+            const trimmed = item.name.trim()
+            const normalized = trimmed.toUpperCase()
+            if (trimmed && !seen.has(normalized)) {
+              seen.add(normalized)
+              list.push(trimmed)
+            }
+          }
+          if (list.length > 0) {
+            setAvailableCategories(list)
+            setSelectedCategory(list[0])
+          }
         }
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error('Failed to load categories', err)
+      })
   }, [])
 
   // Sync initialTargetStudent if passed from parent

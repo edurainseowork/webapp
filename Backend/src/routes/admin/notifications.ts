@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
-import { count, desc, eq, inArray } from "drizzle-orm";
+import { count, desc, eq, ilike, inArray } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { adminNotificationsTable, notificationsTable, pushTokensTable, usersTable, userCoursesTable, coursesTable } from "@workspace/db/schema";
 import { AdminNotificationBody, NOTIFICATION_IMAGE_MAX_BYTES } from "@workspace/api-zod";
@@ -150,7 +150,7 @@ router.post("/category", rateLimit({ windowMs: 60_000, max: 15 }), async (req, r
   const enrolledRows = await db.selectDistinct({ userId: userCoursesTable.userId })
     .from(userCoursesTable)
     .innerJoin(coursesTable, eq(userCoursesTable.courseId, coursesTable.id))
-    .where(eq(coursesTable.category, category.trim()));
+    .where(ilike(coursesTable.category, category.trim()));
 
   const userIds = enrolledRows.map((r) => r.userId);
   if (userIds.length === 0) {
