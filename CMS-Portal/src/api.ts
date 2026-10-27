@@ -24,10 +24,12 @@ export async function apiFetch<T = any>(path: string, { method = 'GET', body, fo
   if (token) headers['Authorization'] = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
+  const serializedBody = formData ?? (body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined);
+
   let res = await fetch(`${API_BASE_URL}/api${path}`, {
     method,
     headers,
-    body: formData ?? (body !== undefined ? JSON.stringify(body) : undefined),
+    body: serializedBody,
   });
 
   // If token expired, auto-refresh token and retry once
@@ -39,7 +41,7 @@ export async function apiFetch<T = any>(path: string, { method = 'GET', body, fo
         res = await fetch(`${API_BASE_URL}/api${path}`, {
           method,
           headers,
-          body: formData ?? (body !== undefined ? JSON.stringify(body) : undefined),
+          body: serializedBody,
         });
       }
     } catch (refreshErr) {

@@ -40,6 +40,7 @@ import { CohortGoalModal } from './components/Modals/CohortGoalModal';
 import { fetchGoal, saveGoal, type StudentGoal } from './lib/goal';
 import { useCourses, resetCoursesForUser } from './lib/courses';
 import { fetchProfile, recordActivity } from './lib/profile';
+import { apiFetch } from './lib/api';
 import { PurchasesModal } from './components/Modals/PurchasesModal';
 import { SupportModal } from './components/Modals/SupportModal';
 import { PurchasesView } from './components/PurchasesView';
@@ -118,33 +119,89 @@ export function App() {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  // Notifications
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
-    {
-      id: 'n1',
-      title: 'Mock Test 04 Result Published',
-      description: 'You scored 148/180 in JEE Advanced All-India Mock 04. Estimated All-India Rank: #42.',
-      time: '15m ago',
-      read: false,
-      type: 'test'
-    },
-    {
-      id: 'n2',
-      title: 'PI Doubt Answered',
-      description: 'Step-by-step solution for "Carnot Engine Entropy" has been synthesized with derivation.',
-      time: '1h ago',
-      read: false,
-      type: 'doubt'
-    },
-    {
-      id: 'n3',
-      title: '14-Day Streak Bonus',
-      description: 'You earned +150 XP for completing your daily revision quota 14 days in a row.',
-      time: '4h ago',
-      read: true,
-      type: 'streak'
+  // Notifications (live from Backend /api/notifications: personal + broadcast)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const readBroadcastKey = `edurain_read_broadcasts_${session.uid}`;
+
+  const formatRelativeTime = (iso?: string): string => {
+    if (!iso) return 'Just now';
+    const diffSec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+    if (diffSec < 60) return 'Just now';
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    return `${Math.floor(diffSec / 86400)}d ago`;
+  };
+
+  const fetchStudentNotifications = async () => {
+    try {
+      const res = await apiFetch<{ success: boolean; data: any[] }>('/notifications');
+      if (!Array.isArray(res?.data)) return;
+      let readBroadcastIds = new Set<number>();
+      try {
+        const saved = JSON.parse(localStorage.getItem(readBroadcastKey) || '[]');
+        if (Array.isArray(saved)) readBroadcastIds = new Set(saved.map(Number));
+      } catch {}
+
+      const mapped: NotificationItem[] = res.data.map((row: any) => {
+        const numId = Number(row.id);
+        const isBroadcast = numId < 0 || row.type === 'broadcast';
+        const isRead = isBroadcast ? readBroadcastIds.has(numId) : Boolean(row.isRead);
+        return {
+          id: String(row.id),
+          rawId: numId,
+          title: row.title || 'Update',
+          description: row.body || '',
+          time: formatRelativeTime(row.createdAt),
+          read: isRead,
+          type: row.type === 'test' ? 'test' : row.type === 'doubt' ? 'doubt' : 'system',
+          imageUrl: row.imageUrl ?? null,
+          link: row.link ?? (row.liveClass?.meetUrl || null),
+        };
+      });
+      setNotifications(mapped);
+    } catch (err) {
+      console.error('Could not load notifications:', err);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    fetchStudentNotifications();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchStudentNotifications();
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [session.uid]);
+
+  useEffect(() => {
+    if (isNotificationOpen) fetchStudentNotifications();
+  }, [isNotificationOpen]);
+
+  const handleMarkNotificationRead = async (id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    const numId = Number(id);
+    if (numId < 0) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(readBroadcastKey) || '[]');
+        const next = Array.from(new Set([...(Array.isArray(saved) ? saved : []), numId]));
+        localStorage.setItem(readBroadcastKey, JSON.stringify(next));
+      } catch {}
+    } else if (numId > 0) {
+      apiFetch(`/notifications/${numId}/read`, { method: 'POST' }).catch(() => {});
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      const broadcastIds = notifications.map((n) => Number(n.id)).filter((id) => id < 0);
+      if (broadcastIds.length > 0) {
+        const saved = JSON.parse(localStorage.getItem(readBroadcastKey) || '[]');
+        const next = Array.from(new Set([...(Array.isArray(saved) ? saved : []), ...broadcastIds]));
+        localStorage.setItem(readBroadcastKey, JSON.stringify(next));
+      }
+    } catch {}
+    apiFetch('/notifications/read-all', { method: 'POST' }).catch(() => {});
+  };
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -1140,7 +1197,8 @@ export function App() {
         isOpen={isNotificationOpen}
         onClose={() => setIsNotificationOpen(false)}
         notifications={notifications}
-        onMarkAllRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+        onMarkAllRead={handleMarkAllNotificationsRead}
+        onMarkRead={handleMarkNotificationRead}
       />
 
       <PurchasesModal

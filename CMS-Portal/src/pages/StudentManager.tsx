@@ -69,7 +69,7 @@ export default function StudentManager({ coursesList, showToast, onSendDirectNot
     try {
       await apiFetch(`/admin/students/${studentId}/revoke`, {
         method: 'POST',
-        body: JSON.stringify({ courseId }),
+        body: { courseId },
       })
       showToast(`Revoked access to "${courseTitle}" for ${studentName}`, 'success')
       setStudents((prev) =>
@@ -99,7 +99,7 @@ export default function StudentManager({ coursesList, showToast, onSendDirectNot
     try {
       await apiFetch(`/admin/students/${selectedStudentForGrant.id}/enroll`, {
         method: 'POST',
-        body: JSON.stringify({ courseId: courseIdNum }),
+        body: { courseId: courseIdNum },
       })
       showToast(`Granted "${targetCourse?.title || 'Course'}" access to ${selectedStudentForGrant.name || selectedStudentForGrant.email}`, 'success')
       setSelectedStudentForGrant(null)

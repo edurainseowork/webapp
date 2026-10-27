@@ -84,6 +84,21 @@ const STATEMENTS = [
         razorpay_order_id text PRIMARY KEY,
         plan varchar(10) NOT NULL,
         created_at timestamp NOT NULL DEFAULT now())`,
+  // Ensure billing & course columns exist across all environments
+  sql`ALTER TABLE courses ADD COLUMN IF NOT EXISTS play_product_id text`,
+  sql`ALTER TABLE user_courses ADD COLUMN IF NOT EXISTS payment_method text DEFAULT 'razorpay'`,
+  sql`ALTER TABLE user_courses ADD COLUMN IF NOT EXISTS play_purchase_token text`,
+  sql`ALTER TABLE user_courses ADD COLUMN IF NOT EXISTS play_order_id text`,
+  sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_provider text NOT NULL DEFAULT 'razorpay'`,
+  sql`ALTER TABLE payments ADD COLUMN IF NOT EXISTS google_alternative_billing_token text`,
+  // High-concurrency indexes for 100k+ active students
+  sql`CREATE INDEX IF NOT EXISTS user_courses_user_id_idx ON user_courses (user_id)`,
+  sql`CREATE INDEX IF NOT EXISTS user_courses_course_id_idx ON user_courses (course_id)`,
+  sql`CREATE INDEX IF NOT EXISTS users_email_idx ON users (email)`,
+  sql`CREATE INDEX IF NOT EXISTS users_role_idx ON users (role)`,
+  sql`CREATE INDEX IF NOT EXISTS banners_placement_idx ON banners (placement, created_at DESC)`,
+  sql`CREATE INDEX IF NOT EXISTS admin_notifications_created_at_idx ON admin_notifications (created_at DESC)`,
+  sql`CREATE INDEX IF NOT EXISTS notifications_user_read_idx ON notifications (user_id, is_read, created_at DESC)`,
 ];
 
 let ready: Promise<void> | null = null;

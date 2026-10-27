@@ -21,6 +21,11 @@ const server = http.createServer(app);
 initSocket(server);
 
 import { sendSlackAlert } from "./lib/slackAlert";
+import { ensureMentorshipSchema } from "./lib/mentorshipSchema";
+
+ensureMentorshipSchema().catch((err) => {
+  logger.error({ err }, "Schema initialization warning on startup");
+});
 
 server.listen(port, () => {
   logger.info({ port }, "Server listening with Socket.io");

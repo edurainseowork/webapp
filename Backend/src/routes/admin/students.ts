@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { usersTable, userCoursesTable, coursesTable } from "@workspace/db/schema";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { HttpError, parseId } from "../../lib/http-error";
 import { logger } from "../../lib/logger";
 
@@ -44,6 +44,7 @@ router.get("/", async (req, res) => {
 
     // Notice: only select columns that exist in the physical PostgreSQL user_courses table
     // (user_courses does NOT have payment_method column in the db).
+    const studentIds = students.map((s) => s.id);
     let enrollments: Array<{ id: number; userId: number; courseId: number; courseTitle: string; courseCategory: string | null; purchasedAt: Date | null }> = [];
     try {
       enrollments = await db.select({
@@ -55,7 +56,8 @@ router.get("/", async (req, res) => {
         purchasedAt: userCoursesTable.purchasedAt,
       })
         .from(userCoursesTable)
-        .innerJoin(coursesTable, eq(userCoursesTable.courseId, coursesTable.id));
+        .innerJoin(coursesTable, eq(userCoursesTable.courseId, coursesTable.id))
+        .where(inArray(userCoursesTable.userId, studentIds));
     } catch (err) {
       logger.warn({ err }, "Could not join user_courses with courses, falling back to empty enrollments");
     }

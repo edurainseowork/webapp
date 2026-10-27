@@ -215,12 +215,12 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
         '/admin/notifications/category',
         {
           method: 'POST',
-          body: JSON.stringify({
+          body: {
             category: selectedCategory,
             title: title.trim(),
             description: description.trim(),
             link: link.trim() || undefined,
-          }),
+          },
         }
       )
       if (res.recipientCount === 0) {
@@ -260,12 +260,12 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
         '/admin/notifications/direct',
         {
           method: 'POST',
-          body: JSON.stringify({
+          body: {
             userId: selectedStudent.id,
             title: title.trim(),
             description: description.trim(),
             link: link.trim() || undefined,
-          }),
+          },
         }
       )
       showToast(
@@ -277,6 +277,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
       setTitle('')
       setDescription('')
       setLink('')
+      fetchHistory()
     } catch (e: any) {
       showToast('Failed to send direct notification: ' + e.message, 'error')
     } finally {

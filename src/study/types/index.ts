@@ -28,11 +28,14 @@ export interface VaultResource {
 
 export interface NotificationItem {
   id: string;
+  rawId?: number;
   title: string;
   description: string;
   time: string;
   read: boolean;
   type: 'test' | 'doubt' | 'system' | 'streak';
+  imageUrl?: string | null;
+  link?: string | null;
 }
 
 export interface QuizQuestion {

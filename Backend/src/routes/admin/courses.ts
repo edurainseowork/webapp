@@ -181,6 +181,13 @@ router.patch("/:id/purchased-banner", async (req, res) => {
     .where(eq(coursesTable.id, courseId));
   if (!existing) throw new HttpError(404, "Course not found");
 
+  if (isPurchasedBanner) {
+    await db
+      .update(coursesTable)
+      .set({ isPurchasedBanner: false, updatedAt: new Date() })
+      .where(eq(coursesTable.isPurchasedBanner, true));
+  }
+
   await db
     .update(coursesTable)
     .set({ isPurchasedBanner, updatedAt: new Date() })

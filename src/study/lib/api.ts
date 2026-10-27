@@ -21,7 +21,7 @@ export async function apiFetch<T = any>(path: string, init: { method?: string; b
     res = await fetch(`${API_BASE_URL}/api${path}`, {
       method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
       headers,
-      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      body: init.body !== undefined ? (typeof init.body === 'string' ? init.body : JSON.stringify(init.body)) : undefined,
     });
   } catch {
     throw new ApiError(0, 'Could not reach the server. Check your internet connection and try again.');

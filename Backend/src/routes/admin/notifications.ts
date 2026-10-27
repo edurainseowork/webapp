@@ -126,6 +126,15 @@ router.post("/direct", rateLimit({ windowMs: 60_000, max: 30 }), async (req, res
   }
 
   logger.info({ studentId: numUserId, studentEmail: targetUser.email, notificationId: notification.id, ...push }, "Direct student notification sent");
+  await db.insert(adminNotificationsTable).values({
+    title: `[1-to-1: ${targetUser.name || targetUser.email}] ${title.trim()}`,
+    body: description.trim(),
+    link: link || null,
+    sentBy: req.auth?.email ?? null,
+    recipientCount: 1,
+    pushSentCount: push.sent,
+    pushFailedCount: push.failed,
+  });
   res.status(201).json({
     success: true,
     data: notification,
@@ -163,19 +172,30 @@ router.post("/category", rateLimit({ windowMs: 60_000, max: 15 }), async (req, r
     return;
   }
 
-  // Insert notification for each student
-  await db.insert(notificationsTable).values(
-    userIds.map((uid) => ({
-      userId: uid,
-      type: "admin",
-      title: title.trim(),
-      body: description.trim(),
-      isRead: false,
-    }))
-  );
+  // Insert notification in chunks of 1,000 so 100k+ students never exceed PostgreSQL's 65,535 bind parameter limit
+  const CHUNK_SIZE = 1000;
+  for (let i = 0; i < userIds.length; i += CHUNK_SIZE) {
+    const chunk = userIds.slice(i, i + CHUNK_SIZE);
+    await db.insert(notificationsTable).values(
+      chunk.map((uid) => ({
+        userId: uid,
+        type: "admin",
+        title: title.trim(),
+        body: description.trim(),
+        isRead: false,
+      }))
+    );
+  }
 
-  // Send push notifications
-  const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(inArray(pushTokensTable.userId, userIds))).map((r) => r.token);
+  // Fetch push tokens in chunks of 1,000
+  const tokens: string[] = [];
+  for (let i = 0; i < userIds.length; i += CHUNK_SIZE) {
+    const chunk = userIds.slice(i, i + CHUNK_SIZE);
+    const rows = await db.select({ token: pushTokensTable.token })
+      .from(pushTokensTable)
+      .where(inArray(pushTokensTable.userId, chunk));
+    for (const r of rows) tokens.push(r.token);
+  }
   let push = { sent: 0, failed: 0 };
   if (tokens.length > 0) {
     push = await sendExpoPush(tokens, {
