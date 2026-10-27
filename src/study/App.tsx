@@ -312,20 +312,6 @@ export function App() {
       rating: 4.8,
     },
     {
-      id: 'vault-combat',
-      title: 'Your Ebook',
-      subject: 'Mock Tests',
-      second_text: 'Digital Library',
-      countLabel: 'LIVE NOW',
-      tags: ['NCERT Books', 'Reference Guides', 'Formula Handbooks'],
-      iconType: 'combat',
-      isLive: true,
-      statusText: 'LIVE NOW',
-      description: 'Access digital e-books, chapter-wise theory, formula handbooks, and reference materials directly in your browser.',
-      downloadSize: 'Online Library',
-      rating: 4.9,
-    },
-    {
       id: 'vault-live-classes',
       title: 'Your Live Class',
       subject: 'Live Sessions',
@@ -860,6 +846,10 @@ export function App() {
               onBack={() => setIsLiveClassesOpen(false)}
               selectedBatch={selectedBatch}
               searchQuery={searchQuery}
+              onExploreCourses={() => {
+                setIsLiveClassesOpen(false);
+                navigateTo('courses');
+              }}
             />
           ) : isCourseTestsOpen ? (
             <CourseTestSeriesView
