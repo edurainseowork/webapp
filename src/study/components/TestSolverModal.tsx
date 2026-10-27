@@ -117,12 +117,7 @@ export const TestSolverModal: React.FC<TestSolverModalProps> = ({
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
 
-    // Try entering fullscreen immediately
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {
-        // User gesture may be required on some browsers
-      });
-    }
+    // Do not auto-enter fullscreen on mount; preserve manual toggleFullscreen button only
 
     return () => {
       document.body.style.overflow = originalOverflow;

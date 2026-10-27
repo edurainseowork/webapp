@@ -6,6 +6,19 @@ const EVENT_NAME = 'edurain_bookmarks_changed';
 const SAVED_PDFS_STORAGE_KEY = 'edurain_saved_pdfs';
 const SAVED_PDFS_EVENT_NAME = 'edurain_saved_pdfs_changed';
 
+const LEGACY_DUMMY_BOOK_IDS = new Set([
+  'phy-modern',
+  'phy-pyq',
+  'phy-electro',
+  'phy-mechanics',
+  'chem-organic',
+  'chem-inorganic',
+  'chem-physical',
+  'math-calc',
+  'math-vectors',
+  'math-algebra',
+]);
+
 export interface SavedPdf {
   id: string;
   title: string;
@@ -26,7 +39,15 @@ export function getBookmarkedBooks(): EBook[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw);
+    const parsed: EBook[] = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const cleaned = parsed.filter(
+      (b) => b && b.id && !LEGACY_DUMMY_BOOK_IDS.has(b.id) && Boolean(b.pdfUrl)
+    );
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch {
     return [];
   }
@@ -88,7 +109,15 @@ export function getSavedPdfs(): SavedPdf[] {
   try {
     const raw = localStorage.getItem(SAVED_PDFS_STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw);
+    const parsed: SavedPdf[] = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const cleaned = parsed.filter(
+      (p) => p && p.id && !LEGACY_DUMMY_BOOK_IDS.has(p.id) && Boolean(p.mediaUrl)
+    );
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem(SAVED_PDFS_STORAGE_KEY, JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch {
     return [];
   }

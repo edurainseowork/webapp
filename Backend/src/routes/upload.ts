@@ -68,7 +68,7 @@ function detectFileType(buf: Buffer): "png" | "jpg" | "webp" | "pdf" | null {
  *    - Generates 15-minute short-lived PUT URL for S3 upload
  * 
  * 2. Legacy / Multipart Upload:
- *    - Accepts multipart/form-data for CMS thumbnails / banners
+ *    - Accepts multipart/form-data for CMS thumbnails / banners / PDFs
  */
 router.post(
   "/",
@@ -89,21 +89,39 @@ router.post(
     next();
   },
   async (req: Request, res: Response): Promise<void> => {
-    // 1. Handle Multipart Upload (CMS-Portal thumbnails/banners)
+    // 1. Handle Multipart Upload (CMS-Portal thumbnails/banners/e-book PDFs)
     if (req.file) {
       const ext = detectFileType(req.file.buffer);
       if (!ext) throw new HttpError(400, "Only PNG, JPEG, WEBP images or PDF files are allowed");
-      
-      // Images (course thumbnails, mentor photos, banners) go to S3 so they survive redeploys and
-      // are served by S3 instead of this server. Falls back to local disk when S3 is not configured.
-      if (ext !== "pdf" && process.env.AWS_S3_BUCKET_NAME) {
+
+      // Images and PDFs go directly to the existing S3 bucket so they survive redeploys
+      // and are served directly from S3 without relying on Lambda or local disk.
+      if (process.env.AWS_S3_BUCKET || process.env.AWS_S3_BUCKET_NAME) {
         try {
-          const url = await uploadPublicImage(req.file.buffer, ext, "images");
-          logger.info({ adminUid: req.auth?.uid, url, size: req.file.size }, "Image uploaded to S3");
-          res.status(201).json({ success: true, url, type: ext });
-          return;
+          if (ext === "pdf") {
+            const rawName = path.basename(req.file.originalname || "ebook.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+            const key = `ebooks/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${rawName.endsWith(".pdf") ? rawName : `${rawName}.pdf`}`;
+            await s3Client.send(
+              new PutObjectCommand({
+                Bucket: bucket,
+                Key: key,
+                Body: req.file.buffer,
+                ContentType: "application/pdf",
+                CacheControl: "public, max-age=31536000",
+              }),
+            );
+            const url = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+            logger.info({ adminUid: req.auth?.uid, url, size: req.file.size }, "PDF uploaded to S3 ebooks/");
+            res.status(201).json({ success: true, url, key, type: ext });
+            return;
+          } else {
+            const url = await uploadPublicImage(req.file.buffer, ext, "images");
+            logger.info({ adminUid: req.auth?.uid, url, size: req.file.size }, "Image uploaded to S3");
+            res.status(201).json({ success: true, url, type: ext });
+            return;
+          }
         } catch (err) {
-          logger.error({ err }, "S3 image upload failed, storing locally instead");
+          logger.error({ err, ext }, "S3 upload failed, storing locally instead");
         }
       }
 
@@ -116,7 +134,7 @@ router.post(
     }
 
     // 2. Handle S3 Presigned URL Generation (JSON request)
-    const { fileName, fileType, courseId } = req.body || {};
+    const { fileName, fileType, courseId, folder } = req.body || {};
 
     if (!fileName || typeof fileName !== "string" || !fileName.trim()) {
       res.status(400).json({ error: "fileName is required and must be a non-empty string" });
@@ -143,12 +161,19 @@ router.post(
     }
 
     // Sanitize courseId and fileName (prevent leading/trailing slashes, invalid chars, and path traversal)
-    const cleanCourseId = String(courseId)
-      .trim()
-      .replace(/^\/+|\/+$/g, "")
-      .replace(/[^a-zA-Z0-9._-]/g, "_");
+    const rawCourseStr = String(courseId).trim().replace(/^\/+|\/+$/g, "");
     const cleanFileName = path.basename(fileName.trim()).replace(/[^a-zA-Z0-9._-]/g, "_");
-    const key = `courses/${cleanCourseId}/${Date.now()}-${cleanFileName}`.replace(/^\/+/, "");
+
+    let key: string;
+    if (folder === "ebooks" || rawCourseStr === "ebooks" || rawCourseStr.startsWith("ebooks/")) {
+      const subCourse = rawCourseStr.replace(/^ebooks\/?/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
+      key = subCourse
+        ? `ebooks/course-${subCourse}/${Date.now()}-${cleanFileName}`
+        : `ebooks/${Date.now()}-${cleanFileName}`;
+    } else {
+      const cleanCourseId = rawCourseStr.replace(/[^a-zA-Z0-9._-]/g, "_");
+      key = `courses/${cleanCourseId}/${Date.now()}-${cleanFileName}`.replace(/^\/+/, "");
+    }
 
     try {
       const command = new PutObjectCommand({

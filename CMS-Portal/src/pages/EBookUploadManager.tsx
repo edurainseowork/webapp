@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch, uploadFile, type AdminCourse } from '../api';
+import { uploadMediaToS3 } from '../services/uploadService';
 
 export interface EBookItem {
   id: string;
@@ -152,19 +153,29 @@ export default function EBookUploadManager({
     }
 
     setIsUploading(true);
-    setUploadProgress(20);
+    setUploadProgress(10);
 
     try {
-      // Step 1: Upload PDF binary to server/S3
-      setUploadProgress(45);
-      const uploadedUrl = await uploadFile(selectedFile);
-      setUploadProgress(80);
+      // Step 1: Upload PDF directly to the existing AWS S3 bucket under `ebooks/` prefix
+      let uploadedUrl: string;
+      try {
+        const s3Target = courseId ? `ebooks/${courseId}` : 'ebooks';
+        const s3Result = await uploadMediaToS3(selectedFile, s3Target, (pct) => {
+          setUploadProgress(Math.max(10, Math.min(90, pct)));
+        });
+        uploadedUrl = s3Result.fileUrl;
+      } catch (presignErr) {
+        console.warn('[EBookUploadManager] Presigned S3 upload failed, falling back to backend S3 upload:', presignErr);
+        setUploadProgress(45);
+        uploadedUrl = await uploadFile(selectedFile);
+      }
+      setUploadProgress(92);
 
       // Match course title if selected
       const matchedCourse = courses.find((c) => String(c.id) === String(courseId));
       const finalSubject = subject === 'Other' ? (customSubject.trim() || 'General') : subject;
 
-      // Step 2: Register E-Book in database
+      // Step 2: Register E-Book in database with real S3 PDF URL
       const payload = {
         title: title.trim(),
         subject: finalSubject,
@@ -184,6 +195,7 @@ export default function EBookUploadManager({
       });
 
       if (res.success) {
+        setUploadProgress(100);
         toast(`E-Book "${title.trim()}" published to student portal!`, 'success');
         handleCloseModal();
         fetchEBooks();
@@ -488,7 +500,7 @@ export default function EBookUploadManager({
               {isUploading && (
                 <div style={styles.progressBox}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.8rem', color: '#ffffff' }}>
-                    <span>Uploading E-Book binary…</span>
+                    <span>Uploading E-Book PDF to S3…</span>
                     <span>{uploadProgress}%</span>
                   </div>
                   <div style={styles.progressBarTrack}>

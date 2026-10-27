@@ -637,7 +637,7 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpe
 
       {/* 5. Embedded Video Player Modal */}
       {activeVideo && (
-        <div className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-fadeIn">
+        <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 m-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-fadeIn">
           <div className="bg-slate-900 border border-white/10 rounded-3xl overflow-hidden w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh]">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-slate-900/90">
@@ -702,7 +702,7 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpe
 
       {/* 6. Note Viewer Modal */}
       {activeNote && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+        <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 m-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
               <h3 className="font-bold text-[#0B1C30] text-base">{activeNote.title}</h3>
@@ -730,7 +730,7 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpe
 
       {/* 6b. Protected In-App PDF Reader Modal (Device Download Disabled) */}
       {activePdf && (
-        <div className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
+        <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 m-0 z-[100] bg-black/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
           <div className="bg-[#0B1C30] rounded-3xl overflow-hidden max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl border border-white/10">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-5 py-3.5 bg-[#0F3B42] text-white border-b border-white/10">

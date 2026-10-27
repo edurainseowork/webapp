@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Heart,
   Star,
@@ -11,10 +12,18 @@ import {
   SearchX,
   BookCheck,
   X,
-  FileText,
+  ExternalLink,
+  AlertCircle,
 } from 'lucide-react';
 import { SubPageHeader } from './SubPageHeader';
-import { isBookmarked, toggleBookBookmark, onBookmarksChange, toggleSavePdf, getSavedPdfs, onSavedPdfsChange } from '../utils/bookmarkStorage';
+import {
+  isBookmarked,
+  toggleBookBookmark,
+  onBookmarksChange,
+  toggleSavePdf,
+  getSavedPdfs,
+  onSavedPdfsChange,
+} from '../utils/bookmarkStorage';
 import { apiFetch } from '../lib/api';
 
 /* ------------------------------------------------------------------ */
@@ -47,21 +56,10 @@ interface EBookLibraryViewProps {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Data                                                               */
+/*  Real Storage Only (No Dummy / Mock E-Books)                        */
 /* ------------------------------------------------------------------ */
 
-export const BOOKS: EBook[] = [
-  { id: 'phy-modern', title: 'Modern Physics', subject: 'Physics', courseId: 17, courseTitle: 'JEE Advanced Physics', totalPages: 246, pagesRead: 45, rating: 4.95, isCourseBook: true },
-  { id: 'phy-pyq', title: "JEE Advanced 45-Year PYQ's", subject: 'Physics', courseId: 17, courseTitle: 'JEE Advanced Physics', totalPages: 420, pagesRead: 180, rating: 4.98, isCourseBook: false },
-  { id: 'phy-electro', title: 'Electrodynamics & Magnetism', subject: 'Physics', courseId: 24, courseTitle: 'rtyhkhgg', totalPages: 194, pagesRead: 160, rating: 4.92, isCourseBook: true },
-  { id: 'phy-mechanics', title: 'Concepts of Physics Vol. 1', subject: 'Physics', courseId: 24, courseTitle: 'rtyhkhgg', totalPages: 380, pagesRead: 110, rating: 4.89, isCourseBook: true },
-  { id: 'chem-organic', title: 'Advanced Organic Chemistry', subject: 'Chemistry', courseId: 23, courseTitle: 'Engineering bno', totalPages: 520, pagesRead: 310, rating: 4.95, isCourseBook: true },
-  { id: 'chem-inorganic', title: 'Inorganic Coordination & d-Block', subject: 'Chemistry', courseId: 23, courseTitle: 'Engineering bno', totalPages: 360, pagesRead: 240, rating: 4.88, isCourseBook: false },
-  { id: 'chem-physical', title: 'Physical Chemistry Numerical Drills', subject: 'Chemistry', courseId: 23, courseTitle: 'Engineering bno', totalPages: 700, pagesRead: 300, rating: 4.91, isCourseBook: true },
-  { id: 'math-calc', title: 'Differential & Integral Calculus', subject: 'Mathematics', courseId: 10, courseTitle: 'Class 11th Mathematics', totalPages: 580, pagesRead: 420, rating: 4.96, isCourseBook: true },
-  { id: 'math-vectors', title: 'Vectors, 3D Geometry & Matrices', subject: 'Mathematics', courseId: 10, courseTitle: 'Class 11th Mathematics', totalPages: 340, pagesRead: 280, rating: 4.9, isCourseBook: false },
-  { id: 'math-algebra', title: 'Complex Numbers & Probability', subject: 'Mathematics', courseId: 10, courseTitle: 'Class 11th Mathematics', totalPages: 200, pagesRead: 110, rating: 4.87, isCourseBook: true },
-];
+export const BOOKS: EBook[] = [];
 
 /* ------------------------------------------------------------------ */
 /*  Main View                                                          */
@@ -81,7 +79,11 @@ export function EBookLibraryView({
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
   const [savedPdfIds, setSavedPdfIds] = useState<string[]>([]);
   const [activeReadingBook, setActiveReadingBook] = useState<EBook | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [uploadedBooks, setUploadedBooks] = useState<EBook[]>([]);
+  const [isLoadingBooks, setIsLoadingBooks] = useState(true);
 
   useEffect(() => {
     const syncSaved = () => setSavedPdfIds(getSavedPdfs().map((p) => p.id));
@@ -89,18 +91,31 @@ export function EBookLibraryView({
     return onSavedPdfsChange(syncSaved);
   }, []);
 
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2400);
+  };
+
   const handleToggleSavePdf = (book: EBook) => {
+    if (!book.pdfUrl) {
+      showToast('PDF file is not available for this e-book.');
+      return;
+    }
     const isSaved = toggleSavePdf({
       id: book.id,
       title: book.title,
-      mediaUrl: book.pdfUrl || '',
+      mediaUrl: book.pdfUrl,
       courseTitle: book.courseTitle,
       courseId: book.courseId,
       subject: book.subject,
       fileSize: book.fileSize,
       savedAt: new Date().toISOString(),
     });
-    showToast(isSaved ? `Saved "${book.title}" to Your Saved PDF in Bookmarks` : `Removed "${book.title}" from Saved PDFs`);
+    showToast(
+      isSaved
+        ? `Saved "${book.title}" to Your Saved PDF in Bookmarks`
+        : `Removed "${book.title}" from Saved PDFs`
+    );
   };
 
   useEffect(() => {
@@ -117,38 +132,33 @@ export function EBookLibraryView({
     loadCourses();
   }, []);
 
-  const [uploadedBooks, setUploadedBooks] = useState<EBook[]>([]);
-
   useEffect(() => {
+    let mounted = true;
     async function loadUploadedBooks() {
+      setIsLoadingBooks(true);
       try {
         const res = await apiFetch<{ success: boolean; ebooks: EBook[] }>('/ebooks');
-        if (res && Array.isArray(res.ebooks)) {
-          setUploadedBooks(res.ebooks);
+        if (mounted && res && Array.isArray(res.ebooks)) {
+          setUploadedBooks(res.ebooks.filter((b) => Boolean(b.pdfUrl)));
         }
       } catch (err) {
         console.warn('Could not fetch uploaded ebooks:', err);
+      } finally {
+        if (mounted) setIsLoadingBooks(false);
       }
     }
     loadUploadedBooks();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const combinedBooks = useMemo(() => {
-    const existingIds = new Set(uploadedBooks.map((b) => b.id));
-    const nonDuplicatedDefaults = BOOKS.filter((b) => !existingIds.has(b.id));
-    return [...uploadedBooks, ...nonDuplicatedDefaults];
-  }, [uploadedBooks]);
-
   useEffect(() => {
-    const sync = () => setBookmarkedIds(combinedBooks.filter((b) => isBookmarked(b.id)).map((b) => b.id));
+    const sync = () =>
+      setBookmarkedIds(uploadedBooks.filter((b) => isBookmarked(b.id)).map((b) => b.id));
     sync();
     return onBookmarksChange(sync);
-  }, [combinedBooks]);
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2400);
-  };
+  }, [uploadedBooks]);
 
   const handleToggleBookmark = (book: EBook) => {
     const saved = toggleBookBookmark(book);
@@ -156,26 +166,47 @@ export function EBookLibraryView({
     showToast(saved ? `Added "${book.title}" to Bookmarks` : `Removed "${book.title}" from Bookmarks`);
   };
 
+  const handleReadBook = (book: EBook) => {
+    if (book.pdfUrl) {
+      setPdfLoading(true);
+      setPdfError(null);
+      setActiveReadingBook(book);
+    } else if (onOpenBook) {
+      onOpenBook(book);
+    } else {
+      showToast('PDF file is not available for this e-book.');
+    }
+  };
+
   const q = searchQuery.trim().toLowerCase();
-  const pool = q
-    ? combinedBooks.filter((b) => b.title.toLowerCase().includes(q) || b.subject.toLowerCase().includes(q) || (b.courseTitle && b.courseTitle.toLowerCase().includes(q)))
-    : combinedBooks;
+  const pool = useMemo(
+    () =>
+      q
+        ? uploadedBooks.filter(
+            (b) =>
+              b.title.toLowerCase().includes(q) ||
+              b.subject.toLowerCase().includes(q) ||
+              (b.courseTitle && b.courseTitle.toLowerCase().includes(q))
+          )
+        : uploadedBooks,
+    [uploadedBooks, q]
+  );
 
   const courseFilteredBooks = useMemo(() => {
     if (selectedCourseId === 'all') return pool;
-    const directMatches = pool.filter((b) => b.courseId === selectedCourseId);
+    const directMatches = pool.filter((b) => Number(b.courseId) === Number(selectedCourseId));
     if (directMatches.length > 0) return directMatches;
-    // Fallback: match by course name/category
     const matchedCourse = courses.find((c) => c.id === selectedCourseId);
-    if (!matchedCourse) return pool;
-    const byCategory = pool.filter((b) =>
-      b.subject.toLowerCase().includes((matchedCourse.category || '').toLowerCase()) ||
-      matchedCourse.title.toLowerCase().includes(b.subject.toLowerCase())
+    if (!matchedCourse) return [];
+    return pool.filter(
+      (b) =>
+        b.subject.toLowerCase().includes((matchedCourse.category || '').toLowerCase()) ||
+        matchedCourse.title.toLowerCase().includes(b.subject.toLowerCase())
     );
-    return byCategory.length > 0 ? byCategory : pool.slice(0, 4);
   }, [pool, selectedCourseId, courses]);
 
-  const visibleBooks: EBook[] = activeTab === 'all' ? courseFilteredBooks : courseFilteredBooks.filter((b: EBook) => b.isCourseBook);
+  const visibleBooks: EBook[] =
+    activeTab === 'all' ? courseFilteredBooks : courseFilteredBooks.filter((b: EBook) => b.isCourseBook);
 
   return (
     <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 space-y-5">
@@ -264,11 +295,22 @@ export function EBookLibraryView({
       </div>
 
       {/* E-Book Cards */}
-      {visibleBooks.length === 0 ? (
+      {isLoadingBooks ? (
+        <div className="bg-white/70 rounded-2xl p-12 text-center space-y-3">
+          <div className="w-8 h-8 border-3 border-[#0F3B42] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="font-semibold text-sm text-[#0B1C30]">Loading e-books…</p>
+        </div>
+      ) : visibleBooks.length === 0 ? (
         <div className="bg-white/70 rounded-2xl p-10 text-center">
           <SearchX className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-          <p className="font-semibold text-sm text-[#0B1C30]">No e-books found</p>
-          <p className="text-xs text-[#2A707C] mt-0.5">Try clearing search or switching tabs.</p>
+          <p className="font-semibold text-sm text-[#0B1C30]">
+            {uploadedBooks.length === 0 && !q ? 'No e-books available yet.' : 'No e-books found'}
+          </p>
+          <p className="text-xs text-[#2A707C] mt-0.5">
+            {uploadedBooks.length === 0 && !q
+              ? 'E-books uploaded to the library will appear here.'
+              : 'Try clearing search or switching tabs.'}
+          </p>
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -287,7 +329,10 @@ export function EBookLibraryView({
                         {book.subject}
                       </span>
                       {book.courseTitle && (
-                        <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md truncate max-w-[140px]" title={book.courseTitle}>
+                        <span
+                          className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md truncate max-w-[140px]"
+                          title={book.courseTitle}
+                        >
                           {book.courseTitle}
                         </span>
                       )}
@@ -320,10 +365,15 @@ export function EBookLibraryView({
                   <div className="mt-2.5">
                     <div className="flex items-center justify-between text-[11px] font-semibold text-[#2A707C]">
                       <span>{pct}% Read</span>
-                      <span>{book.pagesRead} / {book.totalPages} pgs</span>
+                      <span>
+                        {book.pagesRead} / {book.totalPages} pgs
+                      </span>
                     </div>
                     <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${pct}%` }} />
+                      <div
+                        className="h-full rounded-full bg-emerald-600 transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -346,15 +396,7 @@ export function EBookLibraryView({
                     {savedPdfIds.includes(book.id) ? 'Saved' : 'Save PDF'}
                   </button>
                   <button
-                    onClick={() => {
-                      if (book.pdfUrl) {
-                        setActiveReadingBook(book);
-                      } else if (onOpenBook) {
-                        onOpenBook(book);
-                      } else {
-                        showToast(`Opening "${book.title}"…`);
-                      }
-                    }}
+                    onClick={() => handleReadBook(book)}
                     className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-semibold shadow-sm active:scale-95 cursor-pointer"
                   >
                     <BookOpen className="w-3.5 h-3.5" />
@@ -396,7 +438,9 @@ export function EBookLibraryView({
                     <div className="flex items-center gap-3 text-[11px] text-[#2A707C] mt-1">
                       <span>{pct}% Read</span>
                       <span>·</span>
-                      <span>{book.pagesRead} / {book.totalPages} pgs</span>
+                      <span>
+                        {book.pagesRead} / {book.totalPages} pgs
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -419,15 +463,7 @@ export function EBookLibraryView({
                     <Bookmark className={`w-4 h-4 ${savedPdfIds.includes(book.id) ? 'fill-current' : ''}`} />
                   </button>
                   <button
-                    onClick={() => {
-                      if (book.pdfUrl) {
-                        setActiveReadingBook(book);
-                      } else if (onOpenBook) {
-                        onOpenBook(book);
-                      } else {
-                        showToast(`Opening "${book.title}"…`);
-                      }
-                    }}
+                    onClick={() => handleReadBook(book)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0F3B42] text-white text-xs font-bold cursor-pointer hover:bg-[#0b2c31] active:scale-95"
                   >
                     Read
@@ -440,72 +476,115 @@ export function EBookLibraryView({
         </div>
       )}
 
-      {/* Protected In-App E-Book Reader Modal (No Device Download) */}
-      {activeReadingBook && activeReadingBook.pdfUrl && (
-        <div className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
-          <div className="bg-[#0B1C30] rounded-3xl overflow-hidden max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl border border-white/10">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 bg-[#0F3B42] text-white border-b border-white/10">
-              <div className="flex items-center gap-2.5 min-w-0 pr-4">
-                <BookOpen className="w-5 h-5 text-teal-300 shrink-0" />
-                <div className="min-w-0">
-                  <h3 className="font-bold text-sm sm:text-base truncate">{activeReadingBook.title}</h3>
-                  <p className="text-[11px] text-teal-200/80 flex items-center gap-1.5">
-                    <span>🔒 Protected E-Book</span>
-                    <span>•</span>
-                    <span>Device download disabled</span>
-                  </p>
+      {/* Protected In-App E-Book Reader Modal (Rendered via Portal to document.body) */}
+      {activeReadingBook &&
+        activeReadingBook.pdfUrl &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 z-[100] m-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
+            <div className="bg-[#0B1C30] rounded-3xl overflow-hidden max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl border border-white/10">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-5 py-3.5 bg-[#0F3B42] text-white border-b border-white/10">
+                <div className="flex items-center gap-2.5 min-w-0 pr-4">
+                  <BookOpen className="w-5 h-5 text-teal-300 shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-sm sm:text-base truncate">{activeReadingBook.title}</h3>
+                    <p className="text-[11px] text-teal-200/80 flex items-center gap-1.5">
+                      <span>🔒 Protected E-Book</span>
+                      <span>•</span>
+                      <span>Device download disabled</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleToggleSavePdf(activeReadingBook)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      savedPdfIds.includes(activeReadingBook.id)
+                        ? 'bg-amber-400 text-slate-900 font-bold'
+                        : 'bg-white/15 hover:bg-white/25 text-white'
+                    }`}
+                    title="Save to your Bookmarks"
+                  >
+                    <Bookmark
+                      className={`w-3.5 h-3.5 ${
+                        savedPdfIds.includes(activeReadingBook.id) ? 'fill-current' : ''
+                      }`}
+                    />
+                    <span className="hidden sm:inline">
+                      {savedPdfIds.includes(activeReadingBook.id) ? 'Saved in Bookmarks' : 'Save to Bookmarks'}
+                    </span>
+                  </button>
+
+                  <a
+                    href={activeReadingBook.pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+                    title="Open in new tab"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+
+                  <button
+                    onClick={() => setActiveReadingBook(null)}
+                    className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    title="Close viewer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => handleToggleSavePdf(activeReadingBook)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    savedPdfIds.includes(activeReadingBook.id)
-                      ? 'bg-amber-400 text-slate-900 font-bold'
-                      : 'bg-white/15 hover:bg-white/25 text-white'
-                  }`}
-                  title="Save to your Bookmarks"
-                >
-                  <Bookmark
-                    className={`w-3.5 h-3.5 ${
-                      savedPdfIds.includes(activeReadingBook.id) ? 'fill-current' : ''
-                    }`}
+              {/* Embedded PDF iframe with loading & error states */}
+              <div className="flex-1 bg-slate-900 relative">
+                {pdfLoading && !pdfError && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 z-10 text-white space-y-2">
+                    <div className="w-8 h-8 border-3 border-teal-400 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs text-slate-300">Loading PDF from storage…</span>
+                  </div>
+                )}
+                {pdfError ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white p-6 text-center space-y-3">
+                    <AlertCircle className="w-10 h-10 text-rose-400" />
+                    <p className="text-sm font-semibold">{pdfError}</p>
+                    <a
+                      href={activeReadingBook.pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold"
+                    >
+                      Open PDF Directly
+                    </a>
+                  </div>
+                ) : (
+                  <iframe
+                    src={`${activeReadingBook.pdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                    className="w-full h-full border-0"
+                    title={activeReadingBook.title}
+                    onLoad={() => setPdfLoading(false)}
+                    onError={() => {
+                      setPdfLoading(false);
+                      setPdfError('Unable to load PDF inside viewer.');
+                    }}
                   />
-                  <span className="hidden sm:inline">
-                    {savedPdfIds.includes(activeReadingBook.id) ? 'Saved in Bookmarks' : 'Save to Bookmarks'}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveReadingBook(null)}
-                  className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                  title="Close viewer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                )}
               </div>
             </div>
+          </div>,
+          document.body
+        )}
 
-            {/* Embedded PDF iframe with toolbar disabled */}
-            <div className="flex-1 bg-slate-900 relative">
-              <iframe
-                src={`${activeReadingBook.pdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                className="w-full h-full border-0"
-                title={activeReadingBook.title}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] bg-[#175A67] text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0" />
-          <span>{toast}</span>
-        </div>
-      )}
+      {toast &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] m-0 bg-[#175A67] text-white text-sm font-semibold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0" />
+            <span>{toast}</span>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
