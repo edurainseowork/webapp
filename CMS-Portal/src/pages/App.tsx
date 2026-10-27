@@ -45,6 +45,24 @@ function App() {
     if (isTeacherAssistantPath()) return 'teacherAssistant';
     return 'courses';
   });
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const pageLoadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleTabChange = (nextTab: string) => {
+    if (nextTab === activeTab) return;
+    if (pageLoadingTimeoutRef.current) clearTimeout(pageLoadingTimeoutRef.current);
+    setIsPageLoading(true);
+    setActiveTab(nextTab);
+    pageLoadingTimeoutRef.current = setTimeout(() => {
+      setIsPageLoading(false);
+    }, 240);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pageLoadingTimeoutRef.current) clearTimeout(pageLoadingTimeoutRef.current);
+    };
+  }, []);
   const [openEBookModal, setOpenEBookModal] = useState(false);
   const [highlightEBookSection, setHighlightEBookSection] = useState(false);
   const ebookUploadSectionRef = useRef<HTMLDivElement>(null);
@@ -512,35 +530,35 @@ function App() {
               <span>Edurain CMS</span>
             </div>
             <nav className="sidebar-nav">
-              <div className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+              <div className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => handleTabChange('dashboard')}>
                 Dashboard
               </div>
-              <div className={`nav-link ${activeTab === 'courses' ? 'active' : ''}`} onClick={() => setActiveTab('courses')}>
+              <div className={`nav-link ${activeTab === 'courses' ? 'active' : ''}`} onClick={() => handleTabChange('courses')}>
                 Course Manager
               </div>
-              <div className={`nav-link ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => setActiveTab('categories')}>
+              <div className={`nav-link ${activeTab === 'categories' ? 'active' : ''}`} onClick={() => handleTabChange('categories')}>
                 Categories
               </div>
-              <div className={`nav-link ${activeTab === 'content' ? 'active' : ''}`} onClick={() => setActiveTab('content')}>
+              <div className={`nav-link ${activeTab === 'content' ? 'active' : ''}`} onClick={() => handleTabChange('content')}>
                 Upload Content (PDF/Video/E-Books)
               </div>
-              <div className={`nav-link ${activeTab === 'banners' ? 'active' : ''}`} onClick={() => setActiveTab('banners')}>
+              <div className={`nav-link ${activeTab === 'banners' ? 'active' : ''}`} onClick={() => handleTabChange('banners')}>
                 Manage Banners
               </div>
-              <div className={`nav-link ${activeTab === 'coupons' ? 'active' : ''}`} onClick={() => setActiveTab('coupons')}>
+              <div className={`nav-link ${activeTab === 'coupons' ? 'active' : ''}`} onClick={() => handleTabChange('coupons')}>
                 Private/Public Coupons
               </div>
-              <div className={`nav-link ${activeTab === 'golive' ? 'active' : ''}`} onClick={() => setActiveTab('golive')}>
+              <div className={`nav-link ${activeTab === 'golive' ? 'active' : ''}`} onClick={() => handleTabChange('golive')}>
                 Go Live (Google Meet)
               </div>
-              <div className={`nav-link ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => setActiveTab('notifications')}>
+              <div className={`nav-link ${activeTab === 'notifications' ? 'active' : ''}`} onClick={() => handleTabChange('notifications')}>
                 Notifications
               </div>
-              <div className={`nav-link ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => setActiveTab('tests')}>
+              <div className={`nav-link ${activeTab === 'tests' ? 'active' : ''}`} onClick={() => handleTabChange('tests')}>
                 Tests
               </div>
               {me.isSuperAdmin && (
-                <div className={`nav-link ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
+                <div className={`nav-link ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => handleTabChange('admins')}>
                   Manage Users
                 </div>
               )}
@@ -548,16 +566,16 @@ function App() {
                 <button
                   type="button"
                   className={`nav-link ${activeTab === 'taAnalytics' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('taAnalytics')}
+                  onClick={() => handleTabChange('taAnalytics')}
                   style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', cursor: 'pointer' }}
                 >
                   Teacher Assistant Analysis
                 </button>
               )}
-              <div className={`nav-link ${activeTab === 'mentorDesk' ? 'active' : ''}`} onClick={() => setActiveTab('mentorDesk')}>
+              <div className={`nav-link ${activeTab === 'mentorDesk' ? 'active' : ''}`} onClick={() => handleTabChange('mentorDesk')}>
                 Mentor Desk
               </div>
-              <div className={`nav-link ${activeTab === 'teacherAssistant' ? 'active' : ''}`} onClick={() => setActiveTab('teacherAssistant')}>
+              <div className={`nav-link ${activeTab === 'teacherAssistant' ? 'active' : ''}`} onClick={() => handleTabChange('teacherAssistant')}>
                 Teacher Assistant Desk
               </div>
             </nav>
@@ -565,6 +583,7 @@ function App() {
 
           {/* Main Content */}
           <main className="main-content">
+            {isPageLoading && <div className="cms-page-progress-bar" role="progressbar" aria-label="Loading page" />}
             <header className="page-header">
               <h1 className="page-title">
                 {activeTab === 'dashboard' && 'Overview'}
@@ -582,7 +601,7 @@ function App() {
               <div className="user-profile" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                 {me.isSuperAdmin && (
                   <button
-                    onClick={() => { setActiveTab('admins'); setOpenCreateAdmin(true); }}
+                    onClick={() => { handleTabChange('admins'); setOpenCreateAdmin(true); }}
                     className="btn"
                     style={{ padding: '6px 12px' }}
                   >
@@ -604,6 +623,13 @@ function App() {
                 </div>
               </div>
             )}
+            {isPageLoading ? (
+              <div className="cms-page-loader" role="status" aria-label="Loading view">
+                <div className="cms-page-spinner" />
+                <span className="cms-page-loading-text">Loading view...</span>
+              </div>
+            ) : (
+              <>
             {activeTab === 'dashboard' && (
               <div className="animate-view">
                 <div className="dashboard-grid">
@@ -695,7 +721,7 @@ function App() {
                   showToast={showToast}
                   onManageContent={(courseId) => {
                     setSelectedCourseForContent(String(courseId));
-                    setActiveTab('content');
+                    handleTabChange('content');
                   }}
                 />
               </div>
@@ -824,6 +850,8 @@ function App() {
               <div className="animate-view">
                 <TeacherAssistantAnalysis />
               </div>
+            )}
+              </>
             )}
           </main>
         </div>
