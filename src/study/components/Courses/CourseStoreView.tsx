@@ -55,12 +55,13 @@ export function CourseStoreView({
   // Filter courses strictly by the selected cohort
   const hasSelectedCohort = Boolean(goalCategoryId || goalKey);
   const cohortBatches = useMemo(() => {
-    if (!hasSelectedCohort) return [];
-    return batches.filter((b) => {
+    if (!hasSelectedCohort) return batches;
+    const filtered = batches.filter((b) => {
       if (goalCategoryId && b.categoryId === goalCategoryId) return true;
       if (goalKey && b.categories.includes(goalKey)) return true;
       return false;
     });
+    return filtered.length > 0 ? filtered : batches;
   }, [batches, goalCategoryId, goalKey, hasSelectedCohort]);
 
   // Free courses (published as free in the CMS within the selected cohort)
@@ -132,8 +133,7 @@ export function CourseStoreView({
           )}
 
           {/* 3. Catalogue - Academic Batches & Crash Courses (Shown only when cohort is selected) */}
-          {hasSelectedCohort && (
-            <section ref={batchesRef} className="scroll-mt-4">
+          <section ref={batchesRef} className="scroll-mt-4">
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-5">
                 Academic Batches &amp; Crash Courses
               </h2>
@@ -143,7 +143,7 @@ export function CourseStoreView({
                 onRetry={reload}
                 batches={cohortBatches}
                 filters={filters}
-                showFilters={false}
+                showFilters={!hasSelectedCohort || cohortBatches === batches}
                 activeFilter={catalogFilter}
                 onFilterChange={onCatalogFilterChange}
                 query={q}
@@ -151,7 +151,6 @@ export function CourseStoreView({
                 onBuyBatch={onBuyBatch}
               />
             </section>
-          )}
 
           {/* 4. Free courses (published as free in the CMS for this cohort) */}
           {hasSelectedCohort && freeCourses.length > 0 && (

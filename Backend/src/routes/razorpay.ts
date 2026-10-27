@@ -266,4 +266,61 @@ router.get("/my-courses", requireAuth, async (req, res) => {
   }
 });
 
+
+// Step 4: Razorpay Webhook endpoint with HMAC-SHA256 signature verification & idempotency
+router.post("/webhook", async (req, res) => {
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+  const signature = req.headers["x-razorpay-signature"];
+
+  if (!webhookSecret || !signature || typeof signature !== "string") {
+    logger.warn("Razorpay webhook request missing signature or webhook secret is unconfigured");
+    res.status(400).json({ error: "Missing signature or unconfigured secret" });
+    return;
+  }
+
+  const rawPayload = (req as any).rawBody ? (req as any).rawBody.toString("utf8") : JSON.stringify(req.body);
+  const expectedSignature = crypto.createHmac("sha256", webhookSecret).update(rawPayload).digest("hex");
+
+  const signatureMatches = expectedSignature.length === signature.length &&
+    crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature));
+
+  if (!signatureMatches) {
+    logger.error("Razorpay webhook signature validation failed - unauthorized payload");
+    res.status(400).json({ error: "Invalid signature" });
+    return;
+  }
+
+  const event = req.body?.event;
+  const paymentEntity = req.body?.payload?.payment?.entity;
+  const orderId = paymentEntity?.order_id;
+  const paymentId = paymentEntity?.id;
+  const amount = paymentEntity?.amount;
+
+  if (event === "payment.captured" || event === "order.paid") {
+    if (orderId && paymentId) {
+      const [payment] = await db.select().from(paymentsTable).where(eq(paymentsTable.razorpayOrderId, orderId));
+      if (payment && payment.status !== "paid") {
+        if (amount && Number(amount) < Number(payment.amount)) {
+          logger.error({ orderId, amount, expected: payment.amount }, "Amount mismatch in webhook payment");
+          res.status(400).json({ error: "Amount mismatch" });
+          return;
+        }
+
+        await db.transaction(async (tx) => {
+          await tx.update(paymentsTable)
+            .set({ status: "paid", razorpayPaymentId: paymentId, updatedAt: new Date() })
+            .where(eq(paymentsTable.id, payment.id));
+          await enroll(tx, payment.userId, payment.courseId, { orderId, paymentId });
+          if (payment.couponId) {
+            await redeemCoupon(tx, payment.couponId, { courseId: payment.courseId, firebaseUid: `webhook-${payment.userId}`, razorpayOrderId: orderId }, { enforceLimit: false });
+          }
+        });
+        logger.info({ orderId, paymentId, event }, "Payment idempotently verified and enrolled via webhook");
+      }
+    }
+  }
+
+  res.status(200).json({ status: "ok" });
+});
+
 export default router;

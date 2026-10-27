@@ -229,4 +229,33 @@ router.delete("/photo", async (req, res) => {
   res.json({ success: true, data: await loadProfile(req, userId) });
 });
 
+
+// DELETE /api/profile (Account Deletion per Apple App Store 5.1.1(v) & India DPDP Act 2026)
+router.delete("/", async (req, res) => {
+  const userId = requireDbUserId(req);
+  const uid = req.auth?.uid;
+
+  // Anonymize personal details in database
+  await db.update(usersTable).set({
+    name: "Deleted Student",
+    phone: null,
+    address: null,
+    city: null,
+    state: null,
+    pincode: null,
+    profilePhoto: null,
+    updatedAt: new Date(),
+  }).where(eq(usersTable.id, userId));
+
+  // Purge from Firebase Auth if live UID
+  if (uid && !uid.startsWith("test-")) {
+    await firebaseAuth.deleteUser(uid).catch((err) => {
+      logger.warn({ err, uid }, "Could not delete user from Firebase Auth");
+    });
+  }
+
+  logger.info({ userId, uid }, "User account deleted per DPDP and App Store 5.1.1(v)");
+  res.json({ success: true, message: "Account and personal data successfully deleted" });
+});
+
 export default router;

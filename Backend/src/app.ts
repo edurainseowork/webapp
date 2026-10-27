@@ -44,7 +44,7 @@ app.use(
 app.use(securityHeaders);
 app.use(cors(corsOptions()));
 // 5 MB JSON limit for tickets router to support compressed image attachments
-const ticketsJsonParser = express.json({ limit: "5mb" });
+const ticketsJsonParser = express.json({ limit: "5mb", verify: (req: any, _res: any, buf: Buffer) => { req.rawBody = buf; } });
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/tickets") || req.path.startsWith("/api/teacher-assistant-desk/tickets") || req.url.includes("/tickets")) {
     return ticketsJsonParser(req, res, next);
@@ -53,7 +53,7 @@ app.use((req, res, next) => {
 });
 
 // Global express.json and express.urlencoded with default limits, skipping tickets paths
-const defaultJsonParser = express.json();
+const defaultJsonParser = express.json({ verify: (req: any, _res: any, buf: Buffer) => { req.rawBody = buf; } });
 const defaultUrlencodedParser = express.urlencoded({ extended: true });
 
 app.use((req, res, next) => {
