@@ -153,22 +153,44 @@ body::before {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 6px;
 }
 
 .nav-link {
+  font-family: inherit;
   color: var(--text-secondary);
   text-decoration: none;
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  transition: all 0.2s ease;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: all var(--duration-fast) var(--ease-out-expo);
   font-weight: 500;
   cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.nav-link:hover, .nav-link.active {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
+.nav-link:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f1f5f9;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.nav-link.active {
+  background: rgba(255, 94, 94, 0.12);
+  color: #ff7676;
+  font-weight: 600;
+  border: 1px solid rgba(255, 94, 94, 0.32);
+  box-shadow: inset 3px 0 0 #ff5e5e, 0 4px 18px rgba(255, 94, 94, 0.14);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .main-content {
