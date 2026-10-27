@@ -1,8 +1,8 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
-import { count, desc, eq } from "drizzle-orm";
+import { count, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { adminNotificationsTable, notificationsTable, pushTokensTable, usersTable } from "@workspace/db/schema";
+import { adminNotificationsTable, notificationsTable, pushTokensTable, usersTable, userCoursesTable, coursesTable } from "@workspace/db/schema";
 import { AdminNotificationBody, NOTIFICATION_IMAGE_MAX_BYTES } from "@workspace/api-zod";
 import { HttpError } from "../../lib/http-error";
 import { logger } from "../../lib/logger";
@@ -131,6 +131,80 @@ router.post("/direct", rateLimit({ windowMs: 60_000, max: 30 }), async (req, res
     data: notification,
     pushSentCount: push.sent,
     targetUser: { id: targetUser.id, name: targetUser.name, email: targetUser.email },
+  });
+});
+
+// Send targeted notification to all students enrolled in a specific category (JEE, NEET, Foundation, etc.)
+router.post("/category", rateLimit({ windowMs: 60_000, max: 15 }), async (req, res) => {
+  const { category, title, description, link } = req.body ?? {};
+  if (!category || typeof category !== "string" || !category.trim()) {
+    throw new HttpError(400, "Category name is required");
+  }
+  if (!title || typeof title !== "string" || !title.trim()) {
+    throw new HttpError(400, "Notification title is required");
+  }
+  if (!description || typeof description !== "string" || !description.trim()) {
+    throw new HttpError(400, "Notification message is required");
+  }
+
+  const enrolledRows = await db.selectDistinct({ userId: userCoursesTable.userId })
+    .from(userCoursesTable)
+    .innerJoin(coursesTable, eq(userCoursesTable.courseId, coursesTable.id))
+    .where(eq(coursesTable.category, category.trim()));
+
+  const userIds = enrolledRows.map((r) => r.userId);
+  if (userIds.length === 0) {
+    res.json({
+      success: true,
+      recipientCount: 0,
+      pushSentCount: 0,
+      message: `No active students found in ${category} category courses.`,
+    });
+    return;
+  }
+
+  // Insert notification for each student
+  await db.insert(notificationsTable).values(
+    userIds.map((uid) => ({
+      userId: uid,
+      type: "admin",
+      title: title.trim(),
+      body: description.trim(),
+      isRead: false,
+    }))
+  );
+
+  // Send push notifications
+  const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(inArray(pushTokensTable.userId, userIds))).map((r) => r.token);
+  let push = { sent: 0, failed: 0 };
+  if (tokens.length > 0) {
+    push = await sendExpoPush(tokens, {
+      title: title.trim(),
+      body: description.trim(),
+      data: {
+        type: "category_admin_notification",
+        category: category.trim(),
+        link: link || undefined,
+      },
+    });
+  }
+
+  const [notification] = await db.insert(adminNotificationsTable).values({
+    title: `[${category.trim()}] ${title.trim()}`,
+    body: description.trim(),
+    link: link || null,
+    sentBy: req.auth?.email ?? null,
+    recipientCount: userIds.length,
+    pushSentCount: push.sent,
+    pushFailedCount: push.failed,
+  }).returning();
+
+  logger.info({ category, recipientCount: userIds.length, ...push }, "Category notification sent");
+  res.status(201).json({
+    success: true,
+    data: notification,
+    recipientCount: userIds.length,
+    pushSentCount: push.sent,
   });
 });
 

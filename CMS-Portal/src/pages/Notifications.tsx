@@ -20,6 +20,13 @@ export type TargetStudentInfo = {
   name: string | null
   email: string
   phone?: string | null
+  categories?: string[]
+  enrollments?: Array<{
+    id: number
+    courseId: number
+    courseTitle: string
+    courseCategory: string | null
+  }>
 }
 
 type NotificationsProps = {
@@ -40,10 +47,17 @@ const inputStyle = {
 
 const labelStyle = { display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' } as const
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+const DEFAULT_CATEGORIES = ['JEE', 'NEET', 'Foundation']
 
 function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }: NotificationsProps) {
-  // Mode: 'broadcast' (all users) or 'direct' (1-to-1 specific student)
-  const [mode, setMode] = useState<'broadcast' | 'direct'>(initialTargetStudent ? 'direct' : 'broadcast')
+  // Mode: 'broadcast' | 'category' | 'direct'
+  const [mode, setMode] = useState<'broadcast' | 'category' | 'direct'>(initialTargetStudent ? 'direct' : 'broadcast')
+  
+  // Category Mode state
+  const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORIES)
+  const [selectedCategory, setSelectedCategory] = useState<string>('JEE')
+
+  // Direct Student Mode state
   const [selectedStudent, setSelectedStudent] = useState<TargetStudentInfo | null>(initialTargetStudent || null)
   const [studentSearchQuery, setStudentSearchQuery] = useState('')
   const [studentSearchResults, setStudentSearchResults] = useState<TargetStudentInfo[]>([])
@@ -61,6 +75,18 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
   const [history, setHistory] = useState<AdminNotification[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
 
+  // Load available categories
+  useEffect(() => {
+    apiFetch<{ data: Array<{ id: number; name: string }> }>('/admin/categories')
+      .then((res) => {
+        if (res.data && res.data.length > 0) {
+          const names = Array.from(new Set([...DEFAULT_CATEGORIES, ...res.data.map((c) => c.name)]))
+          setAvailableCategories(names)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   // Sync initialTargetStudent if passed from parent
   useEffect(() => {
     if (initialTargetStudent) {
@@ -69,7 +95,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
     }
   }, [initialTargetStudent])
 
-  // Search students when typing in direct mode
+  // Instant live search with fast 150ms debounce
   useEffect(() => {
     if (mode !== 'direct' || !studentSearchQuery.trim() || selectedStudent) {
       setStudentSearchResults([])
@@ -79,21 +105,16 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
     const timer = setTimeout(async () => {
       setIsSearchingStudents(true)
       try {
-        const res = await apiFetch<{ success: boolean; data: any[] }>(`/admin/students?q=${encodeURIComponent(studentSearchQuery.trim())}`)
-        setStudentSearchResults(
-          (res.data || []).map((s) => ({
-            id: s.id,
-            name: s.name,
-            email: s.email,
-            phone: s.phone,
-          }))
+        const res = await apiFetch<{ success: boolean; data: TargetStudentInfo[] }>(
+          `/admin/students?q=${encodeURIComponent(studentSearchQuery.trim())}`
         )
+        setStudentSearchResults(res.data || [])
       } catch (err) {
         console.error('Failed to search students', err)
       } finally {
         setIsSearchingStudents(false)
       }
-    }, 280)
+    }, 150)
 
     return () => clearTimeout(timer)
   }, [studentSearchQuery, mode, selectedStudent])
@@ -128,7 +149,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
     setImage(file)
   }
 
-  // Handle Broadcast Submission
+  // 1. Broadcast to All
   const handleBroadcastSend = async () => {
     const parsed = AdminNotificationBody.safeParse({
       title,
@@ -136,7 +157,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
       link: link.trim() || undefined,
     })
     if (!parsed.success) {
-      showToast(parsed.error.issues[0]?.message || 'Please check the notification details', 'error')
+      showToast(parsed.error.issues[0]?.message || 'Please check notification details', 'error')
       return
     }
     if (!window.confirm(`Send "${parsed.data.title}" to ALL registered users now? This cannot be undone.`)) return
@@ -150,7 +171,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
       if (image) formData.append('image', image)
 
       const data = await apiFetch<{ data: AdminNotification; devices: number }>('/admin/notifications', { method: 'POST', formData })
-      showToast(`Notification Sent to ${data.data.recipientCount} users`, 'success')
+      showToast(`Notification sent to ${data.data.recipientCount} users`, 'success')
       setTitle('')
       setDescription('')
       setLink('')
@@ -163,7 +184,49 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
     }
   }
 
-  // Handle Direct 1-to-1 Student Notification Submission
+  // 2. Category / Batch Wise Send
+  const handleCategorySend = async () => {
+    if (!title.trim()) {
+      showToast('Please enter a notification title', 'error')
+      return
+    }
+    if (!description.trim()) {
+      showToast('Please enter a notification message', 'error')
+      return
+    }
+    if (!window.confirm(`Send notification to all students enrolled in "${selectedCategory}" courses?`)) return
+
+    setIsSending(true)
+    try {
+      const res = await apiFetch<{ success: boolean; recipientCount: number; pushSentCount: number; message?: string }>(
+        '/admin/notifications/category',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            category: selectedCategory,
+            title: title.trim(),
+            description: description.trim(),
+            link: link.trim() || undefined,
+          }),
+        }
+      )
+      if (res.recipientCount === 0) {
+        showToast(res.message || `No students currently found in ${selectedCategory}`, 'error')
+      } else {
+        showToast(`Sent to ${res.recipientCount} students in ${selectedCategory}! (${res.pushSentCount} push notifications sent)`, 'success')
+        setTitle('')
+        setDescription('')
+        setLink('')
+        fetchHistory()
+      }
+    } catch (e: any) {
+      showToast('Failed to send category notification: ' + e.message, 'error')
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  // 3. Direct 1-to-1 Student Send
   const handleDirectSend = async () => {
     if (!selectedStudent) {
       showToast('Please search and select a student first', 'error')
@@ -209,7 +272,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
   }
 
   const handleDelete = async (id: number, notificationTitle: string) => {
-    if (!window.confirm(`Are you sure you want to delete "${notificationTitle}"? It will be removed from all students' in-app notification history.`)) return
+    if (!window.confirm(`Delete "${notificationTitle}"? It will be removed from all in-app history.`)) return
     try {
       await apiFetch(`/admin/notifications/${id}`, { method: 'DELETE' })
       showToast('Notification deleted successfully', 'success')
@@ -221,7 +284,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-      {/* Target Mode Segmented Switcher */}
+      {/* 3-Way Mode Segmented Switcher */}
       <div
         className="glass-card"
         style={{
@@ -233,15 +296,16 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
           padding: '12px 18px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>DELIVERY MODE:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>DELIVERY MODE:</span>
           <div
             style={{
               display: 'inline-flex',
-              background: 'rgba(0, 0, 0, 0.3)',
+              background: 'rgba(0, 0, 0, 0.35)',
               borderRadius: '12px',
               padding: '4px',
               border: '1px solid rgba(255, 255, 255, 0.1)',
+              gap: '4px',
             }}
           >
             <button
@@ -251,10 +315,10 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
                 if (onClearInitialTarget) onClearInitialTarget()
               }}
               style={{
-                padding: '6px 14px',
+                padding: '7px 14px',
                 borderRadius: '8px',
                 border: 'none',
-                background: mode === 'broadcast' ? 'rgba(255, 94, 94, 0.2)' : 'transparent',
+                background: mode === 'broadcast' ? 'rgba(255, 94, 94, 0.22)' : 'transparent',
                 color: mode === 'broadcast' ? '#ff7676' : 'var(--text-secondary)',
                 fontWeight: mode === 'broadcast' ? 600 : 400,
                 cursor: 'pointer',
@@ -262,16 +326,33 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
                 transition: 'all 0.18s ease',
               }}
             >
-              📢 Broadcast to All Students
+              📢 All Students
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('category')}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                background: mode === 'category' ? 'rgba(255, 94, 94, 0.22)' : 'transparent',
+                color: mode === 'category' ? '#ff7676' : 'var(--text-secondary)',
+                fontWeight: mode === 'category' ? 600 : 400,
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              🎯 Category / Batch Wise
             </button>
             <button
               type="button"
               onClick={() => setMode('direct')}
               style={{
-                padding: '6px 14px',
+                padding: '7px 14px',
                 borderRadius: '8px',
                 border: 'none',
-                background: mode === 'direct' ? 'rgba(255, 94, 94, 0.2)' : 'transparent',
+                background: mode === 'direct' ? 'rgba(255, 94, 94, 0.22)' : 'transparent',
                 color: mode === 'direct' ? '#ff7676' : 'var(--text-secondary)',
                 fontWeight: mode === 'direct' ? 600 : 400,
                 cursor: 'pointer',
@@ -279,65 +360,117 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
                 transition: 'all 0.18s ease',
               }}
             >
-              👤 Direct to Specific Student (1-to-1)
+              👤 Specific Student (1-to-1)
             </button>
           </div>
         </div>
 
+        {mode === 'category' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Selected Cohort:</span>
+            <span style={{ background: 'rgba(255, 94, 94, 0.15)', color: '#ff8a8a', padding: '4px 10px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600, border: '1px solid rgba(255, 94, 94, 0.3)' }}>
+              {selectedCategory}
+            </span>
+          </div>
+        )}
+
         {mode === 'direct' && selectedStudent && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Targeting:</span>
-            <span
-              style={{
-                background: 'rgba(255, 94, 94, 0.15)',
-                color: '#ff8a8a',
-                padding: '4px 10px',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                border: '1px solid rgba(255, 94, 94, 0.3)',
-              }}
-            >
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Target:</span>
+            <span style={{ background: 'rgba(255, 94, 94, 0.15)', color: '#ff8a8a', padding: '4px 10px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600, border: '1px solid rgba(255, 94, 94, 0.3)' }}>
               {selectedStudent.name || selectedStudent.email}
             </span>
           </div>
         )}
       </div>
 
-      {/* Main Form */}
+      {/* Main Notification Form */}
       <div className="glass-card">
-        <h3 style={{ marginBottom: '8px' }}>
-          {mode === 'broadcast' ? 'Broadcast Notification to All Users' : 'Send 1-to-1 In-App Notification'}
+        <h3 style={{ marginBottom: '6px' }}>
+          {mode === 'broadcast' && 'Broadcast to All Registered Students'}
+          {mode === 'category' && `Send to all ${selectedCategory} Batch Students`}
+          {mode === 'direct' && 'Send 1-to-1 In-App Notification to Student'}
         </h3>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-md)', fontSize: '0.9rem' }}>
-          {mode === 'broadcast'
-            ? 'Delivered to every registered student via app notifications and Expo push notifications.'
-            : 'Sent directly into this individual student’s in-app notification center and their registered device.'}
+          {mode === 'broadcast' && 'Delivered to every student on their app and device notification center.'}
+          {mode === 'category' && `Delivered exclusively to students who own courses under the "${selectedCategory}" category.`}
+          {mode === 'direct' && 'Delivered directly into this individual student’s in-app notification center.'}
         </p>
 
-        {/* In Direct Mode: Student Picker */}
+        {/* Category Picker in Category Mode */}
+        {mode === 'category' && (
+          <div style={{ marginBottom: '18px', paddingBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+            <label style={labelStyle}>Target Category / Cohort *</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {availableCategories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '10px',
+                    border: selectedCategory === cat ? '1px solid #ff5e5e' : '1px solid rgba(255, 255, 255, 0.12)',
+                    background: selectedCategory === cat ? 'rgba(255, 94, 94, 0.18)' : 'rgba(0, 0, 0, 0.25)',
+                    color: selectedCategory === cat ? '#ff7676' : 'white',
+                    fontWeight: selectedCategory === cat ? 600 : 500,
+                    cursor: 'pointer',
+                    fontSize: '0.88rem',
+                    transition: 'all 0.18s ease',
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Live Search & Autocomplete in Direct Mode */}
         {mode === 'direct' && (
           <div style={{ marginBottom: '18px', paddingBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            <label style={labelStyle}>Select Target Student *</label>
+            <label style={labelStyle}>Select Target Student (Search by Name, Email, or Mobile) *</label>
             {selectedStudent ? (
               <div
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
                   background: 'rgba(255, 94, 94, 0.08)',
-                  border: '1px solid rgba(255, 94, 94, 0.25)',
-                  borderRadius: '10px',
-                  padding: '10px 14px',
+                  border: '1px solid rgba(255, 94, 94, 0.3)',
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.92rem' }}>
-                    {selectedStudent.name || 'Student'} ({selectedStudent.email})
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#ff5e5e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.9rem' }}>
+                      {(selectedStudent.name || selectedStudent.email)[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 700, color: '#fff', fontSize: '1rem' }}>
+                        {selectedStudent.name || 'Student'}
+                      </span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginLeft: '8px' }}>
+                        ({selectedStudent.email})
+                      </span>
+                    </div>
                   </div>
-                  {selectedStudent.phone && (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Phone: {selectedStudent.phone}</div>
-                  )}
+                  <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '0.82rem', color: 'var(--text-secondary)', marginLeft: '42px' }}>
+                    {selectedStudent.phone && <span>📞 {selectedStudent.phone}</span>}
+                    {selectedStudent.categories && selectedStudent.categories.length > 0 && (
+                      <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+                        <span>Cohorts:</span>
+                        {selectedStudent.categories.map((c) => (
+                          <span key={c} style={{ background: 'rgba(255, 255, 255, 0.12)', padding: '1px 6px', borderRadius: '4px', color: '#fff', fontSize: '0.75rem' }}>
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -349,9 +482,9 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
                   className="btn"
                   style={{
                     background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    padding: '4px 10px',
-                    fontSize: '0.78rem',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    padding: '6px 14px',
+                    fontSize: '0.8rem',
                   }}
                 >
                   Change Student
@@ -361,16 +494,19 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
               <div style={{ position: 'relative' }}>
                 <input
                   type="text"
-                  placeholder="Type student name, email, or mobile number to search..."
+                  placeholder="Type student name, email, or mobile to search (e.g. Abhinav, 987654...)"
                   value={studentSearchQuery}
                   onChange={(e) => setStudentSearchQuery(e.target.value)}
                   style={inputStyle}
+                  autoFocus
                 />
                 {isSearchingStudents && (
-                  <div style={{ position: 'absolute', right: '12px', top: '12px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Searching...
+                  <div style={{ position: 'absolute', right: '14px', top: '13px', fontSize: '0.82rem', color: '#ff7676' }}>
+                    Searching database...
                   </div>
                 )}
+
+                {/* Instant Suggestions Dropdown */}
                 {studentSearchResults.length > 0 && (
                   <div
                     style={{
@@ -378,25 +514,29 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
                       top: '100%',
                       left: 0,
                       right: 0,
-                      marginTop: '4px',
-                      background: 'rgba(15, 17, 21, 0.98)',
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      borderRadius: '10px',
-                      maxHeight: '220px',
+                      marginTop: '6px',
+                      background: 'rgba(18, 20, 26, 0.98)',
+                      border: '1px solid rgba(255, 94, 94, 0.35)',
+                      borderRadius: '12px',
+                      maxHeight: '260px',
                       overflowY: 'auto',
-                      zIndex: 100,
-                      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.6)',
+                      zIndex: 1000,
+                      boxShadow: '0 12px 36px rgba(0, 0, 0, 0.8)',
                     }}
                   >
+                    <div style={{ padding: '8px 14px', fontSize: '0.75rem', color: 'var(--text-secondary)', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                      DATABASE RECOMMENDATIONS ({studentSearchResults.length} FOUND):
+                    </div>
                     {studentSearchResults.map((s) => (
                       <div
                         key={s.id}
                         onClick={() => {
                           setSelectedStudent(s)
                           setStudentSearchResults([])
+                          setStudentSearchQuery('')
                         }}
                         style={{
-                          padding: '10px 14px',
+                          padding: '12px 16px',
                           borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
                           cursor: 'pointer',
                           display: 'flex',
@@ -404,14 +544,38 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
                           alignItems: 'center',
                           transition: 'background 0.15s ease',
                         }}
-                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255, 94, 94, 0.12)')}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'rgba(255, 94, 94, 0.14)')}
                         onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
                       >
                         <div>
-                          <div style={{ color: '#fff', fontWeight: 500, fontSize: '0.9rem' }}>{s.name || 'Student'}</div>
-                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>{s.email}</div>
+                          <div style={{ color: '#fff', fontWeight: 600, fontSize: '0.92rem', marginBottom: '2px' }}>
+                            {s.name || 'Student'}
+                          </div>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', display: 'flex', gap: '10px' }}>
+                            <span>✉ {s.email}</span>
+                            {s.phone && <span>📞 {s.phone}</span>}
+                          </div>
                         </div>
-                        {s.phone && <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{s.phone}</span>}
+                        {s.categories && s.categories.length > 0 && (
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            {s.categories.map((c) => (
+                              <span
+                                key={c}
+                                style={{
+                                  background: 'rgba(255, 94, 94, 0.2)',
+                                  color: '#ff8a8a',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 600,
+                                  border: '1px solid rgba(255, 94, 94, 0.35)',
+                                }}
+                              >
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -427,6 +591,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
           onSubmit={(e) => {
             e.preventDefault()
             if (mode === 'broadcast') handleBroadcastSend()
+            else if (mode === 'category') handleCategorySend()
             else handleDirectSend()
           }}
         >
@@ -437,7 +602,13 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               maxLength={100}
-              placeholder={mode === 'broadcast' ? 'e.g. New batch starting Monday' : 'e.g. Update regarding your course registration'}
+              placeholder={
+                mode === 'broadcast'
+                  ? 'e.g. New batch starting Monday'
+                  : mode === 'category'
+                  ? `e.g. Special update for ${selectedCategory} students`
+                  : 'e.g. Important update regarding your enrolled batch'
+              }
               style={inputStyle}
             />
           </div>
@@ -452,6 +623,8 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
               placeholder={
                 mode === 'broadcast'
                   ? 'What do you want to announce to all students?'
+                  : mode === 'category'
+                  ? `Write message for all students in ${selectedCategory} courses...`
                   : `Type your message directly for ${selectedStudent?.name || 'this student'}...`
               }
               style={inputStyle}
@@ -509,14 +682,16 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
               ? 'Sending...'
               : mode === 'broadcast'
               ? 'Broadcast Notification'
+              : mode === 'category'
+              ? `Send to All ${selectedCategory} Students`
               : `Send In-App Notification${selectedStudent ? ` to ${selectedStudent.name || selectedStudent.email}` : ''}`}
           </button>
         </form>
       </div>
 
-      {/* Broadcast History */}
+      {/* Broadcast / Category History */}
       <div className="glass-card">
-        <h3 style={{ marginBottom: 'var(--space-md)' }}>Broadcast History</h3>
+        <h3 style={{ marginBottom: 'var(--space-md)' }}>Notification History</h3>
         {loadingHistory && history.length === 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }} aria-busy="true" role="status">
             {[1, 2, 3].map((n) => (
@@ -541,7 +716,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
             ))}
           </div>
         ) : history.length === 0 ? (
-          <p style={{ color: 'var(--text-secondary)' }}>No broadcast notifications sent yet.</p>
+          <p style={{ color: 'var(--text-secondary)' }}>No notifications sent yet.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
             {history.map((item) => (
@@ -586,7 +761,7 @@ function Notifications({ showToast, initialTargetStudent, onClearInitialTarget }
                       </div>
                     )}
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      {new Date(item.createdAt).toLocaleString()} · {item.recipientCount} users · {item.pushSentCount} pushed
+                      {new Date(item.createdAt).toLocaleString()} · {item.recipientCount} recipients · {item.pushSentCount} pushed
                       {item.pushFailedCount > 0 ? ` · ${item.pushFailedCount} failed` : ''}
                       {item.sentBy ? ` · by ${item.sentBy}` : ''}
                     </span>

@@ -9,62 +9,79 @@ const router = Router();
 
 // GET /api/admin/students - list students with their enrolled courses
 router.get("/", async (req, res) => {
-  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  try {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
 
-  let query = db.select({
-    id: usersTable.id,
-    firebaseUid: usersTable.firebaseUid,
-    email: usersTable.email,
-    name: usersTable.name,
-    phone: usersTable.phone,
-    city: usersTable.city,
-    state: usersTable.state,
-    createdAt: usersTable.createdAt,
-    lastActiveAt: usersTable.lastActiveAt,
-  }).from(usersTable);
+    let query = db.select({
+      id: usersTable.id,
+      firebaseUid: usersTable.firebaseUid,
+      email: usersTable.email,
+      name: usersTable.name,
+      phone: usersTable.phone,
+      city: usersTable.city,
+      state: usersTable.state,
+      createdAt: usersTable.createdAt,
+      lastActiveAt: usersTable.lastActiveAt,
+    }).from(usersTable);
 
-  if (q) {
-    const pattern = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
-    query = query.where(
-      or(
-        ilike(usersTable.name, pattern),
-        ilike(usersTable.email, pattern),
-        ilike(usersTable.phone, pattern)
-      )
-    ) as any;
+    if (q) {
+      const pattern = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+      query = query.where(
+        or(
+          ilike(usersTable.name, pattern),
+          ilike(usersTable.email, pattern),
+          ilike(usersTable.phone, pattern)
+        )
+      ) as any;
+    }
+
+    const students = await query.orderBy(desc(usersTable.createdAt)).limit(100);
+
+    if (students.length === 0) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    // Notice: only select columns that exist in the physical PostgreSQL user_courses table
+    // (user_courses does NOT have payment_method column in the db).
+    let enrollments: Array<{ id: number; userId: number; courseId: number; courseTitle: string; courseCategory: string | null; purchasedAt: Date | null }> = [];
+    try {
+      enrollments = await db.select({
+        id: userCoursesTable.id,
+        userId: userCoursesTable.userId,
+        courseId: userCoursesTable.courseId,
+        courseTitle: coursesTable.title,
+        courseCategory: coursesTable.category,
+        purchasedAt: userCoursesTable.purchasedAt,
+      })
+        .from(userCoursesTable)
+        .innerJoin(coursesTable, eq(userCoursesTable.courseId, coursesTable.id));
+    } catch (err) {
+      logger.warn({ err }, "Could not join user_courses with courses, falling back to empty enrollments");
+    }
+
+    const enrollmentMap = new Map<number, Array<{ id: number; courseId: number; courseTitle: string; courseCategory: string | null; purchasedAt: Date | null }>>();
+    for (const en of enrollments) {
+      const list = enrollmentMap.get(en.userId) || [];
+      list.push(en);
+      enrollmentMap.set(en.userId, list);
+    }
+
+    const result = students.map((s) => {
+      const studentEnrollments = enrollmentMap.get(s.id) || [];
+      const categories = Array.from(new Set(studentEnrollments.map((e) => e.courseCategory).filter(Boolean)));
+      return {
+        ...s,
+        enrollments: studentEnrollments,
+        categories,
+      };
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    logger.error({ err: error }, "Failed to fetch admin students");
+    res.status(500).json({ error: "Failed to fetch students: " + (error?.message || "Internal error") });
   }
-
-  const students = await query.orderBy(desc(usersTable.createdAt)).limit(100);
-
-  if (students.length === 0) {
-    res.json({ success: true, data: [] });
-    return;
-  }
-
-  const enrollments = await db.select({
-    id: userCoursesTable.id,
-    userId: userCoursesTable.userId,
-    courseId: userCoursesTable.courseId,
-    courseTitle: coursesTable.title,
-    paymentMethod: userCoursesTable.paymentMethod,
-    purchasedAt: userCoursesTable.purchasedAt,
-  })
-    .from(userCoursesTable)
-    .innerJoin(coursesTable, eq(userCoursesTable.courseId, coursesTable.id));
-
-  const enrollmentMap = new Map<number, Array<{ id: number; courseId: number; courseTitle: string; paymentMethod: string | null; purchasedAt: Date }>>();
-  for (const en of enrollments) {
-    const list = enrollmentMap.get(en.userId) || [];
-    list.push(en);
-    enrollmentMap.set(en.userId, list);
-  }
-
-  const result = students.map((s) => ({
-    ...s,
-    enrollments: enrollmentMap.get(s.id) || [],
-  }));
-
-  res.json({ success: true, data: result });
 });
 
 // POST /api/admin/students/:userId/revoke - revoke course access
@@ -116,7 +133,6 @@ router.post("/:userId/enroll", async (req, res) => {
   await db.insert(userCoursesTable).values({
     userId,
     courseId,
-    paymentMethod: "admin_grant",
   });
 
   logger.info({ studentId: userId, courseId, adminEmail: req.auth?.email }, "Student course access granted by admin");
@@ -124,4 +140,3 @@ router.post("/:userId/enroll", async (req, res) => {
 });
 
 export default router;
-
