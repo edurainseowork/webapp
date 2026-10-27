@@ -34,11 +34,12 @@ type FormState = {
   studentsEnrolled: string;
   duration: string;
   totalLessons: string;
+  isPurchasedBanner: boolean;
 };
 
 const emptyForm: FormState = {
   title: '', description: '', price: '', originalPrice: '', categoryId: '', publishNow: false,
-  studentsEnrolled: '', duration: '', totalLessons: '',
+  studentsEnrolled: '', duration: '', totalLessons: '', isPurchasedBanner: false,
 };
 
 type MentorRow = { key: number; uid: string | null; name: string; experience: string; photo: string | null; photoFile: File | null; photoPreview: string | null };
@@ -76,6 +77,8 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
   const [form, setForm] = useState<FormState>(emptyForm);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [bannerImageFile, setBannerImageFile] = useState<File | null>(null);
+  const [bannerImagePreview, setBannerImagePreview] = useState<string | null>(null);
   const [mentors, setMentors] = useState<MentorRow[]>([]);
   const [mentorOptions, setMentorOptions] = useState<MentorOption[] | null>(null);
   const [mentorOptionsError, setMentorOptionsError] = useState<string | null>(null);
@@ -116,6 +119,16 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
     return () => URL.revokeObjectURL(url);
   }, [thumbnailFile]);
 
+  useEffect(() => {
+    if (!bannerImageFile) {
+      setBannerImagePreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(bannerImageFile);
+    setBannerImagePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [bannerImageFile]);
+
   const updateMentor = (key: number, patch: Partial<MentorRow>) =>
     setMentors((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
 
@@ -154,6 +167,7 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
     setEditing(null);
     setForm(emptyForm);
     setThumbnailFile(null);
+    setBannerImageFile(null);
     clearMentors();
   };
 
@@ -169,8 +183,10 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       studentsEnrolled: course.studentsEnrolled != null ? String(course.studentsEnrolled) : '',
       duration: course.duration ?? '',
       totalLessons: course.totalLessons != null ? String(course.totalLessons) : '',
+      isPurchasedBanner: Boolean(course.isPurchasedBanner),
     });
     setThumbnailFile(null);
+    setBannerImageFile(null);
     clearMentors();
     setMentors((course.mentors ?? []).map(newMentorRow));
     setTimeout(() => {
@@ -188,6 +204,18 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       return;
     }
     setThumbnailFile(file);
+  };
+
+  const pickBannerImage = (file: File | null) => {
+    if (file && !ALLOWED_THUMBNAIL_TYPES.includes(file.type)) {
+      showToast('Banner image must be a PNG, JPEG or WEBP image', 'error');
+      return;
+    }
+    if (file && file.size > MAX_UPLOAD_BYTES) {
+      showToast('Banner image must be 500 KB or smaller', 'error');
+      return;
+    }
+    setBannerImageFile(file);
   };
 
   const pickMentorPhoto = (row: MentorRow, file: File | null) => {
@@ -235,6 +263,7 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
     setIsSaving(true);
     try {
       const thumbnail = thumbnailFile ? await uploadFile(thumbnailFile) : undefined;
+      const bannerImage = bannerImageFile ? await uploadFile(bannerImageFile) : undefined;
       const mentorList: CourseMentor[] = [];
       for (const m of mentors) {
         if (!m.name.trim()) continue;
@@ -252,6 +281,8 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
         originalPrice: form.originalPrice === '' ? null : rupeesToPaise(form.originalPrice),
         categoryId: Number(form.categoryId),
         ...(thumbnail ? { thumbnail } : {}),
+        ...(bannerImage !== undefined ? { bannerImage } : {}),
+        isPurchasedBanner: form.isPurchasedBanner,
         mentors: mentorList,
         studentsEnrolled: toCount(form.studentsEnrolled),
         duration: form.duration.trim() || null,
@@ -271,6 +302,23 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       showToast('Error: ' + e.message, 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const togglePurchasedBanner = async (course: AdminCourse) => {
+    setBusyCourseId(course.id);
+    const nextVal = !course.isPurchasedBanner;
+    try {
+      await apiFetch(`/admin/courses/${course.id}/purchased-banner`, {
+        method: 'PATCH',
+        body: { isPurchasedBanner: nextVal },
+      });
+      showToast(nextVal ? `Course "${course.title}" set as Purchases section banner!` : `Removed banner feature from "${course.title}"`, 'success');
+      await reloadCourses();
+    } catch (e: any) {
+      showToast('Error updating banner: ' + e.message, 'error');
+    } finally {
+      setBusyCourseId(null);
     }
   };
 
@@ -308,6 +356,63 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       {/* Existing Courses List */}
       <div className="glass-card">
         <h3 style={{ marginBottom: 'var(--space-md)' }}>Existing Courses ({courses.length})</h3>
+
+        {/* Quick Purchased Section Banner Control */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(15,59,66,0.6) 0%, rgba(11,28,48,0.85) 100%)',
+          border: '1px solid rgba(245,158,11,0.4)',
+          borderRadius: '10px',
+          padding: '12px 16px',
+          marginBottom: 'var(--space-md)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: '#f59e0b', fontSize: '1rem', fontWeight: 'bold' }}>★ Purchased Section Banner</span>
+              <span style={{ fontSize: '0.75rem', background: 'rgba(245,158,11,0.2)', color: '#fcd34d', padding: '2px 8px', borderRadius: '999px', border: '1px solid rgba(245,158,11,0.3)' }}>
+                {courses.some(c => c.isPurchasedBanner) ? 'Custom Banner Selected' : 'Auto (Highest Discount Offer)'}
+              </span>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              Select which course is featured as the hero banner card on the student's <b>"Your Enrolled Courses"</b> (Purchases) page.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <select
+              value={courses.find(c => c.isPurchasedBanner)?.id || ''}
+              onChange={async (e) => {
+                const targetId = Number(e.target.value);
+                try {
+                  if (!targetId) {
+                    for (const c of courses.filter(c => c.isPurchasedBanner)) {
+                      await apiFetch(`/admin/courses/${c.id}/purchased-banner`, { method: 'PATCH', body: { isPurchasedBanner: false } });
+                    }
+                    showToast('Reset banner to auto-selection', 'success');
+                  } else {
+                    await apiFetch(`/admin/courses/${targetId}/purchased-banner`, { method: 'PATCH', body: { isPurchasedBanner: true } });
+                    showToast('Purchased section banner updated!', 'success');
+                  }
+                  await reloadCourses();
+                } catch (err: any) {
+                  showToast('Error: ' + err.message, 'error');
+                }
+              }}
+              style={{ ...inputStyle, width: 'auto', minWidth: '240px', padding: '8px 12px', fontSize: '0.85rem', borderColor: 'rgba(245,158,11,0.4)' }}
+            >
+              <option value="">-- Auto (Highest Discount Offer) --</option>
+              {courses.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.isPurchasedBanner ? '★ ' : ''}{c.title} ({c.isPublished ? 'Published' : 'Draft'})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)', flexWrap: 'wrap' }}>
           <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search courses..." style={{ ...inputStyle, flex: 2, minWidth: '180px', width: 'auto' }} />
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} style={{ ...inputStyle, flex: 1, minWidth: '140px', width: 'auto' }}>
@@ -342,14 +447,19 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
             {visibleCourses.map((course) => (
-              <div key={course.id} style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div key={course.id} style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: course.isPurchasedBanner ? '1px solid rgba(245,158,11,0.5)' : '1px solid rgba(255,255,255,0.1)' }}>
                 <img src={course.thumbnail} alt="" style={{ width: '96px', height: '54px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0, background: 'rgba(255,255,255,0.05)' }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                     <h4 style={{ color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{course.title}</h4>
                     <span style={{ fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 8px', borderRadius: '999px', background: course.isPublished ? 'var(--mint)' : 'rgba(255,255,255,0.15)', color: course.isPublished ? 'var(--navy)' : 'white' }}>
                       {course.isPublished ? 'PUBLISHED' : 'DRAFT'}
                     </span>
+                    {course.isPurchasedBanner && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: 'bold', padding: '2px 8px', borderRadius: '999px', background: '#f59e0b', color: '#000' }}>
+                        ★ PURCHASES BANNER
+                      </span>
+                    )}
                   </div>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     {formatINR(course.price)}
@@ -357,7 +467,24 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
                     {' • '}{course.category} • {course.enrollmentCount} enrolled
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => togglePurchasedBanner(course)}
+                    disabled={busyCourseId === course.id}
+                    className="btn"
+                    style={{
+                      background: course.isPurchasedBanner ? '#d97706' : 'transparent',
+                      border: course.isPurchasedBanner ? 'none' : '1px solid rgba(245, 158, 11, 0.4)',
+                      color: course.isPurchasedBanner ? '#fff' : '#fcd34d',
+                      padding: '6px 12px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                    }}
+                    title="Feature as hero banner in Purchases section"
+                  >
+                    {course.isPurchasedBanner ? '★ Banner Active' : '☆ Set Banner'}
+                  </button>
                   {onManageContent && (
                     <button
                       onClick={() => onManageContent(course.id)}
@@ -433,6 +560,46 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
               * Max size: 500 KB. Recommended: 1280x720 px (16:9) to prevent UI breaking.
             </p>
           </div>
+
+          {/* Purchased Section Banner Options */}
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 'var(--space-md)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fcd34d', cursor: 'pointer', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={form.isPurchasedBanner}
+                onChange={e => update({ isPurchasedBanner: e.target.checked })}
+              />
+              ★ Feature as Banner in Purchased Section (Show on student's My Purchases page)
+            </label>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px', marginLeft: '24px' }}>
+              When enabled, this course offer is featured as the hero banner card on the student's "Your Enrolled Courses" view.
+            </p>
+            {form.isPurchasedBanner && (
+              <div style={{ marginTop: 'var(--space-sm)', marginLeft: '24px' }}>
+                <label style={labelStyle}>{editing ? 'Custom Banner Image (Optional - replaces thumbnail in banner)' : 'Upload Custom Banner Image (Optional)'}</label>
+                <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center' }}>
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/webp"
+                    onChange={e => pickBannerImage(e.target.files?.[0] || null)}
+                    className="input-field"
+                    style={{ ...inputStyle, padding: '9px', cursor: 'pointer', flex: 1 }}
+                  />
+                  {(bannerImagePreview || editing?.bannerImage) && (
+                    <img
+                      src={bannerImagePreview || editing!.bannerImage!}
+                      alt="Banner preview"
+                      style={{ width: '160px', height: '60px', objectFit: 'cover', borderRadius: '6px' }}
+                    />
+                  )}
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  * Optional wide banner graphic. Max size: 500 KB. If omitted, the course thumbnail will be used.
+                </p>
+              </div>
+            )}
+          </div>
+
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 'var(--space-md)' }}>
             <h4 style={{ marginBottom: '4px' }}>Course Metrics</h4>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>Shown at the top of the course page in the app. Leave a field empty to hide it.</p>

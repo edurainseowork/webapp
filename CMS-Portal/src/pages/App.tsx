@@ -129,6 +129,10 @@ function App() {
   // Banners State
   const [bannersList, setBannersList] = useState<any[]>([]);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [bannerPlacement, setBannerPlacement] = useState<'home' | 'purchases'>('home');
+  const [bannerLinkedCourseId, setBannerLinkedCourseId] = useState<string>('');
+  const [bannerTitle, setBannerTitle] = useState<string>('');
+  const [bannerInputKey, setBannerInputKey] = useState<number>(0);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
 
   // Loading states for client-side skeletons (250ms rule)
@@ -286,6 +290,7 @@ function App() {
     }
     if (user && activeTab === 'banners') {
       fetchBanners();
+      fetchCourses();
     }
   }, [activeTab, user, isStaff]);
 
@@ -316,20 +321,33 @@ function App() {
       showToast("Please select an image file first", "error");
       return;
     }
-    if (bannersList.length >= 5) {
-      showToast("Maximum 5 banners allowed. Delete one first.", "error");
+    const currentPlacementBanners = bannersList.filter(b => (b.placement || 'home') === bannerPlacement);
+    if (currentPlacementBanners.length >= 5) {
+      showToast(`Maximum 5 banners allowed for ${bannerPlacement === 'home' ? 'Homepage' : 'Purchases Section'}. Delete one first.`, "error");
       return;
     }
     
     setIsUploadingBanner(true);
     try {
+      // Banners store absolute URLs (the banners API predates server-relative paths).
       const uploadedUrl = await uploadFile(bannerFile);
       const imageUrl = uploadedUrl.startsWith('/') ? API_BASE_URL + uploadedUrl : uploadedUrl;
 
-      const data = await apiFetch('/banners', { method: 'POST', body: { imageUrl } });
+      const data = await apiFetch('/banners', {
+        method: 'POST',
+        body: {
+          imageUrl,
+          placement: bannerPlacement,
+          courseId: bannerLinkedCourseId ? Number(bannerLinkedCourseId) : null,
+          title: bannerTitle.trim() || null,
+        },
+      });
       if (data.success) {
-        showToast("Banner uploaded successfully", "success");
+        showToast(`${bannerPlacement === 'purchases' ? 'Purchases section banner' : 'Homepage banner'} uploaded successfully!`, "success");
         setBannerFile(null);
+        setBannerTitle('');
+        setBannerLinkedCourseId('');
+        setBannerInputKey(k => k + 1);
         fetchBanners();
       } else {
         throw new Error(data.error);
@@ -595,7 +613,7 @@ function App() {
                 {activeTab === 'courses' && 'Course Manager'}
                 {activeTab === 'categories' && 'Category Management'}
                 {activeTab === 'content' && 'Post-Purchase Content'}
-                {activeTab === 'banners' && 'Manage Homepage Banners'}
+                {activeTab === 'banners' && 'Manage Banners'}
                 {activeTab === 'coupons' && 'Coupon Generator'}
                 {activeTab === 'golive' && 'Live Classes'}
                 {activeTab === 'notifications' && 'Notifications'}
@@ -766,59 +784,189 @@ function App() {
               </div>
             )}
 
-            {activeTab === 'banners' && (
-              <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-                <div className="glass-card">
-                  <h3 style={{ marginBottom: 'var(--space-md)' }}>Uploaded Banners ({bannersList.length}/5)</h3>
-                  {isLoadingBanners ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }} aria-busy="true" role="status">
-                      <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '12px' }} />
-                      <div className="skeleton-box" style={{ width: '100%', height: '120px', borderRadius: '12px' }} />
-                    </div>
-                  ) : bannersList.length === 0 ? (
-                    <p style={{ color: 'var(--text-secondary)' }}>No banners uploaded yet.</p>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      {bannersList.map(banner => (
-                        <div key={banner.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                          <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} />
-                          <button 
-                            onClick={() => handleDeleteBanner(banner.id)}
-                            style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="glass-card">
-                  <h3 style={{ marginBottom: 'var(--space-md)' }}>Upload New Banner</h3>
-                  <form style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-                    <div style={{ border: '2px dashed rgba(255,255,255,0.2)', padding: 'var(--space-xl)', textAlign: 'center', borderRadius: 'var(--radius-md)' }}>
-                      <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>Select Banner Image</p>
-                      <input type="file" accept="image/*" onChange={e => setBannerFile(e.target.files?.[0] || null)} className="input-field" style={{ width: '100%', padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', cursor: 'pointer' }} />
-                    </div>
-                    
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                      Note: These banners are used for notices and will appear as a sliding carousel on the top of the mobile app home screen.
-                    </p>
-
-                    <button type="button" onClick={handleUploadBanner} disabled={isUploadingBanner || !bannerFile} className="btn" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                      {isUploadingBanner && (
-                        <svg className="cms-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
-                          <path d="M12 2a10 10 0 0 1 10 10" />
-                        </svg>
-                      )}
-                      {isUploadingBanner ? 'Uploading...' : 'Upload & Set Live'}
+            {activeTab === 'banners' && (() => {
+              const activeBanners = bannersList.filter(b => (b.placement || 'home') === bannerPlacement);
+              return (
+                <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+                  {/* Tab Selector */}
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setBannerPlacement('home')}
+                      className="btn"
+                      style={{
+                        background: bannerPlacement === 'home' ? 'var(--mint)' : 'transparent',
+                        color: bannerPlacement === 'home' ? 'var(--navy)' : 'white',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        padding: '8px 18px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      📱 Mobile Homepage Banners ({bannersList.filter(b => (b.placement || 'home') === 'home').length})
                     </button>
-                  </form>
+                    <button
+                      type="button"
+                      onClick={() => setBannerPlacement('purchases')}
+                      className="btn"
+                      style={{
+                        background: bannerPlacement === 'purchases' ? '#f59e0b' : 'transparent',
+                        color: bannerPlacement === 'purchases' ? '#000' : 'white',
+                        border: '1px solid rgba(245,158,11,0.5)',
+                        padding: '8px 18px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      🎓 Purchased Section Banners ({bannersList.filter(b => b.placement === 'purchases').length})
+                    </button>
+                  </div>
+
+                  {/* Uploaded Banners Card */}
+                  <div className="glass-card">
+                    <h3 style={{ marginBottom: 'var(--space-md)' }}>
+                      {bannerPlacement === 'purchases' ? '🎓 Uploaded Purchased Section Banners' : '📱 Uploaded Homepage Banners'} ({activeBanners.length}/5)
+                    </h3>
+                    {isLoadingBanners ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }} aria-busy="true" role="status">
+                        <div className="skeleton-box" style={{ width: '100%', height: '140px', borderRadius: '12px' }} />
+                        <div className="skeleton-box" style={{ width: '100%', height: '140px', borderRadius: '12px' }} />
+                      </div>
+                    ) : activeBanners.length === 0 ? (
+                      <p style={{ color: 'var(--text-secondary)' }}>
+                        {bannerPlacement === 'purchases'
+                          ? 'No banners uploaded for the Purchased section yet. Upload one below to feature it at the top of "Your Enrolled Courses".'
+                          : 'No homepage banners uploaded yet.'}
+                      </p>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                        {activeBanners.map(banner => {
+                          const linkedCourse = banner.courseId ? coursesList.find(c => c.id === banner.courseId) : null;
+                          return (
+                            <div key={banner.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: banner.placement === 'purchases' ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)' }}>
+                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
+                              <div style={{ padding: '8px 12px', fontSize: '0.8rem' }}>
+                                {banner.title && <div style={{ fontWeight: 'bold', color: 'white' }}>{banner.title}</div>}
+                                {linkedCourse && (
+                                  <div style={{ color: '#fcd34d', fontSize: '0.75rem', marginTop: '2px' }}>
+                                    🔗 Links to: {linkedCourse.title}
+                                  </div>
+                                )}
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', marginTop: '2px' }}>
+                                  Added: {new Date(banner.createdAt).toLocaleDateString()}
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => handleDeleteBanner(banner.id)}
+                                style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(255,0,0,0.85)', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Form Card */}
+                  <div className="glass-card">
+                    <h3 style={{ marginBottom: 'var(--space-md)' }}>
+                      Upload New {bannerPlacement === 'purchases' ? 'Purchased Section Banner' : 'Homepage Banner'}
+                    </h3>
+                    <form onSubmit={e => { e.preventDefault(); handleUploadBanner(); }} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Banner Placement Target</label>
+                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', cursor: 'pointer' }}>
+                            <input
+                              type="radio"
+                              name="bannerPlacement"
+                              checked={bannerPlacement === 'home'}
+                              onChange={() => setBannerPlacement('home')}
+                            />
+                            📱 Mobile App Homepage
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fcd34d', cursor: 'pointer', fontWeight: 600 }}>
+                            <input
+                              type="radio"
+                              name="bannerPlacement"
+                              checked={bannerPlacement === 'purchases'}
+                              onChange={() => setBannerPlacement('purchases')}
+                            />
+                            🎓 Purchased Section (Your Enrolled Courses)
+                          </label>
+                        </div>
+                      </div>
+
+                      <div style={{ border: '2px dashed rgba(255,255,255,0.2)', padding: 'var(--space-xl)', textAlign: 'center', borderRadius: 'var(--radius-md)' }}>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>
+                          Select {bannerPlacement === 'purchases' ? 'Purchased Section' : 'Homepage'} Banner Image
+                        </p>
+                        <input key={bannerInputKey} type="file" accept="image/*" onChange={e => setBannerFile(e.target.files?.[0] || null)} className="input-field" style={{ width: '100%', padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', cursor: 'pointer' }} />
+                      </div>
+
+                      {bannerPlacement === 'purchases' && (
+                        <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
+                          <div style={{ flex: 1, minWidth: '220px' }}>
+                            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Link to Course (Optional)</label>
+                            <select
+                              value={bannerLinkedCourseId}
+                              onChange={e => setBannerLinkedCourseId(e.target.value)}
+                              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                            >
+                              <option value="">-- No linked course (Display Graphic Only) --</option>
+                              {coursesList.map(c => (
+                                <option key={c.id} value={c.id}>{c.title} ({c.category})</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div style={{ flex: 1, minWidth: '220px' }}>
+                            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Banner Title / Caption (Optional)</label>
+                            <input
+                              type="text"
+                              value={bannerTitle}
+                              onChange={e => setBannerTitle(e.target.value)}
+                              placeholder="e.g. Special Offer for Enrolled Students"
+                              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        {bannerPlacement === 'purchases'
+                          ? 'Note: This banner will appear prominently as the hero banner at the top of the student\'s "Your Enrolled Courses" (My Purchases) page. Recommended: 16:9 or 21:9 banner image, max 500 KB.'
+                          : 'Note: These banners are used for notices and will appear as a sliding carousel on the top of the mobile app home screen.'}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={handleUploadBanner}
+                        disabled={isUploadingBanner || !bannerFile}
+                        className="btn"
+                        style={{
+                          alignSelf: 'flex-start',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          background: bannerPlacement === 'purchases' ? '#d97706' : undefined,
+                          color: bannerPlacement === 'purchases' ? '#fff' : undefined,
+                        }}
+                      >
+                        {isUploadingBanner && (
+                          <svg className="cms-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                            <path d="M12 2a10 10 0 0 1 10 10" />
+                          </svg>
+                        )}
+                        {isUploadingBanner ? 'Uploading...' : bannerPlacement === 'purchases' ? 'Upload & Set in Purchases Section' : 'Upload & Set Live'}
+                      </button>
+                    </form>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {activeTab === 'coupons' && (
               <div className="animate-view">

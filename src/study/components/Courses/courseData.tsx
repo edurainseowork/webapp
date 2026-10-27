@@ -57,6 +57,8 @@ export interface Batch {
   duration: string | null;
   totalLessons: number | null;
   studentsEnrolled: number | null;
+  isPurchasedBanner: boolean;
+  bannerImage: string | null;
 }
 
 export interface EnrolledCourse {
@@ -169,6 +171,8 @@ export function toBatch(course: CmsCourse, index: number): Batch {
     duration: course.duration,
     totalLessons: course.totalLessons,
     studentsEnrolled: course.studentsEnrolled,
+    isPurchasedBanner: Boolean(course.isPurchasedBanner),
+    bannerImage: course.bannerImage || null,
   };
 }
 

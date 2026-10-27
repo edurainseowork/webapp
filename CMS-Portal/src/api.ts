@@ -99,6 +99,8 @@ export type AdminCourse = {
   studentsEnrolled: number | null;
   duration: string | null;
   totalLessons: number | null;
+  isPurchasedBanner?: boolean;
+  bannerImage?: string | null;
 };
 
 export const MAX_UPLOAD_BYTES = 500 * 1024;

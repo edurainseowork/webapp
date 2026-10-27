@@ -51,6 +51,7 @@ import { CoursesHub } from './components/Courses/CoursesHub';
 import { MentorshipHub } from './components/Mentorship/MentorshipHub';
 import { CourseTestSeriesView } from './components/CourseTestSeriesView';
 import { LiveClassesView } from './components/LiveClassesView';
+import { SavedPdfsView } from './components/SavedPdfsView';
 import { VaultResource, NotificationItem } from './types';
 
 export function App() {
@@ -78,6 +79,7 @@ export function App() {
   const [isEbookLibraryOpen, setIsEbookLibraryOpen] = useState(false);
   const [isLiveClassesOpen, setIsLiveClassesOpen] = useState(false);
   const [isCourseTestsOpen, setIsCourseTestsOpen] = useState(false);
+  const [isSavedPdfsPageOpen, setIsSavedPdfsPageOpen] = useState(false);
 
   const [isMyCoursesOpen, setIsMyCoursesOpen] = useState(false);
   const [isPurchasesPageOpen, setIsPurchasesPageOpen] = useState(false);
@@ -140,6 +142,7 @@ export function App() {
     setIsMentorshipOpen(false);
     setIsCourseTestsOpen(false);
     setIsLiveClassesOpen(false);
+    setIsSavedPdfsPageOpen(false);
   };
 
   const syncRouteFromUrl = () => {
@@ -164,6 +167,8 @@ export function App() {
       setIsEbookLibraryOpen(true);
     } else if (path.endsWith('/bookmarks')) {
       setIsBookmarksPageOpen(true);
+    } else if (path.endsWith('/saved-pdfs') || path.endsWith('/saved-pdf') || path.endsWith('/saved_pdfs')) {
+      setIsSavedPdfsPageOpen(true);
     } else if (path.endsWith('/doubts')) {
       setIsBookDoubtSessionOpen(true);
     } else if (path.endsWith('/ai-mentor') || path.endsWith('/edu-ai')) {
@@ -196,12 +201,13 @@ export function App() {
     }
   };
 
-  const openSubView = (type: 'ebooks' | 'bookmarks' | 'doubts' | 'ai-mentor' | 'my-courses' | 'purchases' | 'mentorship' | 'batch-tests' | 'live-classes') => {
+  const openSubView = (type: 'ebooks' | 'bookmarks' | 'saved-pdfs' | 'doubts' | 'ai-mentor' | 'my-courses' | 'purchases' | 'mentorship' | 'batch-tests' | 'live-classes') => {
     resetSubViews();
     setSearchQuery('');
     if (type === 'ebooks') setIsEbookLibraryOpen(true);
     else if (type === 'live-classes') setIsLiveClassesOpen(true);
     else if (type === 'bookmarks') setIsBookmarksPageOpen(true);
+    else if (type === 'saved-pdfs') setIsSavedPdfsPageOpen(true);
     else if (type === 'doubts') setIsBookDoubtSessionOpen(true);
     else if (type === 'ai-mentor') setIsAiMentorPageOpen(true);
     else if (type === 'my-courses') setIsMyCoursesOpen(true);
@@ -788,7 +794,32 @@ export function App() {
         <main className="flex-1 lg:ml-[250px] px-4 sm:px-8 py-5 sm:py-6 max-w-[1600px] w-full overflow-hidden">
 
           {/* Active View Switching */}
-          {isPurchasesPageOpen ? (
+          {isSavedPdfsPageOpen ? (
+            <SavedPdfsView
+              onBack={() => {
+                setIsSavedPdfsPageOpen(false);
+                setIsBookmarksPageOpen(true);
+                if (typeof window !== 'undefined') {
+                  window.history.pushState(null, '', '/study/bookmarks');
+                }
+              }}
+              onGoBookmarks={() => {
+                setIsSavedPdfsPageOpen(false);
+                setIsBookmarksPageOpen(true);
+                if (typeof window !== 'undefined') {
+                  window.history.pushState(null, '', '/study/bookmarks');
+                }
+              }}
+              onGoLibrary={() => {
+                setIsSavedPdfsPageOpen(false);
+                navigateTo('study-central');
+              }}
+              onBrowseCourses={() => {
+                setIsSavedPdfsPageOpen(false);
+                navigateTo('courses');
+              }}
+            />
+          ) : isPurchasesPageOpen ? (
             <PurchasesView
               onBack={() => setIsPurchasesPageOpen(false)}
               selectedBatch={selectedBatch}
@@ -826,8 +857,9 @@ export function App() {
               }}
               searchQuery={searchQuery}
               onBrowseEbooks={() => openSubView('ebooks')}
+              onOpenSavedPdfsPage={() => openSubView('saved-pdfs')}
+              onOpenPdfViewer={() => openSubView('saved-pdfs')}
               onWatchVideo={(video) => console.log('Resuming video:', video.title)}
-              onOpenPdfViewer={() => console.log('Opening saved PDF viewer…')}
               onOpenWatchLater={() => console.log('Opening Watch Later list…')}
               onAddDocument={() => console.log('Add document to wishlist…')}
               onClearHistory={() => console.log('Clearing watch history…')}

@@ -64,6 +64,8 @@ export const coursesTable = pgTable("courses", {
   studentsEnrolled: integer("students_enrolled"), // display figure set by admins
   duration: text("duration"), // free text, e.g. "40 hours" or "6 months"
   totalLessons: integer("total_lessons"),
+  isPurchasedBanner: boolean("is_purchased_banner").default(false).notNull(),
+  bannerImage: text("banner_image"), // optional custom banner image URL
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
@@ -128,6 +130,10 @@ export const couponRedemptionsTable = pgTable("coupon_redemptions", {
 export const bannersTable = pgTable("banners", {
   id: serial("id").primaryKey(),
   imageUrl: text("image_url").notNull(),
+  placement: varchar("placement", { length: 50 }).default("home").notNull(),
+  courseId: integer("course_id"),
+  title: text("title"),
+  linkUrl: text("link_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

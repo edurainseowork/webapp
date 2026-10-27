@@ -93,6 +93,8 @@ router.post("/", async (req, res) => {
       studentsEnrolled: input.studentsEnrolled ?? null,
       duration: input.duration ?? null,
       totalLessons: input.totalLessons ?? null,
+      isPurchasedBanner: input.isPurchasedBanner ?? false,
+      bannerImage: input.bannerImage ?? null,
       createdAt: now,
       updatedAt: now,
     })
@@ -133,7 +135,9 @@ router.patch("/:id", async (req, res) => {
     if (input.price !== undefined) patch.price = input.price;
     if (input.originalPrice !== undefined) patch.originalPrice = input.originalPrice;
     if (input.thumbnail !== undefined) patch.thumbnail = input.thumbnail;
-                if (input.mentors !== undefined) patch.mentors = await resolveCourseMentors(input.mentors);
+    if (input.bannerImage !== undefined) patch.bannerImage = input.bannerImage;
+    if (input.isPurchasedBanner !== undefined) patch.isPurchasedBanner = input.isPurchasedBanner;
+    if (input.mentors !== undefined) patch.mentors = await resolveCourseMentors(input.mentors);
     if (input.studentsEnrolled !== undefined) patch.studentsEnrolled = input.studentsEnrolled;
     if (input.duration !== undefined) patch.duration = input.duration;
     if (input.totalLessons !== undefined) patch.totalLessons = input.totalLessons;
@@ -153,6 +157,27 @@ router.patch("/:id", async (req, res) => {
 
   await deleteUnreferencedThumbnail(previousThumbnail);
   logger.info({ adminUid: req.auth?.uid, courseId, fields: Object.keys(input) }, "Course updated");
+  const course = await loadCourse(courseId);
+  res.json({ success: true, data: withPublicThumbnail(course, req) });
+});
+
+// PATCH /api/admin/courses/:id/purchased-banner  { isPurchasedBanner: boolean }
+router.patch("/:id/purchased-banner", async (req, res) => {
+  const courseId = parseId(req.params.id);
+  const isPurchasedBanner = Boolean(req.body.isPurchasedBanner);
+
+  const [existing] = await db
+    .select({ isPurchasedBanner: coursesTable.isPurchasedBanner })
+    .from(coursesTable)
+    .where(eq(coursesTable.id, courseId));
+  if (!existing) throw new HttpError(404, "Course not found");
+
+  await db
+    .update(coursesTable)
+    .set({ isPurchasedBanner, updatedAt: new Date() })
+    .where(eq(coursesTable.id, courseId));
+
+  logger.info({ adminUid: req.auth?.uid, courseId, isPurchasedBanner }, "Course purchased banner status updated");
   const course = await loadCourse(courseId);
   res.json({ success: true, data: withPublicThumbnail(course, req) });
 });
