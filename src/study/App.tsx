@@ -38,6 +38,7 @@ import { ProfileView } from './components/Profile-section/ProfileView';
 import { LibraryView } from './components/LibraryView';
 import { CohortGoalModal } from './components/Modals/CohortGoalModal';
 import { fetchGoal, saveGoal, type StudentGoal } from './lib/goal';
+import { useCourses, resetCoursesForUser } from './lib/courses';
 import { fetchProfile, recordActivity } from './lib/profile';
 import { PurchasesModal } from './components/Modals/PurchasesModal';
 import { SupportModal } from './components/Modals/SupportModal';
@@ -65,10 +66,34 @@ export function App() {
   const [activeNav, setActiveNav] = useState<'study-central' | 'pi' | 'library' | 'courses' | 'test-series' | 'profile'>('study-central');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
-  const [selectedBatch, setSelectedBatch] = useState('12th - IIT JEE');
+  const [selectedBatch, setSelectedBatch] = useState('Loading...');
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   // Student's goal = a CMS category, saved on their profile
   const [goal, setGoal] = useState<StudentGoal | null>(null);
+  const { courses: cmsCourses, ownedIds, status: coursesStatus } = useCourses();
+
+  useEffect(() => {
+    resetCoursesForUser(session.uid);
+  }, [session.uid]);
+
+  const enrolledCourses = cmsCourses.filter((c) => ownedIds.includes(c.id));
+  const enrolledForGoal = goal
+    ? enrolledCourses.filter(
+        (c) =>
+          (goal.id != null && c.categoryId === goal.id) ||
+          c.category.trim().toLowerCase() === goal.name.trim().toLowerCase()
+      )
+    : enrolledCourses;
+
+  useEffect(() => {
+    if (enrolledForGoal.length > 0) {
+      setSelectedBatch(enrolledForGoal.map((c) => c.title).join(', '));
+    } else if (!goal && enrolledCourses.length > 0) {
+      setSelectedBatch(enrolledCourses[0].title);
+    } else if (coursesStatus === 'ready') {
+      setSelectedBatch('Not enrolled yet');
+    }
+  }, [goal, cmsCourses, ownedIds, coursesStatus]);
   const [isDrawerBatchOpen, setIsDrawerBatchOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -259,9 +284,6 @@ export function App() {
       .then((saved) => {
         if (goalLoadedFor.current !== session.uid) return; // signed out meanwhile
         setGoal(saved);
-        if (saved) {
-          setSelectedBatch(saved.name);
-        }
         if (!saved) {
           setIsGoalModalOpen(true);
           return;
@@ -970,7 +992,18 @@ export function App() {
                     <button onClick={() => setIsGoalModalOpen(true)} className="font-bold text-[#175A67] hover:underline">
                       {goal?.name ?? 'Set your goal'}
                     </button>{' '}
-                    • Current Batch: <span className="font-bold text-[#175A67]">{selectedBatch}</span>
+                    • Current Batch:{' '}
+                    <button
+                      onClick={() => (enrolledForGoal.length > 0 ? openSubView('purchases') : navigateTo('courses'))}
+                      className="font-bold text-[#175A67] hover:underline"
+                      title={enrolledForGoal.length > 0 ? 'Open your enrolled batch' : 'Explore courses for this goal'}
+                    >
+                      {enrolledForGoal.length > 0
+                        ? enrolledForGoal.map((c) => c.title).join(', ')
+                        : coursesStatus === 'ready'
+                        ? 'Not enrolled yet'
+                        : selectedBatch}
+                    </button>
                   </div>
                 </div>
 
@@ -1125,10 +1158,21 @@ export function App() {
           // Save first; if it fails the popup stays open with the error
           const saved = await saveGoal(category);
           setGoal(saved);
-          setSelectedBatch(category.name);
-          // Changed from the Mentorship page or Courses page: stay there;
-          // otherwise go to Daily Drop for the new goal
-          if (!isMentorshipOpen && activeNav !== 'courses') navigateTo('pi');
+          const matchingEnrolled = cmsCourses.filter(
+            (c) =>
+              ownedIds.includes(c.id) &&
+              ((saved.id != null && c.categoryId === saved.id) ||
+                c.category.trim().toLowerCase() === saved.name.trim().toLowerCase())
+          );
+          setSelectedBatch(
+            matchingEnrolled.length > 0
+              ? matchingEnrolled.map((c) => c.title).join(', ')
+              : 'Not enrolled yet'
+          );
+          // Stay on Home, Mentorship, or Courses when switching goals so the updated Target & Batch are visible
+          if (!isMentorshipOpen && activeNav !== 'courses' && activeNav !== 'study-central') {
+            navigateTo('pi');
+          }
         }}
       />
 
