@@ -374,7 +374,7 @@ function App() {
     'web_home' | 'courses' | 'purchases' | 'home' | 'mobile_courses' | 'mobile_purchases',
     { title: string; platform: 'Web' | 'Mobile'; ratioName: string; minRatio: number; maxRatio: number; idealSize: string }
   > = {
-    web_home: { title: 'Web Home Page', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px (or 1600×500 px)' },
+    web_home: { title: 'Web Home Page', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
     courses: { title: 'Web Courses Page', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
     purchases: { title: 'Web Purchases (Your Enrolled Courses)', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
     home: { title: 'Mobile Home Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
@@ -1186,7 +1186,7 @@ function App() {
                                 Delete
                               </button>
 
-                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
+                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', aspectRatio: currentCfg.platform === 'Web' ? '1200 / 375' : '1080 / 600', objectFit: 'cover', display: 'block' }} />
                               
                               <div style={{ padding: '10px 12px', fontSize: '0.8rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
                                 <div>
