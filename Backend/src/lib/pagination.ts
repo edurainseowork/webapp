@@ -107,3 +107,4 @@ export function sendPaginatedResponse<T>(
   // Backward-compatible direct array response for legacy web / mobile consumers
   return res.json(items);
 }
+

@@ -162,6 +162,7 @@ function App() {
   // Banners State
   const [bannersList, setBannersList] = useState<any[]>([]);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [bannerPreviewUrl, setBannerPreviewUrl] = useState<string | null>(null);
   const [bannerPlatform, setBannerPlatform] = useState<'web' | 'mobile'>('web');
   const [bannerPlacement, setBannerPlacement] = useState<'web_home' | 'courses' | 'purchases' | 'home' | 'mobile_courses' | 'mobile_purchases'>('web_home');
   const [bannerLinkedCourseId, setBannerLinkedCourseId] = useState<string>('');
@@ -374,9 +375,9 @@ function App() {
     'web_home' | 'courses' | 'purchases' | 'home' | 'mobile_courses' | 'mobile_purchases',
     { title: string; platform: 'Web' | 'Mobile'; ratioName: string; minRatio: number; maxRatio: number; idealSize: string }
   > = {
-    web_home: { title: 'Web Home Page', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
-    courses: { title: 'Web Courses Page', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
-    purchases: { title: 'Web Purchases (Your Enrolled Courses)', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
+    web_home: { title: 'Web Home Page', platform: 'Web', ratioName: '~4.8:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1200×250 px' },
+    courses: { title: 'Web Courses Page', platform: 'Web', ratioName: '~4.8:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1200×250 px' },
+    purchases: { title: 'Web Purchases (Your Enrolled Courses)', platform: 'Web', ratioName: '~4.8:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1200×250 px' },
     home: { title: 'Mobile Home Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
     mobile_courses: { title: 'Mobile Courses Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
     mobile_purchases: { title: 'Mobile Purchases Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
@@ -384,6 +385,10 @@ function App() {
 
   const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    if (bannerPreviewUrl) {
+      URL.revokeObjectURL(bannerPreviewUrl);
+      setBannerPreviewUrl(null);
+    }
     if (!file) {
       setBannerFile(null);
       return;
@@ -400,19 +405,21 @@ function App() {
     const img = new Image();
     const objUrl = URL.createObjectURL(file);
     img.onload = () => {
-      URL.revokeObjectURL(objUrl);
       const width = img.naturalWidth || img.width;
       const height = img.naturalHeight || img.height;
       const ratio = width / height;
 
       if (ratio < cfg.minRatio || ratio > cfg.maxRatio) {
+        URL.revokeObjectURL(objUrl);
         showToast(`Invalid dimension! ${cfg.title} banner must have ${cfg.ratioName} aspect ratio (${cfg.idealSize}). Selected: ${width}×${height} (${ratio.toFixed(2)}:1).`, "error");
         e.target.value = '';
         setBannerFile(null);
+        setBannerPreviewUrl(null);
         return;
       }
 
       setBannerFile(file);
+      setBannerPreviewUrl(objUrl);
       showToast(`Image verified: ${width}×${height} (${ratio.toFixed(2)}:1 ratio matches requirement)`, "success");
     };
     img.onerror = () => {
@@ -420,6 +427,7 @@ function App() {
       showToast("Failed to read image file. Please try another image.", "error");
       e.target.value = '';
       setBannerFile(null);
+      setBannerPreviewUrl(null);
     };
     img.src = objUrl;
   };
@@ -450,6 +458,8 @@ function App() {
       });
       if (data.success) {
         showToast(`${PLACEMENT_CONFIG[bannerPlacement].title} banner uploaded successfully!`, "success");
+        if (bannerPreviewUrl) URL.revokeObjectURL(bannerPreviewUrl);
+        setBannerPreviewUrl(null);
         setBannerFile(null);
         setBannerLinkedCourseId('');
         setBannerInputKey(k => k + 1);
@@ -1013,103 +1023,113 @@ function App() {
                   </div>
 
                   {/* Section Sub-Tabs */}
-                  {bannerPlatform === 'web' ? (
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        onClick={() => { setBannerPlacement('web_home'); setBannerFile(null); }}
-                        className="btn"
-                        style={{
-                          background: bannerPlacement === 'web_home' ? '#38bdf8' : 'rgba(255,255,255,0.05)',
-                          color: bannerPlacement === 'web_home' ? '#000' : 'white',
-                          border: bannerPlacement === 'web_home' ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.15)',
-                          padding: '8px 18px',
-                          fontSize: '0.88rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        🏠 Web Home Page ({webHomeCount})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setBannerPlacement('courses'); setBannerFile(null); }}
-                        className="btn"
-                        style={{
-                          background: bannerPlacement === 'courses' ? '#a855f7' : 'rgba(255,255,255,0.05)',
-                          color: bannerPlacement === 'courses' ? '#fff' : 'white',
-                          border: bannerPlacement === 'courses' ? '1px solid #a855f7' : '1px solid rgba(255,255,255,0.15)',
-                          padding: '8px 18px',
-                          fontSize: '0.88rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        📚 Web Courses Page ({webCoursesCount})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setBannerPlacement('purchases'); setBannerFile(null); }}
-                        className="btn"
-                        style={{
-                          background: bannerPlacement === 'purchases' ? '#f59e0b' : 'rgba(255,255,255,0.05)',
-                          color: bannerPlacement === 'purchases' ? '#000' : 'white',
-                          border: bannerPlacement === 'purchases' ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,0.15)',
-                          padding: '8px 18px',
-                          fontSize: '0.88rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        🎓 Web Purchases Page ({webPurchasesCount})
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        onClick={() => { setBannerPlacement('home'); setBannerFile(null); }}
-                        className="btn"
-                        style={{
-                          background: bannerPlacement === 'home' ? 'var(--mint)' : 'rgba(255,255,255,0.05)',
-                          color: bannerPlacement === 'home' ? 'var(--navy)' : 'white',
-                          border: bannerPlacement === 'home' ? '1px solid var(--mint)' : '1px solid rgba(255,255,255,0.15)',
-                          padding: '8px 18px',
-                          fontSize: '0.88rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        🏠 Mobile Home Page ({mobileHomeCount})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setBannerPlacement('mobile_courses'); setBannerFile(null); }}
-                        className="btn"
-                        style={{
-                          background: bannerPlacement === 'mobile_courses' ? '#34d399' : 'rgba(255,255,255,0.05)',
-                          color: bannerPlacement === 'mobile_courses' ? '#000' : 'white',
-                          border: bannerPlacement === 'mobile_courses' ? '1px solid #34d399' : '1px solid rgba(255,255,255,0.15)',
-                          padding: '8px 18px',
-                          fontSize: '0.88rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        📚 Mobile Courses Page ({mobileCoursesCount})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setBannerPlacement('mobile_purchases'); setBannerFile(null); }}
-                        className="btn"
-                        style={{
-                          background: bannerPlacement === 'mobile_purchases' ? '#fcd34d' : 'rgba(255,255,255,0.05)',
-                          color: bannerPlacement === 'mobile_purchases' ? '#000' : 'white',
-                          border: bannerPlacement === 'mobile_purchases' ? '1px solid #fcd34d' : '1px solid rgba(255,255,255,0.15)',
-                          padding: '8px 18px',
-                          fontSize: '0.88rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        🎓 Mobile Purchases Page ({mobilePurchasesCount})
-                      </button>
-                    </div>
-                  )}
+                  {(() => {
+                    const switchBannerPlacement = (placement: typeof bannerPlacement) => {
+                      setBannerPlacement(placement);
+                      setBannerFile(null);
+                      if (bannerPreviewUrl) {
+                        URL.revokeObjectURL(bannerPreviewUrl);
+                        setBannerPreviewUrl(null);
+                      }
+                    };
+                    return bannerPlatform === 'web' ? (
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => switchBannerPlacement('web_home')}
+                          className="btn"
+                          style={{
+                            background: bannerPlacement === 'web_home' ? '#38bdf8' : 'rgba(255,255,255,0.05)',
+                            color: bannerPlacement === 'web_home' ? '#000' : 'white',
+                            border: bannerPlacement === 'web_home' ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.15)',
+                            padding: '8px 18px',
+                            fontSize: '0.88rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          🏠 Web Home Page ({webHomeCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => switchBannerPlacement('courses')}
+                          className="btn"
+                          style={{
+                            background: bannerPlacement === 'courses' ? '#a855f7' : 'rgba(255,255,255,0.05)',
+                            color: bannerPlacement === 'courses' ? '#fff' : 'white',
+                            border: bannerPlacement === 'courses' ? '1px solid #a855f7' : '1px solid rgba(255,255,255,0.15)',
+                            padding: '8px 18px',
+                            fontSize: '0.88rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          📚 Web Courses Page ({webCoursesCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => switchBannerPlacement('purchases')}
+                          className="btn"
+                          style={{
+                            background: bannerPlacement === 'purchases' ? '#f59e0b' : 'rgba(255,255,255,0.05)',
+                            color: bannerPlacement === 'purchases' ? '#000' : 'white',
+                            border: bannerPlacement === 'purchases' ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,0.15)',
+                            padding: '8px 18px',
+                            fontSize: '0.88rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          🎓 Web Purchases Page ({webPurchasesCount})
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => switchBannerPlacement('home')}
+                          className="btn"
+                          style={{
+                            background: bannerPlacement === 'home' ? 'var(--mint)' : 'rgba(255,255,255,0.05)',
+                            color: bannerPlacement === 'home' ? 'var(--navy)' : 'white',
+                            border: bannerPlacement === 'home' ? '1px solid var(--mint)' : '1px solid rgba(255,255,255,0.15)',
+                            padding: '8px 18px',
+                            fontSize: '0.88rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          🏠 Mobile Home Page ({mobileHomeCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => switchBannerPlacement('mobile_courses')}
+                          className="btn"
+                          style={{
+                            background: bannerPlacement === 'mobile_courses' ? '#34d399' : 'rgba(255,255,255,0.05)',
+                            color: bannerPlacement === 'mobile_courses' ? '#000' : 'white',
+                            border: bannerPlacement === 'mobile_courses' ? '1px solid #34d399' : '1px solid rgba(255,255,255,0.15)',
+                            padding: '8px 18px',
+                            fontSize: '0.88rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          📚 Mobile Courses Page ({mobileCoursesCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => switchBannerPlacement('mobile_purchases')}
+                          className="btn"
+                          style={{
+                            background: bannerPlacement === 'mobile_purchases' ? '#fcd34d' : 'rgba(255,255,255,0.05)',
+                            color: bannerPlacement === 'mobile_purchases' ? '#000' : 'white',
+                            border: bannerPlacement === 'mobile_purchases' ? '1px solid #fcd34d' : '1px solid rgba(255,255,255,0.15)',
+                            padding: '8px 18px',
+                            fontSize: '0.88rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          🎓 Mobile Purchases Page ({mobilePurchasesCount})
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {/* Uploaded Banners Card */}
                   <div className="glass-card">
@@ -1186,7 +1206,7 @@ function App() {
                                 Delete
                               </button>
 
-                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', aspectRatio: currentCfg.platform === 'Web' ? '1200 / 375' : '1080 / 600', objectFit: 'cover', display: 'block' }} />
+                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', aspectRatio: currentCfg.platform === 'Web' ? '1200 / 250' : '1080 / 600', objectFit: 'cover', display: 'block' }} />
                               
                               <div style={{ padding: '10px 12px', fontSize: '0.8rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
                                 <div>
@@ -1281,6 +1301,45 @@ function App() {
                           className="input-field"
                           style={{ width: '100%', maxWidth: '420px', margin: '0 auto', padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.3)', color: 'white', cursor: 'pointer' }}
                         />
+
+                        {bannerPreviewUrl && (
+                          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '100%', maxWidth: '640px', aspectRatio: currentCfg.platform === 'Web' ? '1200 / 250' : '1080 / 600', borderRadius: '10px', overflow: 'hidden', border: '2px solid #10b981', boxShadow: '0 0 20px rgba(16,185,129,0.35)', position: 'relative' }}>
+                              <img src={bannerPreviewUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              <div style={{ position: 'absolute', bottom: '6px', left: '8px', background: 'rgba(0,0,0,0.8)', color: '#10b981', padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                ✅ Image Ready ({currentCfg.idealSize})
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={handleUploadBanner}
+                              disabled={isUploadingBanner}
+                              className="btn"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                background: '#10b981',
+                                color: '#fff',
+                                fontWeight: 700,
+                                fontSize: '0.95rem',
+                                padding: '12px 28px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                boxShadow: '0 0 20px rgba(16,185,129,0.5)',
+                              }}
+                            >
+                              {isUploadingBanner && (
+                                <svg className="cms-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                  <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                                  <path d="M12 2a10 10 0 0 1 10 10" />
+                                </svg>
+                              )}
+                              {isUploadingBanner ? 'Uploading Banner...' : `🚀 Click Here to Upload & Set Live in ${currentCfg.title}`}
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div>

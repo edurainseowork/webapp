@@ -119,7 +119,7 @@ export function EnrolledCoursesView({
 
           {/* Hero Banner: Custom Purchases Banner (from Manage Banners) OR Promo Course Carousel */}
           {purchasesBanners.length > 0 ? (
-            <div className="relative overflow-hidden rounded-3xl shadow-[0_12px_40px_rgba(15,59,66,0.25)] border border-white/20 group animate-fadeIn" style={{ aspectRatio: '1200 / 375' }}>
+            <div className="relative overflow-hidden rounded-3xl shadow-[0_12px_40px_rgba(15,59,66,0.25)] border border-white/20 group animate-fadeIn" style={{ aspectRatio: '1200 / 250' }}>
               {(() => {
                 const currentBanner = purchasesBanners[purchasesBannerIndex % purchasesBanners.length];
                 const bannerCourse = currentBanner.courseId
