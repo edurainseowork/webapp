@@ -19,7 +19,10 @@ type ApiOptions = {
 // Every CMS request carries the admin's Firebase ID token; the backend verifies it
 // and checks the `admin` custom claim. Nothing here is trusted by the server.
 export async function apiFetch<T = any>(path: string, { method = 'GET', body, formData }: ApiOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+  };
   const token = await auth.currentUser?.getIdToken();
   if (token) headers['Authorization'] = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -30,6 +33,7 @@ export async function apiFetch<T = any>(path: string, { method = 'GET', body, fo
     method,
     headers,
     body: serializedBody,
+    cache: 'no-store',
   });
 
   // If token expired, auto-refresh token and retry once
@@ -42,6 +46,7 @@ export async function apiFetch<T = any>(path: string, { method = 'GET', body, fo
           method,
           headers,
           body: serializedBody,
+          cache: 'no-store',
         });
       }
     } catch (refreshErr) {

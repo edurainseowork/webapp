@@ -25,16 +25,24 @@ const VALID_PLACEMENTS = new Set([
 router.get("/", async (req, res) => {
   try {
     const rawPlacement = typeof req.query.placement === "string" ? req.query.placement.trim() : undefined;
+
+    // Admin / CMS dashboard requesting all banners: always fresh from DB, never cached by browser
+    if (rawPlacement === "all") {
+      const banners = await db
+        .select()
+        .from(bannersTable)
+        .orderBy(asc(bannersTable.sortOrder), desc(bannersTable.createdAt));
+
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+      return res.json({ success: true, data: banners });
+    }
+
     const targetKey = rawPlacement || "home";
     const cacheKey = `edurain:banners:${targetKey}`;
 
     const banners = await getOrSetCache(cacheKey, 600, async () => {
-      if (rawPlacement === "all") {
-        return db
-          .select()
-          .from(bannersTable)
-          .orderBy(asc(bannersTable.sortOrder), desc(bannersTable.createdAt));
-      }
       return db
         .select()
         .from(bannersTable)
@@ -42,7 +50,7 @@ router.get("/", async (req, res) => {
         .orderBy(asc(bannersTable.sortOrder), desc(bannersTable.createdAt));
     });
 
-    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
     return res.json({ success: true, data: banners });
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch banners" });

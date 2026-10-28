@@ -180,7 +180,7 @@ function App() {
   const fetchBanners = async () => {
     setIsLoadingBanners(true);
     try {
-      const data = await apiFetch('/banners?placement=all');
+      const data = await apiFetch(`/banners?placement=all&_t=${Date.now()}`);
       if (data.success) {
         setBannersList(data.data);
         setHasUnsavedBannerOrder(false);
@@ -477,15 +477,20 @@ function App() {
 
   const handleDeleteBanner = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this banner?")) return;
+    const previousBanners = bannersList;
+    // Optimistic UI update: remove card immediately with 0ms visual delay
+    setBannersList(prev => prev.filter(b => b.id !== id));
     try {
       const data = await apiFetch(`/banners/${id}`, { method: 'DELETE' });
       if (data.success) {
         showToast("Banner deleted", "success");
-        fetchBanners();
+        await fetchBanners();
       } else {
-        showToast(data.error, "error");
+        setBannersList(previousBanners);
+        showToast(data.error || "Failed to delete banner", "error");
       }
     } catch (e: any) {
+      setBannersList(previousBanners);
       showToast("Error: " + e.message, "error");
     }
   };
