@@ -49,6 +49,21 @@ export async function apiFetch<T = any>(
     delayMs *= 2;
   }
 
+  // Auto-refresh token silently and retry once if token expired (HTTP 401)
+  if (res.status === 401 && auth.currentUser) {
+    try {
+      const freshToken = await auth.currentUser.getIdToken(true);
+      if (freshToken) {
+        headers.Authorization = `Bearer ${freshToken}`;
+        res = await fetch(`${API_BASE_URL}/api${path}`, {
+          method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
+          headers,
+          body: init.body !== undefined ? (typeof init.body === 'string' ? init.body : JSON.stringify(init.body)) : undefined,
+        });
+      }
+    } catch {}
+  }
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const retryAfter = Number(res.headers.get('Retry-After')) || data.retryAfter;

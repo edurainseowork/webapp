@@ -80,7 +80,7 @@ export const authService = {
   /** Email or 10-digit mobile number + password. `remember` keeps the session after the browser closes. */
   async login(identifier: string, password: string, remember: boolean): Promise<AuthResult & { user?: AuthUser }> {
     try {
-      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+      await setPersistence(auth, browserLocalPersistence);
       const isPhone = /^\d{10}$/.test(identifier);
       let email = identifier;
       if (isPhone) {

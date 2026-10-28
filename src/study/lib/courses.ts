@@ -165,7 +165,16 @@ export function useCourses(): CoursesState & { reload: () => Promise<void> } {
         void refreshCourses();
       }
     }, STALE_MS);
-    return () => clearInterval(timer);
+    const onFocus = () => {
+      if (Date.now() - lastLoadedAt > 15_000) void refreshCourses();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, []);
 
   return { ...snapshot, reload: refreshCourses };

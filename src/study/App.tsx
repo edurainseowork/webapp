@@ -171,7 +171,14 @@ export function App() {
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') fetchStudentNotifications();
     }, 30_000);
-    return () => clearInterval(timer);
+    const onFocus = () => fetchStudentNotifications();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, [session.uid]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../lib/api';
 import { useCatalog } from './courseData';
 
@@ -26,21 +26,31 @@ export function BannerCarousel({ placement, onOpenBatch, className = '' }: Banne
   const [activeIndex, setActiveIndex] = useState(0);
   const { batches } = useCatalog();
 
-  useEffect(() => {
-    let isMounted = true;
+  const fetchBanners = useCallback(() => {
     apiFetch<{ success: boolean; data: BannerItem[] }>(`/banners?placement=${placement}`)
       .then((res) => {
-        if (isMounted && res.success && Array.isArray(res.data)) {
+        if (res.success && Array.isArray(res.data)) {
           setBanners(res.data);
-          setActiveIndex(0);
         }
       })
       .catch(() => {});
-
-    return () => {
-      isMounted = false;
-    };
   }, [placement]);
+
+  // Initial load + silent auto-refresh every 30s + on tab focus (Zero page reload needed)
+  useEffect(() => {
+    fetchBanners();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchBanners();
+    }, 30_000);
+    const onFocus = () => fetchBanners();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [fetchBanners]);
 
   // Auto-rotate when multiple banners are uploaded
   useEffect(() => {

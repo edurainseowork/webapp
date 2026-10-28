@@ -1,6 +1,6 @@
 import edurainLogo from '../assets/logo.webp'
 import { useState, useEffect, useRef } from 'react'
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut, sendEmailVerification, type User } from 'firebase/auth'
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, sendEmailVerification, setPersistence, browserLocalPersistence, type User } from 'firebase/auth'
 import { auth } from '../firebase'
 import { apiFetch, uploadFile, API_BASE_URL, type AdminCourse } from '../api'
 import CourseManager from './CourseManager'
@@ -353,6 +353,7 @@ function App() {
     setLoginError('');
     setIsLoggingIn(true);
     try {
+      await setPersistence(auth, browserLocalPersistence);
       await signInWithEmailAndPassword(auth, email.trim(), password);
     } catch (error: any) {
       const code: string = error?.code || '';

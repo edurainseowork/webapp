@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, ArrowRight, Star, Users, PlayCircle, Play } from 'lucide-react';
 import { Batch, toEnrolledCourse, useCatalog } from './courseData';
 import {
@@ -66,8 +66,7 @@ export function EnrolledCoursesView({
   const { status, error, reload, batches, filters, ownedBatches, isOwned } = useCatalog(goalKey);
   const promos = pickPromos(batches, isOwned);
 
-  // Fetch custom purchases banners uploaded in CMS Manage Banners
-  useEffect(() => {
+  const fetchPurchasesBanners = useCallback(() => {
     apiFetch<{ success: boolean; data: PurchasesBanner[] }>('/banners?placement=purchases')
       .then((res) => {
         if (res.success && Array.isArray(res.data)) {
@@ -76,6 +75,22 @@ export function EnrolledCoursesView({
       })
       .catch(() => {});
   }, []);
+
+  // Fetch custom purchases banners uploaded in CMS Manage Banners (silent 30s + focus auto-refresh)
+  useEffect(() => {
+    fetchPurchasesBanners();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchPurchasesBanners();
+    }, 30_000);
+    const onFocus = () => fetchPurchasesBanners();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [fetchPurchasesBanners]);
 
   // Rotate custom purchases banner carousel
   useEffect(() => {
