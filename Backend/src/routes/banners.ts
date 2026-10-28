@@ -15,12 +15,21 @@ function invalidateBannerCache() {
   bannerCache.clear();
 }
 
-// Allowed placements across Web & Mobile platforms
-const VALID_PLACEMENTS = new Set(["home", "mobile_home", "web_home", "purchases", "courses"]);
+// Complete set of allowed placements across Web & Mobile platforms:
+// Web (3.2:1 ratio): web_home, courses, purchases
+// Mobile (1.8:1 ratio): home / mobile_home, mobile_courses, mobile_purchases
+const VALID_PLACEMENTS = new Set([
+  "home",
+  "mobile_home",
+  "mobile_courses",
+  "mobile_purchases",
+  "web_home",
+  "purchases",
+  "courses",
+]);
 
-// Get all banners (optional ?placement=home|mobile_home|web_home|purchases|courses|all)
-// When placement is omitted (e.g. mobile app calling GET /api/banners), default to 'home'
-// so web/purchases/courses banners never appear on mobile app home screen.
+// Get banners by placement
+// When placement is omitted (e.g. legacy mobile app calling GET /api/banners), default to 'home'
 router.get("/", async (req, res) => {
   try {
     const rawPlacement = typeof req.query.placement === "string" ? req.query.placement.trim() : undefined;

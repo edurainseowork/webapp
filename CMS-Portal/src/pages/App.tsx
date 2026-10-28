@@ -162,7 +162,8 @@ function App() {
   // Banners State
   const [bannersList, setBannersList] = useState<any[]>([]);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
-  const [bannerPlacement, setBannerPlacement] = useState<'home' | 'web_home' | 'purchases' | 'courses'>('home');
+  const [bannerPlatform, setBannerPlatform] = useState<'web' | 'mobile'>('web');
+  const [bannerPlacement, setBannerPlacement] = useState<'web_home' | 'courses' | 'purchases' | 'home' | 'mobile_courses' | 'mobile_purchases'>('web_home');
   const [bannerLinkedCourseId, setBannerLinkedCourseId] = useState<string>('');
   const [bannerInputKey, setBannerInputKey] = useState<number>(0);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
@@ -369,11 +370,16 @@ function App() {
   };
 
 
-  const PLACEMENT_CONFIG: Record<'home' | 'web_home' | 'purchases' | 'courses', { title: string; ratioName: string; minRatio: number; maxRatio: number; idealSize: string }> = {
-    home: { title: 'Mobile Home Page', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
-    web_home: { title: 'Web Home Page', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px (or 1600×500 px)' },
-    purchases: { title: 'Purchase', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
-    courses: { title: 'Courses Home Page', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
+  const PLACEMENT_CONFIG: Record<
+    'web_home' | 'courses' | 'purchases' | 'home' | 'mobile_courses' | 'mobile_purchases',
+    { title: string; platform: 'Web' | 'Mobile'; ratioName: string; minRatio: number; maxRatio: number; idealSize: string }
+  > = {
+    web_home: { title: 'Web Home Page', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px (or 1600×500 px)' },
+    courses: { title: 'Web Courses Page', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
+    purchases: { title: 'Web Purchases (Your Enrolled Courses)', platform: 'Web', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
+    home: { title: 'Mobile Home Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
+    mobile_courses: { title: 'Mobile Courses Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
+    mobile_purchases: { title: 'Mobile Purchases Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
   };
 
   const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -939,81 +945,183 @@ function App() {
               const activeBanners = bannersList.filter(b => (b.placement || 'home') === bannerPlacement);
               const currentCfg = PLACEMENT_CONFIG[bannerPlacement];
 
+              const webHomeCount = bannersList.filter(b => b.placement === 'web_home').length;
+              const webCoursesCount = bannersList.filter(b => b.placement === 'courses').length;
+              const webPurchasesCount = bannersList.filter(b => b.placement === 'purchases').length;
+
+              const mobileHomeCount = bannersList.filter(b => (b.placement || 'home') === 'home').length;
+              const mobileCoursesCount = bannersList.filter(b => b.placement === 'mobile_courses').length;
+              const mobilePurchasesCount = bannersList.filter(b => b.placement === 'mobile_purchases').length;
+
               return (
                 <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-                  {/* 4 Dedicated Placement Tabs */}
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  {/* Top-Level Platform Selector */}
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>PLATFORM TARGET:</span>
                     <button
                       type="button"
-                      onClick={() => { setBannerPlacement('home'); setBannerFile(null); }}
+                      onClick={() => {
+                        setBannerPlatform('web');
+                        setBannerPlacement('web_home');
+                        setBannerFile(null);
+                      }}
                       className="btn"
                       style={{
-                        background: bannerPlacement === 'home' ? 'var(--mint)' : 'transparent',
-                        color: bannerPlacement === 'home' ? 'var(--navy)' : 'white',
-                        border: '1px solid rgba(255,255,255,0.2)',
-                        padding: '8px 18px',
+                        padding: '9px 20px',
+                        borderRadius: '10px',
+                        fontWeight: 700,
                         fontSize: '0.9rem',
-                        fontWeight: 600,
+                        cursor: 'pointer',
+                        border: bannerPlatform === 'web' ? '2px solid #38bdf8' : '1px solid rgba(255,255,255,0.15)',
+                        background: bannerPlatform === 'web' ? 'rgba(56,189,248,0.2)' : 'transparent',
+                        color: bannerPlatform === 'web' ? '#38bdf8' : 'white',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: bannerPlatform === 'web' ? '0 0 16px rgba(56,189,248,0.3)' : 'none',
+                        transition: 'all 0.2s ease',
                       }}
                     >
-                      📱 Mobile Home Page ({bannersList.filter(b => (b.placement || 'home') === 'home').length})
+                      🌐 Web App Banners (3.2:1 Ratio)
                     </button>
-
                     <button
                       type="button"
-                      onClick={() => { setBannerPlacement('web_home'); setBannerFile(null); }}
+                      onClick={() => {
+                        setBannerPlatform('mobile');
+                        setBannerPlacement('home');
+                        setBannerFile(null);
+                      }}
                       className="btn"
                       style={{
-                        background: bannerPlacement === 'web_home' ? '#38bdf8' : 'transparent',
-                        color: bannerPlacement === 'web_home' ? '#000' : 'white',
-                        border: '1px solid rgba(56,189,248,0.5)',
-                        padding: '8px 18px',
+                        padding: '9px 20px',
+                        borderRadius: '10px',
+                        fontWeight: 700,
                         fontSize: '0.9rem',
-                        fontWeight: 600,
+                        cursor: 'pointer',
+                        border: bannerPlatform === 'mobile' ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.15)',
+                        background: bannerPlatform === 'mobile' ? 'rgba(16,185,129,0.2)' : 'transparent',
+                        color: bannerPlatform === 'mobile' ? '#10b981' : 'white',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: bannerPlatform === 'mobile' ? '0 0 16px rgba(16,185,129,0.3)' : 'none',
+                        transition: 'all 0.2s ease',
                       }}
                     >
-                      🌐 Web Home Page ({bannersList.filter(b => b.placement === 'web_home').length})
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => { setBannerPlacement('purchases'); setBannerFile(null); }}
-                      className="btn"
-                      style={{
-                        background: bannerPlacement === 'purchases' ? '#f59e0b' : 'transparent',
-                        color: bannerPlacement === 'purchases' ? '#000' : 'white',
-                        border: '1px solid rgba(245,158,11,0.5)',
-                        padding: '8px 18px',
-                        fontSize: '0.9rem',
-                        fontWeight: 600,
-                      }}
-                    >
-                      🎓 Purchase ({bannersList.filter(b => b.placement === 'purchases').length})
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => { setBannerPlacement('courses'); setBannerFile(null); }}
-                      className="btn"
-                      style={{
-                        background: bannerPlacement === 'courses' ? '#a855f7' : 'transparent',
-                        color: bannerPlacement === 'courses' ? '#fff' : 'white',
-                        border: '1px solid rgba(168,85,247,0.5)',
-                        padding: '8px 18px',
-                        fontSize: '0.9rem',
-                        fontWeight: 600,
-                      }}
-                    >
-                      📚 Courses Home Page ({bannersList.filter(b => b.placement === 'courses').length})
+                      📱 Mobile App Banners (1.8:1 Ratio)
                     </button>
                   </div>
+
+                  {/* Section Sub-Tabs */}
+                  {bannerPlatform === 'web' ? (
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => { setBannerPlacement('web_home'); setBannerFile(null); }}
+                        className="btn"
+                        style={{
+                          background: bannerPlacement === 'web_home' ? '#38bdf8' : 'rgba(255,255,255,0.05)',
+                          color: bannerPlacement === 'web_home' ? '#000' : 'white',
+                          border: bannerPlacement === 'web_home' ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.15)',
+                          padding: '8px 18px',
+                          fontSize: '0.88rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        🏠 Web Home Page ({webHomeCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setBannerPlacement('courses'); setBannerFile(null); }}
+                        className="btn"
+                        style={{
+                          background: bannerPlacement === 'courses' ? '#a855f7' : 'rgba(255,255,255,0.05)',
+                          color: bannerPlacement === 'courses' ? '#fff' : 'white',
+                          border: bannerPlacement === 'courses' ? '1px solid #a855f7' : '1px solid rgba(255,255,255,0.15)',
+                          padding: '8px 18px',
+                          fontSize: '0.88rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        📚 Web Courses Page ({webCoursesCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setBannerPlacement('purchases'); setBannerFile(null); }}
+                        className="btn"
+                        style={{
+                          background: bannerPlacement === 'purchases' ? '#f59e0b' : 'rgba(255,255,255,0.05)',
+                          color: bannerPlacement === 'purchases' ? '#000' : 'white',
+                          border: bannerPlacement === 'purchases' ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,0.15)',
+                          padding: '8px 18px',
+                          fontSize: '0.88rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        🎓 Web Purchases Page ({webPurchasesCount})
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => { setBannerPlacement('home'); setBannerFile(null); }}
+                        className="btn"
+                        style={{
+                          background: bannerPlacement === 'home' ? 'var(--mint)' : 'rgba(255,255,255,0.05)',
+                          color: bannerPlacement === 'home' ? 'var(--navy)' : 'white',
+                          border: bannerPlacement === 'home' ? '1px solid var(--mint)' : '1px solid rgba(255,255,255,0.15)',
+                          padding: '8px 18px',
+                          fontSize: '0.88rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        🏠 Mobile Home Page ({mobileHomeCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setBannerPlacement('mobile_courses'); setBannerFile(null); }}
+                        className="btn"
+                        style={{
+                          background: bannerPlacement === 'mobile_courses' ? '#34d399' : 'rgba(255,255,255,0.05)',
+                          color: bannerPlacement === 'mobile_courses' ? '#000' : 'white',
+                          border: bannerPlacement === 'mobile_courses' ? '1px solid #34d399' : '1px solid rgba(255,255,255,0.15)',
+                          padding: '8px 18px',
+                          fontSize: '0.88rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        📚 Mobile Courses Page ({mobileCoursesCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setBannerPlacement('mobile_purchases'); setBannerFile(null); }}
+                        className="btn"
+                        style={{
+                          background: bannerPlacement === 'mobile_purchases' ? '#fcd34d' : 'rgba(255,255,255,0.05)',
+                          color: bannerPlacement === 'mobile_purchases' ? '#000' : 'white',
+                          border: bannerPlacement === 'mobile_purchases' ? '1px solid #fcd34d' : '1px solid rgba(255,255,255,0.15)',
+                          padding: '8px 18px',
+                          fontSize: '0.88rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        🎓 Mobile Purchases Page ({mobilePurchasesCount})
+                      </button>
+                    </div>
+                  )}
 
                   {/* Uploaded Banners Card */}
                   <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: 'var(--space-md)' }}>
-                      <h3 style={{ margin: 0 }}>
-                        {currentCfg.title} Banners ({activeBanners.length}/5)
-                      </h3>
+                      <div>
+                        <h3 style={{ margin: 0 }}>
+                          {currentCfg.title} Banners ({activeBanners.length}/5)
+                        </h3>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          Target Platform: <strong>{currentCfg.platform}</strong> • Ratio: <strong>{currentCfg.ratioName}</strong> ({currentCfg.idealSize})
+                        </p>
+                      </div>
                       {activeBanners.length > 0 && (
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                           {hasUnsavedBannerOrder && (
@@ -1163,7 +1271,7 @@ function App() {
                           Select {currentCfg.title} Banner Image
                         </p>
                         <p style={{ color: '#38bdf8', fontSize: '0.85rem', marginBottom: 'var(--space-md)' }}>
-                          📐 Required Aspect Ratio: <strong>{currentCfg.ratioName}</strong> ({currentCfg.idealSize})
+                          📐 Required Aspect Ratio for {currentCfg.platform}: <strong>{currentCfg.ratioName}</strong> ({currentCfg.idealSize})
                         </p>
                         <input
                           key={bannerInputKey}
@@ -1196,7 +1304,7 @@ function App() {
                       </div>
                       
                       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        Note: Non-compliant banner ratios will be blocked to maintain layout symmetry across devices.
+                        Note: Non-compliant banner ratios will be automatically blocked to maintain visual symmetry across devices.
                       </p>
 
                       <button
