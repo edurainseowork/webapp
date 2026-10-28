@@ -9,6 +9,7 @@ import { HttpError, parseId } from "../lib/http-error";
 import { optionalAuth } from "../middlewares/auth";
 import { fetchCourseContentTree } from "./content.js";
 import { getOrSetCache } from "../lib/perfEngine";
+import { courseFaqs } from "../lib/faqs";
 import { parsePagination, sendPaginatedResponse } from "../lib/pagination";
 
 // Public catalog used by the mobile app & web app. Only published courses are ever returned.
@@ -44,6 +45,10 @@ router.get("/", async (req, res) => {
     : allFormatted;
 
   return sendPaginatedResponse(res, req, paginatedItems, allFormatted.length, pagination);
+});
+// GET /api/courses/:id/faqs — FAQs from CMS → FAQs (this course + All courses), cached
+router.get("/:id/faqs", async (req, res) => {
+  res.json({ success: true, data: await courseFaqs(parseId(req.params.id)) });
 });
 
 // GET /api/courses/:id/content — Return items for a given course filtered optionally by parentId, sorted ascending by order

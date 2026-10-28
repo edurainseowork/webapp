@@ -43,6 +43,7 @@ import { ProfileView } from './components/Profile-section/ProfileView';
 import { LibraryView } from './components/LibraryView';
 import { CohortGoalModal } from './components/Modals/CohortGoalModal';
 import { fetchGoal, saveGoal, type StudentGoal } from './lib/goal';
+import { loadActiveCourse, resetActiveCourse, useActiveCourse } from './lib/activeCourse';
 import { useCourses, resetCoursesForUser } from './lib/courses';
 import { fetchProfile, recordActivity } from './lib/profile';
 import { apiFetch } from './lib/api';
@@ -84,7 +85,29 @@ export function App() {
     resetCoursesForUser(session.uid);
   }, [session.uid]);
 
+  // The one active course (Your Enrolled Courses → Set as Active), saved on the account
+  useEffect(() => {
+    resetActiveCourse();
+    void loadActiveCourse();
+  }, [session.uid]);
+  const { activeCourseId, goalVersion } = useActiveCourse();
+
   const enrolledCourses = cmsCourses.filter((c) => ownedIds.includes(c.id));
+  const activeCourse = enrolledCourses.find((c) => c.id === activeCourseId) ?? null;
+
+  // Making a course active moves the goal (cohort) to its category on the server: show the new goal
+  useEffect(() => {
+    if (goalVersion === 0) return;
+    let cancelled = false;
+    fetchGoal()
+      .then((g) => {
+        if (!cancelled && g) setGoal(g);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [goalVersion]);
   const enrolledForGoal = goal
     ? enrolledCourses.filter(
         (c) =>
@@ -94,14 +117,17 @@ export function App() {
     : enrolledCourses;
 
   useEffect(() => {
-    if (enrolledForGoal.length > 0) {
+    if (activeCourse) {
+      setSelectedBatch(activeCourse.title);
+    } else if (enrolledForGoal.length > 0) {
       setSelectedBatch(enrolledForGoal.map((c) => c.title).join(', '));
     } else if (!goal && enrolledCourses.length > 0) {
       setSelectedBatch(enrolledCourses[0].title);
     } else if (coursesStatus === 'ready') {
       setSelectedBatch('Not enrolled yet');
     }
-  }, [goal, cmsCourses, ownedIds, coursesStatus]);
+  }, [goal, cmsCourses, ownedIds, coursesStatus, activeCourseId]);
+
   const [isDrawerBatchOpen, setIsDrawerBatchOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -1111,7 +1137,9 @@ export function App() {
                       className="font-bold text-[#175A67] hover:underline"
                       title={enrolledForGoal.length > 0 ? 'Open your enrolled batch' : 'Explore courses for this goal'}
                     >
-                      {enrolledForGoal.length > 0
+                      {activeCourse
+                        ? activeCourse.title
+                        : enrolledForGoal.length > 0
                         ? enrolledForGoal.map((c) => c.title).join(', ')
                         : coursesStatus === 'ready'
                         ? 'Not enrolled yet'
@@ -1290,6 +1318,8 @@ export function App() {
           // Save first; if it fails the popup stays open with the error
           const saved = await saveGoal(category);
           setGoal(saved);
+          // The server keeps the active course in the new cohort (or picks / clears it)
+          void loadActiveCourse();
           const matchingEnrolled = cmsCourses.filter(
             (c) =>
               ownedIds.includes(c.id) &&

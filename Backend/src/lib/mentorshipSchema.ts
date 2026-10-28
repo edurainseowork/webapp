@@ -101,6 +101,25 @@ const STATEMENTS = [
   sql`CREATE INDEX IF NOT EXISTS banners_sort_order_idx ON banners (placement, sort_order ASC, created_at DESC)`,
   sql`CREATE INDEX IF NOT EXISTS admin_notifications_created_at_idx ON admin_notifications (created_at DESC)`,
   sql`CREATE INDEX IF NOT EXISTS notifications_user_read_idx ON notifications (user_id, is_read, created_at DESC)`,
+  // Course FAQs (CMS → FAQs); see migrations/0011_faqs.sql
+  sql`CREATE TABLE IF NOT EXISTS faqs (
+        id serial PRIMARY KEY,
+        question varchar(300) NOT NULL,
+        answer text NOT NULL,
+        all_courses boolean NOT NULL DEFAULT false,
+        sort_order integer NOT NULL DEFAULT 0,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now())`,
+  sql`CREATE TABLE IF NOT EXISTS faq_courses (
+        faq_id integer NOT NULL REFERENCES faqs(id) ON DELETE CASCADE,
+        course_id integer NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        PRIMARY KEY (faq_id, course_id))`,
+  sql`CREATE INDEX IF NOT EXISTS faq_courses_course_id_idx ON faq_courses (course_id)`,
+  // The student's one active course (Your Enrolled Courses); see migrations/0012_active_courses.sql
+  sql`CREATE TABLE IF NOT EXISTS active_courses (
+        user_id integer PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        course_id integer NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        updated_at timestamp NOT NULL DEFAULT now())`,
 ];
 
 let ready: Promise<void> | null = null;

@@ -23,6 +23,7 @@ import cmsAdminsRouter from "./cmsAdmins.js";
 import ticketsRouter from "./tickets.js";
 import { mentorDeskRouter, teacherAssistantDeskRouter } from "./desks.js";
 import studentGoalRouter from "./studentGoal.js";
+import activeCourseRouter from "./activeCourse.js";
 import mentorshipRouter from "./mentorship.js";
 import progressRouter from "./progress.js";
 import ebooksRouter from "./ebooks.js";
@@ -71,6 +72,8 @@ router.use("/auth", authRouter);
 router.use("/profile", studentActionLimiter, profileRouter);
 router.use("/tickets", authenticateToken, studentActionLimiter, ticketsRouter);
 router.use("/me/goal", studentActionLimiter, studentGoalRouter);
+// The one active course among the student's courses
+router.use("/me/active-course", activeCourseRouter); // PUT has its own token-bucket limit
 router.use("/mentorship", studentActionLimiter, mentorshipRouter);
 router.use("/progress", studentActionLimiter, progressRouter);
 router.use("/notifications", studentActionLimiter, notificationsRouter);

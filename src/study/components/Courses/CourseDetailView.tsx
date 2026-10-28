@@ -27,19 +27,21 @@ import {
   AlertTriangle,
   RefreshCw,
   ExternalLink,
+  TicketPercent,
+  X,
 } from 'lucide-react';
 import { Batch, Chapter, CoursePlan, PlanId, Subject, buildSyllabus, lectureIcon } from './courseData';
 import { Toast, discountPct, formatINR, useToast } from './CourseShared';
-import { enrollInCourse, fetchCompletedLessons, fetchCourseContent, markLessonDone } from '../../lib/courses';
+import { enrollInCourse, enrollWithCoupon, fetchCompletedLessons, fetchCourseContent, markLessonDone } from '../../lib/courses';
+import { couponLabel, fetchPublicCoupons, validateCoupon, type AppliedCoupon, type PublicCoupon } from '../../lib/coupons';
 import { useSupportContacts } from '../../lib/support';
 import { SupportContactList } from '../Support/SupportContactList';
-type TabId = 'description' | 'syllabus' | 'tests' | 'community';
+import { CourseFaqs } from './CourseFaqs';
+type TabId = 'description' | 'syllabus';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'description', label: 'Description', icon: FileText },
   { id: 'syllabus', label: 'All Classes & Syllabus', icon: BookOpen },
-  { id: 'tests', label: 'Test Series & Quizzes', icon: ClipboardList },
-  { id: 'community', label: 'Ranker Community & Doubts', icon: MessagesSquare },
 ];
 
 type SyllabusState =
@@ -103,12 +105,19 @@ function ChapterRow({
                     {lecture.code}: {lecture.title}
                   </span>
                   <span className="text-[10px] text-slate-400 whitespace-nowrap">({lecture.meta})</span>
+                  {done.has(lecture.id) && (
+                    <span className="flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 whitespace-nowrap">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Done
+                    </span>
+                  )}
                 </span>
                 {lecture.url && (
                   <a
                     href={lecture.url}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => onOpenLesson(lecture.id)}
                     className="flex items-center gap-1 bg-[#175A67] hover:bg-[#124853] text-white text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors"
                   >
                     {lecture.type === 'video' ? 'Watch' : 'Open'}
@@ -161,7 +170,7 @@ function PlanCard({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={`relative text-left bg-white rounded-2xl p-4 border-2 transition-all ${
+      className={`relative min-w-0 text-left bg-white rounded-2xl p-4 border-2 transition-all [overflow-wrap:anywhere] ${
         selected ? 'border-[#175A67] shadow-[0_12px_32px_rgba(23,90,103,0.18)]' : 'border-transparent hover:border-[#175A67]/25'
       }`}
     >
@@ -215,6 +224,165 @@ function PlanCard({
   );
 }
 
+/** "<Plan> Includes" box: CMS lines (or the course facts when there are none), in 3 columns, collapsible. */
+function IncludesBox({
+  title,
+  lead,
+  lines,
+  fallback,
+  badge = null,
+}: {
+  title: string;
+  lead: string | null;
+  lines: string[];
+  fallback: Batch['features'];
+  badge?: string | null;
+}) {
+  const [open, setOpen] = useState(true);
+  const items: { icon: React.ComponentType<{ className?: string }>; text: string; strong?: boolean }[] = [
+    ...(lead ? [{ icon: CheckCircle2, text: lead, strong: true }] : []),
+    ...(lines.length ? lines.map((text) => ({ icon: Star, text })) : fallback),
+  ];
+  return (
+    <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 bg-slate-50 hover:bg-slate-100/70 transition-colors"
+      >
+        <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-[#0B1C30]">
+          {title}
+          {badge && (
+            <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+              <CheckCircle2 className="w-3 h-3" />
+              {badge}
+            </span>
+          )}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-4 sm:px-5 py-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-3">
+          {items.length === 0 ? (
+            <p className="text-[13px] text-slate-500">Full course access after enrolment.</p>
+          ) : (
+            items.map((item) => (
+              <p key={item.text} className={`flex items-start gap-2 min-w-0 [overflow-wrap:anywhere] text-[13px] ${item.strong ? 'font-semibold text-[#0B1C30]' : 'text-slate-700'}`}>
+                <item.icon className="w-4 h-4 text-[#175A67] shrink-0 mt-0.5" />
+                {item.text}
+              </p>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+/* ------------------------------------------------------------------ */
+/*  Coupons (CMS → Private/Public Coupons)                              */
+/* ------------------------------------------------------------------ */
+
+function CouponBox({
+  coupons,
+  applied,
+  busyCode,
+  error,
+  onApply,
+  onRemove,
+}: {
+  coupons: PublicCoupon[];
+  applied: AppliedCoupon | null;
+  busyCode: string | null;
+  error: string | null;
+  onApply: (code: string) => void;
+  onRemove: () => void;
+}) {
+  const [code, setCode] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? coupons : coupons.slice(0, 3);
+
+  if (applied) {
+    return (
+      <div className="mt-4 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+        <span className="flex items-center gap-2 min-w-0">
+          <TicketPercent className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span className="min-w-0">
+            <span className="block text-xs font-bold text-emerald-800 truncate">{applied.code} applied</span>
+            <span className="block text-[11px] text-emerald-700">You save {formatINR(applied.discountAmount)}</span>
+          </span>
+        </span>
+        <button onClick={onRemove} className="flex items-center gap-1 text-[11px] font-semibold text-emerald-800 hover:underline shrink-0" aria-label="Remove coupon">
+          <X className="w-3.5 h-3.5" />
+          Remove
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-xl border border-slate-200/80 p-3">
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-[#0B1C30]">
+        <TicketPercent className="w-4 h-4 text-[#175A67]" />
+        Apply coupon
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (code.trim()) onApply(code);
+        }}
+        className="mt-2 flex gap-2"
+      >
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="Enter coupon code"
+          aria-label="Coupon code"
+          maxLength={30}
+          className="flex-1 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-[#175A67]/30"
+        />
+        <button
+          type="submit"
+          disabled={!code.trim() || busyCode !== null}
+          className="rounded-lg bg-[#175A67] hover:bg-[#124853] disabled:opacity-50 text-white text-xs font-semibold px-3.5"
+        >
+          {busyCode !== null && busyCode === code.trim() ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply'}
+        </button>
+      </form>
+      {error && (
+        <p role="alert" className="mt-1.5 text-[11px] font-semibold text-red-600">
+          {error}
+        </p>
+      )}
+
+      {coupons.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Available coupons</p>
+          {visible.map((c) => (
+            <div key={c.code} className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-[#175A67]/40 bg-[#F4FAFB] px-3 py-2">
+              <span className="min-w-0">
+                <span className="block text-xs font-bold tracking-wide text-[#0B1C30] truncate">{c.code}</span>
+                <span className="block text-[11px] text-emerald-700 font-semibold">{couponLabel(c)}</span>
+              </span>
+              <button
+                onClick={() => onApply(c.code)}
+                disabled={busyCode !== null}
+                className="shrink-0 text-[11px] font-bold text-[#175A67] hover:underline disabled:opacity-50"
+              >
+                {busyCode === c.code ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'APPLY'}
+              </button>
+            </div>
+          ))}
+          {coupons.length > 3 && (
+            <button onClick={() => setShowAll((v) => !v)} className="text-[11px] font-semibold text-[#175A67] hover:underline">
+              {showAll ? 'Show less' : `View all ${coupons.length} coupons`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 /* ------------------------------------------------------------------ */
 /*  Main view                                                           */
 /* ------------------------------------------------------------------ */
@@ -257,9 +425,19 @@ export function CourseDetailView({
   // Plans (Basic / Pro / Pro Max) are offered when the CMS has a Pro or Pro Max price; owners see their course card
   const showPlans = batch.plans.length > 1 && !isEnrolled;
   const [planId, setPlanId] = useState<PlanId>(() => recommendedPlan(batch.plans));
+  const [thumbFailed, setThumbFailed] = useState(false);
   const selectedPlan = (showPlans ? batch.plans.find((p) => p.id === planId) : null) ?? { id: 'basic' as const, name: 'Basic', price: batch.price, mrp: batch.mrp, features: [] };
-  const price = selectedPlan.price;
+  const planPrice = selectedPlan.price;
   const mrp = selectedPlan.mrp;
+
+  // Coupons: public ones for this course are listed; any code can be typed. The price is re-checked on the server.
+  const [coupons, setCoupons] = useState<PublicCoupon[]>([]);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponBusy, setCouponBusy] = useState<string | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const couponable = !isEnrolled && batch.plans.some((p) => p.price > 0);
+
+  const price = appliedCoupon ? appliedCoupon.finalPrice : planPrice;
   const isFree = price === 0;
   const hasDiscount = mrp > price;
   const subjects = syllabus.status === 'ready' ? syllabus.subjects : [];
@@ -304,6 +482,50 @@ export function CourseDetailView({
     if (scrollToPlans) plansRef.current?.scrollIntoView({ block: 'start' });
   }, [scrollToPlans]);
 
+  useEffect(() => {
+    if (!couponable) return;
+    let cancelled = false;
+    fetchPublicCoupons(batch.courseId)
+      .then((list) => !cancelled && setCoupons(list))
+      .catch(() => undefined); // coupons are extra: the page works without them
+    return () => {
+      cancelled = true;
+    };
+  }, [batch.courseId, couponable]);
+
+  const applyCoupon = async (code: string) => {
+    const clean = code.trim().toUpperCase();
+    if (!clean || couponBusy) return;
+    setCouponBusy(clean);
+    setCouponError(null);
+    try {
+      const result = await validateCoupon(clean, batch.courseId, selectedPlan.id);
+      setAppliedCoupon(result);
+      showToast(`${result.code} applied — you save ${formatINR(result.discountAmount)}`);
+    } catch (err) {
+      setCouponError(err instanceof Error && err.message ? err.message : 'Could not apply this coupon.');
+    } finally {
+      setCouponBusy(null);
+    }
+  };
+
+  // A different plan has a different price: work the applied coupon out again (or drop it if it no longer applies)
+  const appliedCode = appliedCoupon?.code ?? null;
+  useEffect(() => {
+    if (!appliedCode) return;
+    let cancelled = false;
+    validateCoupon(appliedCode, batch.courseId, selectedPlan.id)
+      .then((result) => !cancelled && setAppliedCoupon(result))
+      .catch((err) => {
+        if (cancelled) return;
+        setAppliedCoupon(null);
+        setCouponError(err instanceof Error && err.message ? err.message : 'This coupon does not apply to this plan.');
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlan.id]);
   // Searching shows matching chapters from every subject
   const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -327,12 +549,23 @@ export function CourseDetailView({
         showToast('Lessons unlock after enrollment.');
       }
     }
-    else if (tab === 'tests') showToast('Tests unlock with enrolment — preview coming soon.');
-    else showToast('Ranker Community opens for enrolled students.');
   };
 
   const handleEnroll = async () => {
     if (enrolling) return;
+        // A coupon that makes the plan free enrols right away (the server checks the coupon and the price again)
+        if (appliedCoupon && appliedCoupon.finalPrice === 0) {
+          setEnrolling(true);
+          const result = await enrollWithCoupon(batch.courseId, appliedCoupon.code, selectedPlan.id);
+          setEnrolling(false);
+          if (!result.ok) {
+            showToast(result.error);
+            return;
+          }
+          confetti({ particleCount: 110, spread: 80, origin: { y: 0.6 }, colors: ['#10B981', '#175A67', '#F59E0B'] });
+          showToast(`You're enrolled in ${batch.title}!`);
+          return;
+        }
     // A paid Pro / Pro Max must never fall through to the free Basic enrolment
     if (showPlans && selectedPlan.id !== 'basic' && !isFree) {
       showToast(`Online payment for ${selectedPlan.name} is coming soon.`);
@@ -385,55 +618,26 @@ export function CourseDetailView({
 
       {/* Body */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {/* Hero */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#0F3B42] via-[#0D3239] to-[#0A262C] text-white">
-          <div className="absolute -top-20 right-10 w-[420px] h-[420px] rounded-full bg-teal-300/10 blur-[110px] pointer-events-none" />
-          <div className="relative max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 items-center">
-            <div>
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider bg-white/10 border border-white/15 px-3 py-1 rounded-full">
-                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                {batch.label}
-              </span>
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mt-4">{batch.title}</h1>
-              {batch.description && <p className="text-sm text-white/70 mt-3 max-w-2xl leading-relaxed whitespace-pre-line">{batch.description}</p>}
-              <div className="flex flex-wrap gap-2 mt-5">
+        {/* Title band */}
+        <section className="relative overflow-hidden bg-gradient-to-r from-[#175A67] via-[#145160] to-[#0F3B42] text-white">
+          <span className="absolute -top-10 right-[22%] w-48 h-24 rounded-3xl bg-white/[0.07] pointer-events-none" aria-hidden />
+          <span className="absolute -bottom-12 right-6 w-40 h-32 rounded-3xl bg-white/[0.07] pointer-events-none" aria-hidden />
+          <div className="relative max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-7 sm:py-9">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider bg-white/10 border border-white/15 px-3 py-1 rounded-full">
+              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+              {batch.label}
+            </span>
+            <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mt-3">{batch.title}</h1>
+            {heroMeta.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-4">
                 {heroMeta.map((meta) => (
-                  <span key={meta.text} className="flex items-center gap-1.5 text-[11px] font-medium bg-white/[0.06] border border-white/10 px-3 py-1.5 rounded-lg">
+                  <span key={meta.text} className="flex items-center gap-1.5 text-[11px] font-medium bg-white/[0.08] border border-white/15 px-3 py-1.5 rounded-lg">
                     {meta.icon}
                     {meta.text}
                   </span>
                 ))}
               </div>
-            </div>
-
-            <div className="flex flex-col items-start lg:items-end gap-3">
-              {batch.thumbnail && (
-                <img
-                  src={batch.thumbnail}
-                  alt={batch.title}
-                  className="w-full max-w-[320px] aspect-video object-cover rounded-xl border border-white/15 shadow-lg"
-                  onError={(e) => (e.currentTarget.style.display = 'none')}
-                />
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={handleShare}
-                  className="flex items-center gap-1.5 text-xs font-semibold bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-2 rounded-lg transition-colors"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  Share Course
-                </button>
-              </div>
-              <div className="flex items-center gap-3 rounded-xl bg-white/10 border border-white/15 px-4 py-3">
-                <span className="w-10 h-10 rounded-lg bg-amber-400/20 text-amber-300 flex items-center justify-center">
-                  <Zap className="w-5 h-5 fill-current" />
-                </span>
-                <span>
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-300">Cohort Bonus</span>
-                  <span className="block text-sm font-semibold">{isEnrolled ? '500 XP credited to your account' : 'Earn 500 XP on Enrollment'}</span>
-                </span>
-              </div>
-            </div>
+            )}
           </div>
         </section>
 
@@ -459,7 +663,7 @@ export function CourseDetailView({
           {/* What's included + summary */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
             <section ref={plansRef} className="scroll-mt-16">
-            {showPlans ? (
+            {showPlans && (
                 <>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-[#175A67]">Enrollment Pathways</p>
                   <h2 className="text-xl sm:text-2xl font-bold tracking-tight mt-1">Choose a Plan tailored for your preparation</h2>
@@ -478,42 +682,23 @@ export function CourseDetailView({
                     ))}
                   </div>
                 </>
-              ) : (
-                <>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#175A67]">Course Overview</p>
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight mt-1">What you get with this course</h2>
+              )}
+              {!showPlans && (
+                <IncludesBox
+                  title="Course Includes"
+                  badge={isEnrolled ? 'Enrolled' : null}
+                  lead={null}
+                  lines={batch.plans[0]?.features ?? []}
+                  fallback={batch.features}
+                />
+              )}
 
-              <div className="bg-white rounded-2xl p-5 border-2 border-[#175A67] shadow-[0_12px_32px_rgba(23,90,103,0.18)] mt-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-50 text-sky-700">{batch.category}</span>
-                  {isEnrolled && (
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                      <CheckCircle2 className="w-3 h-3" />
-                      ENROLLED
-                    </span>
-                  )}
+              {/* Description from the CMS, below the plans */}
+              {batch.description && (
+                <div className="mt-6 bg-white rounded-2xl p-5 sm:p-6 shadow-[0_6px_24px_rgb(0,0,0,0.04)]">
+                  <h3 className="text-base sm:text-lg font-semibold">About this course</h3>
+                  <p className="text-sm text-slate-600 leading-relaxed mt-3 whitespace-pre-line [overflow-wrap:anywhere]">{batch.description}</p>
                 </div>
-                <p className="text-lg font-semibold mt-3">{batch.title}</p>
-                <p className="flex items-baseline gap-2 mt-3">
-                  <span className="text-2xl font-bold">{isFree ? 'Free' : formatINR(batch.price)}</span>
-                  {hasDiscount && <span className="text-xs text-slate-400 line-through">{formatINR(batch.mrp)}</span>}
-                </p>
-                {hasDiscount && (
-                  <p className="text-[11px] font-bold mt-0.5 text-[#175A67]">
-                    {discountPct(batch.price, batch.mrp)}% OFF • One-time payment
-                  </p>
-                )}
-
-                <div className="border-t border-slate-100 mt-4 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {batch.features.map((feature) => (
-                    <p key={feature.text} className="flex items-start gap-2 text-[11px] text-slate-600">
-                      <feature.icon className="w-3.5 h-3.5 text-[#175A67] shrink-0 mt-px" />
-                      {feature.text}
-                    </p>
-                  ))}
-                </div>
-              </div>
-              </>
               )}
 
               {batch.mentors.length > 0 && (
@@ -541,11 +726,27 @@ export function CourseDetailView({
             </section>
 
             {/* Summary / checkout card */}
-            <aside className="lg:sticky lg:top-16 bg-white rounded-2xl p-5 shadow-[0_12px_40px_rgba(11,28,32,0.08)]">
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-sky-50 text-sky-700 px-2 py-1 rounded-md">
-                <Target className="w-3.5 h-3.5" />
-                {batch.category}
-              </span>
+            <aside className="lg:sticky lg:top-16 bg-white rounded-2xl p-3 shadow-[0_12px_40px_rgba(11,28,32,0.08)]">
+              {batch.thumbnail && !thumbFailed && (
+                <img
+                  src={batch.thumbnail}
+                  alt={batch.title}
+                  className="w-full aspect-[2/1] object-cover rounded-xl"
+                  onError={() => setThumbFailed(true)}
+                />
+              )}
+              <div className="px-2 pt-3 pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-[12px] text-slate-600 min-w-0">
+                  <Target className="w-4 h-4 text-slate-500 shrink-0" />
+                  <span className="truncate">For {batch.category} aspirants</span>
+                </span>
+                {(batch.duration || batch.totalLessons) && (
+                  <span className="shrink-0 text-[11px] font-semibold text-[#175A67] bg-sky-50 px-2.5 py-1 rounded-md">
+                    {batch.duration ?? `${batch.totalLessons} lessons`}
+                  </span>
+                )}
+              </div>
 
               <div className="mt-4 rounded-xl border border-slate-200/80 p-4">
                 <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 leading-relaxed">
@@ -566,6 +767,12 @@ export function CourseDetailView({
                     </>
                   )}
                 </p>
+                {appliedCoupon && (
+                  <div className="flex items-center justify-between text-xs mt-3">
+                    <span className="text-slate-500">Coupon ({appliedCoupon.code}):</span>
+                    <span className="font-bold text-emerald-700">− {formatINR(appliedCoupon.discountAmount)}</span>
+                  </div>
+                )}
                 {hasDiscount && (
                   <>
                     <div className="flex items-center justify-between text-xs mt-3">
@@ -575,6 +782,20 @@ export function CourseDetailView({
                   </>
                 )}
               </div>
+
+              {couponable && (
+                <CouponBox
+                  coupons={coupons}
+                  applied={appliedCoupon}
+                  busyCode={couponBusy}
+                  error={couponError}
+                  onApply={(code) => void applyCoupon(code)}
+                  onRemove={() => {
+                    setAppliedCoupon(null);
+                    setCouponError(null);
+                  }}
+                />
+              )}
 
               {isEnrolled ? (
                 <button
@@ -638,6 +859,7 @@ export function CourseDetailView({
                   <SupportContactList contacts={supportContacts} compact />
                 </div>
               )}
+              </div>
             </aside>
           </div>
 
@@ -764,6 +986,9 @@ export function CourseDetailView({
               )}
             </section>
           )}
+
+          {/* FAQs from CMS → FAQs (hidden when the course has none) */}
+          <CourseFaqs courseId={batch.courseId} />
         </div>
       </div>
 

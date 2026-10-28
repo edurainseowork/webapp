@@ -211,6 +211,23 @@ export async function fetchCourseContent(courseId: number): Promise<ContentResul
   }
 }
 /* ------------------------------------------------------------------ */
+/*  FAQs (CMS → FAQs, shown at the end of the course page)              */
+/* ------------------------------------------------------------------ */
+
+export interface CourseFaq {
+  id: number;
+  question: string;
+  /** Markdown (bold, italic, lists, links) */
+  answer: string;
+}
+
+/** FAQs for a course: its own and the "All courses" ones, lowest sort order first. */
+export async function fetchCourseFaqs(courseId: number): Promise<CourseFaq[]> {
+  const res = await apiFetch<{ data?: CourseFaq[] }>(`/courses/${courseId}/faqs`);
+  return Array.isArray(res.data) ? res.data : [];
+}
+
+/* ------------------------------------------------------------------ */
 /*  Lesson progress (profile → Overall Syllabus Velocity)               */
 /* ------------------------------------------------------------------ */
 
@@ -252,5 +269,21 @@ export async function enrollInCourse(courseId: number): Promise<EnrollResult> {
         ? 'Online payment for this course is coming soon.'
         : errorMessage(err, 'Could not enrol. Please try again.'),
     };
+  }
+}
+
+/**
+ * Enrols with a coupon that makes the chosen plan free (100% off). The server re-checks the coupon and the
+ * price (POST /razorpay/order); when anything is still to pay it does not enrol and the student is told.
+ */
+export async function enrollWithCoupon(courseId: number, couponCode: string, plan: 'basic' | 'pro' | 'proMax'): Promise<EnrollResult> {
+  try {
+    const res = await apiFetch<{ free?: boolean }>('/razorpay/order', { body: { courseId, couponCode, plan } });
+    if (!res.free) return { ok: false, paymentRequired: true, error: 'Online payment for this course is coming soon.' };
+    if (!state.ownedIds.includes(courseId)) setState({ ownedIds: [...state.ownedIds, courseId] });
+    void refreshOwnedCourses();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, paymentRequired: false, error: errorMessage(err, 'Could not apply the coupon. Please try again.') };
   }
 }

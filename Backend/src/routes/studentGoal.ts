@@ -6,7 +6,7 @@ import { requireAuth } from "../middlewares/auth.js";
 import { rateLimit } from "../middlewares/security";
 import { HttpError } from "../lib/http-error";
 import { ensureMentorshipSchema } from "../lib/mentorshipSchema";
-
+import { syncActiveCourseToGoal } from "../lib/activeCourse";
 // /api/me/goal — the signed-in student's goal (exam / cohort). Goals are the CMS categories
 // (GET /api/categories). The user comes from the verified token, never from the request body.
 const router = Router();
@@ -48,7 +48,9 @@ router.put("/", rateLimit({ windowMs: 60_000, max: 20 }), async (req, res) => {
     .insert(studentGoalsTable)
     .values({ userId, categoryId, updatedAt: new Date() })
     .onConflictDoUpdate({ target: studentGoalsTable.userId, set: { categoryId, updatedAt: new Date() } });
-  res.json({ success: true, goal: await readGoal(userId) });
+  // Keep the active course in the new cohort (or pick one from it)
+  const activeCourseId = await syncActiveCourseToGoal(userId, categoryId);
+  res.json({ success: true, goal: await readGoal(userId), activeCourseId });
 });
 
 export default router;

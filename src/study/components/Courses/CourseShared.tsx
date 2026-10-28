@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronRight, CheckCircle2, SearchX, AlertTriangle, RefreshCw, BookOpen } from 'lucide-react';
+import { ChevronRight, CheckCircle2, SearchX, AlertTriangle, RefreshCw, BookOpen, Star } from 'lucide-react';
 import { Batch, CatalogFilter, HeaderTone, StatusTone } from './courseData';
 
 /* ------------------------------------------------------------------ */
@@ -78,97 +78,123 @@ const STATUS_DOTS: Record<StatusTone, string> = {
 
 export function BatchCard({ batch, onOpen, onBuy, owned = false }: { batch: Batch; onOpen: () => void; onBuy: () => void; owned?: boolean }) {
   const tone = HEADER_TONES[batch.tone];
+  const off = discountPct(batch.price, batch.mrp);
+  const paidPlans = (batch.plans ?? []).filter((p) => p.id !== 'basic');
+  // Small outlined tag on the right (like a language tag): the course length, else lesson count
+  const tag = batch.duration ?? (batch.totalLessons ? `${batch.totalLessons} lessons` : null);
+  const meta = batch.features[0];
+  // A thumbnail that fails to load falls back to the course name on the tone colour
+  const [imgFailed, setImgFailed] = useState(false);
+  const showImage = !!batch.thumbnail && !imgFailed;
   return (
     <article
       onClick={onOpen}
-      className="group bg-white rounded-2xl overflow-hidden border border-white shadow-[0_6px_24px_rgb(0,0,0,0.05)] hover:shadow-[0_14px_36px_rgb(0,0,0,0.10)] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex flex-col"
+      className="group bg-white rounded-2xl overflow-hidden border border-slate-200/80 hover:border-slate-300 shadow-[0_4px_18px_rgb(0,0,0,0.04)] hover:shadow-[0_14px_36px_rgb(0,0,0,0.10)] transition-all duration-300 cursor-pointer flex flex-col"
     >
-      <div className={`relative px-5 pt-4 pb-5 min-h-[96px] ${tone.header}`}>
-        {/* CMS thumbnail behind the tone gradient, so the card keeps its look */}
-        {batch.thumbnail && (
-          <>
-            <img src={batch.thumbnail} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
-            <div className={`absolute inset-0 opacity-75 ${tone.header}`} />
-          </>
+      {/* Banner: the CMS thumbnail in full (2:1), or the course name on the tone colour */}
+      <div className={`relative aspect-[2/1] overflow-hidden ${showImage ? 'bg-[#FFF6EA]' : tone.header}`}>
+        {showImage ? (
+          <img
+            src={batch.thumbnail!}
+            alt={batch.title}
+            loading="lazy"
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex flex-col justify-end p-5">
+            <span className={`self-start text-[9px] font-bold uppercase tracking-wider border px-2 py-0.5 rounded-full ${tone.label}`}>{batch.label}</span>
+            <h3 className="text-white font-bold text-xl mt-2 leading-snug line-clamp-2">{batch.name}</h3>
+          </div>
         )}
-        <div className="relative">
-          <span className={`inline-block text-[9px] font-bold uppercase tracking-wider border px-2 py-0.5 rounded-full ${tone.label}`}>
-            {batch.label}
+        {paidPlans.length > 0 && (
+          <span className="absolute top-0 inset-x-0 flex items-center justify-center gap-1.5 bg-white/85 backdrop-blur-sm text-[11px] text-[#0B1C30] py-1.5">
+            <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+            Multiple plans inside: <span className="font-semibold">{paidPlans.map((p) => p.name).join(', ')}</span>
           </span>
-          <h3 className="text-white font-semibold text-[15px] mt-2 leading-snug">{batch.name}</h3>
-        </div>
+        )}
       </div>
 
-      <div className="p-5 flex-1 flex flex-col">
-        <div className="flex flex-wrap gap-1.5">
-          {batch.chips.map((chip) => (
-            <span key={chip} className="text-[10px] font-semibold text-[#40484B] bg-[#F6EFE9] px-2 py-0.5 rounded">
-              {chip}
-            </span>
-          ))}
+      <div className="px-5 pt-4 pb-5 flex-1 flex flex-col">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold text-[#E8590C] truncate">{batch.category}</span>
+          {tag && (
+            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[#40484B] border border-slate-300 rounded-md px-2 py-0.5">{tag}</span>
+          )}
         </div>
 
-        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[#0B1C30] mt-3">
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOTS[batch.status.tone]}`} />
+        <h3 className="text-[17px] font-semibold text-[#0B1C30] mt-1.5 truncate" title={batch.title}>
+          {batch.title}
+        </h3>
+
+        {meta && (
+          <p className="flex items-center gap-2 text-[12px] text-slate-600 mt-2.5 min-w-0">
+            <BookOpen className="w-4 h-4 text-slate-500 shrink-0" />
+            <span className="truncate">{meta.text}</span>
+          </p>
+        )}
+        <p className="flex items-center gap-2 text-[12px] text-slate-600 mt-1.5">
+          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ring-4 ring-slate-100 ${STATUS_DOTS[batch.status.tone]}`} />
           {batch.status.text}
         </p>
 
-        <ul className="mt-3 space-y-2">
-          {batch.features.map((feature) => (
-            <li key={feature.text} className="flex items-center gap-2 text-[11px] text-slate-500">
-              <feature.icon className="w-3.5 h-3.5 text-[#2A707C] shrink-0" />
-              {feature.text}
-            </li>
-          ))}
-        </ul>
-
-        <div className="mt-auto pt-4">
-          <div className="border-t border-slate-100 pt-4 flex items-end justify-between gap-3">
-            <div className="min-w-0">
-              <p className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-[#0B1C30]">{batch.price === 0 ? 'Free' : formatINR(batch.price)}</span>
-                {batch.mrp > batch.price && <span className="text-xs text-slate-400 line-through">{formatINR(batch.mrp)}</span>}
+        {/* Price never shrinks under the buttons: when the card is narrow the buttons move to their own line */}
+        <div className="mt-auto pt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-3">
+          <div className="shrink-0">
+            <p className="text-xl font-bold text-[#0B1C30] whitespace-nowrap">{batch.price === 0 ? 'Free' : formatINR(batch.price)}</p>
+            {batch.mrp > batch.price && (
+              <p className="flex items-baseline gap-1.5 mt-0.5 whitespace-nowrap">
+                <span className="text-xs text-slate-400 line-through">{formatINR(batch.mrp)}</span>
+                {off > 0 && <span className="text-[12px] font-semibold text-emerald-600">{off}% OFF</span>}
               </p>
-              {batch.offerText && <p className="text-[10px] font-bold text-[#175A67] mt-0.5">{batch.offerText}</p>}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
+            )}
+          </div>
+          <div className="flex items-stretch gap-1.5 shrink-0 ml-auto">
+            {owned ? (
+              // Already purchased: no Buy Now; opens the course
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpen();
                 }}
-                title="View course details"
-                className="w-8 h-8 rounded-full bg-[#F6EFE9] hover:bg-[#EEE2D8] text-[#0B1C30] flex items-center justify-center transition-colors"
+                title="You are enrolled in this course"
+                className="flex items-center gap-1.5 whitespace-nowrap bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[13px] font-semibold px-3 py-2 rounded-lg transition-all active:scale-95"
               >
-                <ChevronRight className="w-4 h-4" />
+                <CheckCircle2 className="w-4 h-4" />
+                Enrolled
               </button>
-              {owned ? (
-                // Already purchased: no Buy Now; opens the course
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpen();
-                  }}
-                  title="You are enrolled in this course"
-                  className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold px-4 py-2 rounded-full transition-all active:scale-95"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Enrolled
-                </button>
-              ) : (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onBuy();
-                  }}
-                  className="bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold px-4 py-2 rounded-full transition-all active:scale-95"
-                >
-                  Buy Now
-                </button>
-              )}
-            </div>
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBuy();
+                }}
+                className="whitespace-nowrap bg-[#0B1C20] hover:bg-[#15302F] text-white text-[13px] font-semibold px-4 py-2 rounded-lg transition-all active:scale-95"
+              >
+                Buy Now
+              </button>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
+              }}
+              title="View course details"
+              aria-label="View course details"
+              className="w-9 shrink-0 rounded-lg border border-slate-300 hover:bg-slate-50 text-[#0B1C30] flex items-center justify-center transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
+
+        {batch.mrp > batch.price && batch.price > 0 && (
+          <p className="relative mt-4 flex items-center gap-2 bg-[#FFF1E6] rounded-lg px-2.5 py-2 text-[12px] text-[#0B1C30] min-w-0">
+            <span className="absolute -top-1.5 left-6 w-3 h-3 bg-[#FFF1E6] rotate-45" aria-hidden />
+            <span className="relative shrink-0 bg-[#F97316] text-white text-[11px] font-semibold px-2 py-0.5 rounded">Offer</span>
+            <span className="relative truncate">Save {formatINR(batch.mrp - batch.price)} on this batch</span>
+          </p>
+        )}
       </div>
     </article>
   );
@@ -256,7 +282,7 @@ export function BatchCatalog({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
           {visible.map((batch) => (
             <BatchCard key={batch.id} batch={batch} owned={isOwned?.(batch.id) ?? false} onOpen={() => onOpenBatch(batch.id)} onBuy={() => onBuyBatch(batch.id)} />
           ))}
@@ -272,7 +298,7 @@ export function BatchCatalog({
 
 export function CatalogSkeleton({ count = 3 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5" aria-busy="true" role="status" aria-label="Loading courses">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5" aria-busy="true" role="status" aria-label="Loading courses">
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-[0_6px_24px_rgb(0,0,0,0.05)] border border-slate-100 flex flex-col">
           <div className="h-[96px] skeleton-shimmer-dark" />

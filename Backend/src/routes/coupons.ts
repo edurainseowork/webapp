@@ -4,7 +4,8 @@ import { couponCoursesTable, couponRedemptionsTable, couponsTable, coursesTable,
 import { ApplyCouponBody, CouponBody, normalizeCouponCode } from "@workspace/api-zod";
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { requireAdmin, requireAuth } from "../middlewares/auth.js";
-
+import { getOrSetCache, invalidateCachePrefix } from "../lib/perfEngine";
+import { PLAN_NAMES, planIdSchema, planPrice } from "../lib/coursePlans";
 const router = Router();
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -124,7 +125,14 @@ const findMissingCourses = async (courseIds: number[]) => {
 
 // Validate a coupon, optionally for a specific course (returns the discounted price when a course is given)
 router.post("/validate", async (req, res) => {
-  const { code, courseId: rawCourseId } = req.body ?? {};
+  const { code, courseId: rawCourseId, plan: rawPlan } = req.body ?? {};
+  // Basic / Pro / Pro Max: the discount is worked out on that plan's price (default Basic)
+  const planParsed = planIdSchema.safeParse(rawPlan ?? "basic");
+  if (!planParsed.success) {
+    res.status(400).json({ error: "Invalid plan" });
+    return;
+  }
+  const plan = planParsed.data;
   if (!code || typeof code !== "string") {
     res.status(400).json({ error: "Coupon code is required" });
     return;
@@ -150,7 +158,12 @@ router.post("/validate", async (req, res) => {
         res.status(404).json({ valid: false, error: "Course not found" });
         return;
       }
-      pricing = calculateDiscount(course.price, coupon.discountPercent, coupon.maxDiscountAmount);
+      const listPrice = await planPrice(courseId, course.price, plan);
+      if (listPrice === null) {
+        res.status(400).json({ valid: false, error: `This course has no ${PLAN_NAMES[plan]} plan` });
+        return;
+      }
+      pricing = { plan, ...calculateDiscount(listPrice, coupon.discountPercent, coupon.maxDiscountAmount) };
     }
 
     res.json({ valid: true, code: coupon.code, discountPercent: coupon.discountPercent, maxDiscountAmount: coupon.maxDiscountAmount ?? null, ...pricing });
@@ -169,22 +182,20 @@ router.get("/public", async (req, res) => {
   }
 
   try {
-    const coupons = await db.select().from(couponsTable)
-      .where(and(eq(couponsTable.isPublic, true), eq(couponsTable.isActive, true)))
-      .orderBy(asc(couponsTable.id));
-    const courseIdsByCoupon = await getCouponCourseIds(coupons.map((coupon) => coupon.id));
-    const applicable = coupons.filter((coupon) => {
-      const courseIds = courseIdsByCoupon.get(coupon.id) ?? [];
-      return courseIds.length === 0 || courseIds.includes(courseId);
-    });
-    res.json({
-      success: true,
-      data: applicable.map(({ code, discountPercent, maxDiscountAmount }) => ({
-        code,
-        discountPercent,
-        maxDiscountAmount: maxDiscountAmount ?? null,
-      })),
-    });
+       // Cached per course; cleared whenever an admin creates, edits or deletes a coupon
+       const data = await getOrSetCache(`edurain:coupons:public:${courseId}`, 120, async () => {
+        const coupons = await db.select().from(couponsTable)
+          .where(and(eq(couponsTable.isPublic, true), eq(couponsTable.isActive, true)))
+          .orderBy(asc(couponsTable.id));
+        const courseIdsByCoupon = await getCouponCourseIds(coupons.map((coupon) => coupon.id));
+        return coupons
+          .filter((coupon) => {
+            const courseIds = courseIdsByCoupon.get(coupon.id) ?? [];
+            return (courseIds.length === 0 || courseIds.includes(courseId)) && !isExhausted(coupon);
+          })
+          .map(({ code, discountPercent, maxDiscountAmount }) => ({ code, discountPercent, maxDiscountAmount: maxDiscountAmount ?? null }));
+      });
+      res.json({ success: true, data });
   } catch (error) {
     console.error("Failed to fetch public coupons", error);
     res.status(500).json({ error: "Failed to fetch coupons" });
@@ -296,6 +307,7 @@ router.post("/", requireAdmin, async (req, res) => {
       await tx.insert(couponCoursesTable).values(courseIds.map((courseId) => ({ couponId: created.id, courseId })));
       return created;
     });
+    await invalidateCachePrefix("edurain:coupons");
     res.status(201).json({ success: true, data: serializeCoupon(coupon, courseIds) });
   } catch (error: any) {
     if (error?.code === "23505") {
@@ -354,6 +366,7 @@ router.put("/:id", requireAdmin, async (req, res) => {
       await tx.insert(couponCoursesTable).values(courseIds.map((courseId) => ({ couponId: id, courseId })));
       return updated;
     });
+    await invalidateCachePrefix("edurain:coupons");
     res.json({ success: true, data: serializeCoupon(coupon, courseIds) });
   } catch (error: any) {
     if (error?.code === "23505") {
@@ -373,6 +386,7 @@ router.delete("/:id", requireAdmin, async (req, res) => {
   }
   try {
     await db.delete(couponsTable).where(eq(couponsTable.id, id));
+    await invalidateCachePrefix("edurain:coupons");
     res.json({ success: true });
   } catch (error) {
     console.error("Failed to delete coupon", error);

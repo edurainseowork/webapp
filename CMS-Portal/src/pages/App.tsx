@@ -20,6 +20,7 @@ import TeacherAssistantDesk from './TeacherAssistantDesk'
 import TeacherAssistantAnalysis from './TeacherAssistantAnalysis'
 import { handoffError } from '../handoff'
 import SupportContacts from './SupportContacts'
+import FaqManager from './FaqManager'
 import CustomSelect from '../components/CustomSelect'
 import '../index.css'
 
@@ -39,6 +40,7 @@ const TAB_TO_PATH: Record<string, string> = {
   notifications: '/notifications',
   tests: '/tests',
   supportContacts: '/support-contacts',
+  faqs: '/faqs',
   students: '/students',
   admins: '/manage-staff',
   taAnalytics: '/ta-analytics',
@@ -59,6 +61,7 @@ const pathToTab = (pathname: string): string => {
   if (clean === '/notifications') return 'notifications';
   if (clean === '/tests') return 'tests';
   if (clean === '/support-contacts' || clean === '/support') return 'supportContacts';
+  if (clean === '/faqs' || clean === '/faq') return 'faqs';
   if (clean === '/students' || clean === '/student-management') return 'students';
   if (clean === '/manage-staff' || clean === '/admins') return 'admins';
   if (clean === '/ta-analytics' || clean === '/teacher-assistant-analysis') return 'taAnalytics';
@@ -749,6 +752,9 @@ function App() {
               <div className={`nav-link ${activeTab === 'supportContacts' ? 'active' : ''}`} onClick={() => handleTabChange('supportContacts')}>
                 Support Contacts
               </div>
+              <div className={`nav-link ${activeTab === 'faqs' ? 'active' : ''}`} onClick={() => handleTabChange('faqs')}>
+                FAQs
+              </div>
               <div className={`nav-link ${activeTab === 'students' ? 'active' : ''}`} onClick={() => handleTabChange('students')}>
                 Student Management
               </div>
@@ -791,6 +797,7 @@ function App() {
                 {activeTab === 'notifications' && 'Notifications'}
                 {activeTab === 'tests' && 'Test Management'}
                 {activeTab === 'supportContacts' && 'Support Contacts'}
+                {activeTab === 'faqs' && 'Course FAQs'}
                 {activeTab === 'students' && 'User & Student Management'}
                 {activeTab === 'admins' && 'Manage Staff'}
                 {activeTab === 'taAnalytics' && 'Teacher Assistant Analysis'}
@@ -1436,6 +1443,11 @@ function App() {
               </div>
             )}
 
+{activeTab === 'faqs' && (
+              <div className="animate-view">
+                <FaqManager showToast={showToast} />
+              </div>
+            )}
             {activeTab === 'students' && (
               <div className="animate-view">
                 <StudentManager

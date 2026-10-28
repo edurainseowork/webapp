@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowLeft, ArrowRight, Star, Users, PlayCircle, Play } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Star, Users, PlayCircle, Play, CheckCircle2, Loader2 } from 'lucide-react';
 import { Batch, toEnrolledCourse, useCatalog } from './courseData';
 import {
   CatalogEmpty,
@@ -8,7 +8,10 @@ import {
   LiveBatchCatalog,
   discountPct,
   formatINR,
+  Toast,
+  useToast,
 } from './CourseShared';
+import { makeCourseActive, useActiveCourse } from '../../lib/activeCourse';
 import { SubPageHeader, BreadcrumbCrumb } from '../SubPageHeader';
 import { apiFetch } from '../../lib/api';
 
@@ -112,9 +115,27 @@ export function EnrolledCoursesView({
   // The student's courses, straight from the backend (GET /razorpay/my-courses)
   const allCourses = ownedBatches.map(toEnrolledCourse);
   const q = query.trim().toLowerCase();
-  const courses = allCourses.filter(
-    (c) => !q || c.title.toLowerCase().includes(q) || c.batchLabel.toLowerCase().includes(q)
-  );
+  // One active course at a time (saved on the account); it is listed first
+  const { activeCourseId } = useActiveCourse();
+  const isActive = (batchId: string) => activeCourseId !== null && String(activeCourseId) === batchId;
+  const courses = allCourses
+    .filter((c) => !q || c.title.toLowerCase().includes(q) || c.batchLabel.toLowerCase().includes(q))
+    .sort((a, b) => Number(isActive(b.batchId)) - Number(isActive(a.batchId)));
+  const [activating, setActivating] = useState<string | null>(null);
+  const [toast, showToast] = useToast();
+
+  const activate = async (batchId: string, title: string) => {
+    if (activating || isActive(batchId)) return;
+    setActivating(batchId);
+    try {
+      await makeCourseActive(Number(batchId)); // switches at once; rolls back on failure
+      showToast(`${title} is now your active course`);
+    } catch (err) {
+      showToast(err instanceof Error && err.message ? err.message : 'Could not change the active course. Please try again.');
+    } finally {
+      setActivating(null);
+    }
+  };
 
   return (
     <div className="relative w-full rounded-[24px] overflow-hidden flex flex-col bg-[#DCEAE3] font-sans text-[#0B1C30] min-h-[calc(100vh-6rem)] shadow-sm">
@@ -292,8 +313,11 @@ export function EnrolledCoursesView({
                 </button>
                 <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Your Enrolled Courses</h2>
                 <span className="text-[10px] font-bold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">
-                  {allCourses.length} ACTIVE
+                  {allCourses.length} ENROLLED
                 </span>
+                {allCourses.some((c) => isActive(c.batchId)) && (
+                  <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">1 ACTIVE</span>
+                )}
               </div>
               <button
                 onClick={() => catalogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -317,19 +341,31 @@ export function EnrolledCoursesView({
                 {courses.map((course) => {
                   // Lesson progress isn't tracked by the backend yet
                   const justEnrolled = course.progress === 0;
+                  const active = isActive(course.batchId);
                   return (
                     <article
                       key={course.id}
+                      data-active={active || undefined}
                       onClick={() => onOpenBatch(course.batchId)}
-                      className="bg-white rounded-2xl p-5 flex flex-col shadow-[0_6px_24px_rgb(0,0,0,0.05)] hover:shadow-[0_14px_36px_rgb(0,0,0,0.10)] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+                      className={`bg-white rounded-2xl p-5 flex flex-col shadow-[0_6px_24px_rgb(0,0,0,0.05)] hover:shadow-[0_14px_36px_rgb(0,0,0,0.10)] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer ${
+                        active ? 'ring-2 ring-emerald-500' : ''
+                      }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] font-semibold bg-[#F6EFE9] px-2 py-0.5 rounded">{course.batchLabel}</span>
-                        <span className="flex items-center gap-1 text-[11px] font-semibold text-[#175A67]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#175A67]" />
-                          {justEnrolled ? 'Just Enrolled' : `${course.progress}% Completed`}
-                        </span>
+                        {active ? (
+                          <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Active
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-[11px] font-semibold text-[#175A67]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#175A67]" />
+                            {justEnrolled ? 'Just Enrolled' : `${course.progress}% Completed`}
+                          </span>
+                        )}
                       </div>
+
 
                       <h3 className="font-semibold text-[15px] leading-snug mt-3">{course.title}</h3>
 
@@ -355,12 +391,30 @@ export function EnrolledCoursesView({
                           <div className="h-full rounded-full bg-[#175A67]" style={{ width: `${course.progress}%` }} />
                         </div>
 
+                        {active ? (
+                          <p className="mt-4 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-emerald-700">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Your active course
+                          </p>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void activate(course.batchId, course.title);
+                            }}
+                            disabled={activating !== null}
+                            className="mt-4 w-full flex items-center justify-center gap-1.5 border border-[#175A67]/30 hover:bg-[#175A67]/5 disabled:opacity-60 text-[#175A67] text-xs font-semibold py-2 rounded-full transition-all active:scale-[0.98]"
+                          >
+                            {activating === course.batchId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                            Set as Active
+                          </button>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onOpenBatch(course.batchId);
                           }}
-                          className="mt-4 w-full flex items-center justify-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold py-2.5 rounded-full transition-all active:scale-[0.98]"
+                          className="mt-2 w-full flex items-center justify-center gap-1.5 bg-[#0B1C20] hover:bg-[#15302F] text-white text-xs font-semibold py-2.5 rounded-full transition-all active:scale-[0.98]"
                         >
                           <Play className="w-3 h-3 fill-current" />
                           {justEnrolled ? 'Start Learning' : 'Resume Lecture'}
@@ -393,6 +447,8 @@ export function EnrolledCoursesView({
           </section>
         </div>
       </div>
+      
+      <Toast message={toast} />
     </div>
   );
 }
