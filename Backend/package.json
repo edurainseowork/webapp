@@ -11,6 +11,11 @@
     "admin": "node ./tools/set-admin.mjs",
     "seed:content": "node ./src/scripts/seedCourseContent.mjs",
     "verify:api": "node ./verify-api.mjs",
+    "test:integration": "node --env-file=.env ./tests/integration/api.integration.mjs",
+    "test:load": "node --env-file=.env ./performance/run-load-test.mjs",
+    "test:stress": "node --env-file=.env ./performance/run-stress-test.mjs",
+    "test:break": "node ./src/scripts/run-break-tests.mjs",
+    "test:check": "node ./src/scripts/backend-check.mjs",
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:migrate": "node ./src/db/migrate.mjs",
     "db:push": "drizzle-kit push --config ./drizzle.config.ts"

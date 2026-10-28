@@ -82,4 +82,5 @@ app.use("/api", (_req, res) => {
 
 app.use(errorHandler);
 
+export { pool } from "@workspace/db";
 export default app;

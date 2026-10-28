@@ -44,6 +44,7 @@ const router = Router();
 router.use(restrictDeskRoles);
 
 router.use("/health", healthRouter);
+router.use("/healthz", healthRouter);
 
 // 1. Public Catalog & Read Endpoints (100 req / 60s Token Bucket per IP)
 router.use("/courses", catalogReadLimiter, coursesRouter);
