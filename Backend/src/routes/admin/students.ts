@@ -82,7 +82,7 @@ router.get("/", async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error: any) {
     logger.error({ err: error }, "Failed to fetch admin students");
-    res.status(500).json({ error: "Failed to fetch students: " + (error?.message || "Internal error") });
+    res.status(500).json({ error: "Failed to fetch students" });
   }
 });
 

@@ -108,7 +108,7 @@ export async function fetchCourseContentTree(
 
   const items = content.map((item) => formatContentItem(item, req));
   const courseIdParam = req.params?.id ?? req.params?.courseId ?? String(courseId);
-  console.log(`[BACKEND CONTENT FETCH] Course: ${courseIdParam}, ParentId: ${req.query?.parentId}, Found Rows: ${items.length}`);
+  logger.info({ courseId: courseIdParam, parentId: req.query?.parentId, count: items.length }, "[content] Fetched course content");
   return items;
 }
 

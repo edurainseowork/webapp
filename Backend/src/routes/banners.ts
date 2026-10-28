@@ -4,6 +4,7 @@ import { bannersTable } from "@workspace/db/schema";
 import { eq, desc, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
 import { getOrSetCache, invalidateCachePrefix } from "../lib/perfEngine";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -92,7 +93,8 @@ router.post("/", requireAdmin, async (req, res) => {
     await invalidateCachePrefix("edurain:banners");
     return res.json({ success: true, data: newBanner[0] });
   } catch (error: any) {
-    return res.status(500).json({ error: "Failed to create banner: " + error.message });
+    logger.error({ err: error }, "[banners] Failed to create banner");
+    return res.status(500).json({ error: "Failed to create banner" });
   }
 });
 
@@ -115,7 +117,8 @@ router.put("/reorder", requireAdmin, async (req, res) => {
     await invalidateCachePrefix("edurain:banners");
     return res.json({ success: true, message: "Banner order updated successfully" });
   } catch (error: any) {
-    return res.status(500).json({ error: "Failed to reorder banners: " + error.message });
+    logger.error({ err: error }, "[banners] Failed to reorder banners");
+    return res.status(500).json({ error: "Failed to reorder banners" });
   }
 });
 

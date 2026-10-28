@@ -174,7 +174,7 @@ router.post("/", authenticateToken, requireAdminOrFaculty, async (req: Request, 
     res.status(201).json({ success: true, ebook: inserted });
   } catch (err: any) {
     logger.error({ err }, "[ebooks] Failed to create ebook");
-    res.status(500).json({ error: err.message || "Failed to create ebook" });
+    res.status(500).json({ error: "Failed to create ebook" });
   }
 });
 
@@ -209,7 +209,7 @@ router.delete("/:id", authenticateToken, requireAdminOrFaculty, async (req: Requ
     res.json({ success: true, message: "E-book deleted successfully" });
   } catch (err: any) {
     logger.error({ err }, "[ebooks] Failed to delete ebook");
-    res.status(500).json({ error: err.message || "Failed to delete ebook" });
+    res.status(500).json({ error: "Failed to delete ebook" });
   }
 });
 
