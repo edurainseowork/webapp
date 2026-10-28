@@ -134,6 +134,7 @@ export const bannersTable = pgTable("banners", {
   courseId: integer("course_id"),
   title: text("title"),
   linkUrl: text("link_url"),
+  sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

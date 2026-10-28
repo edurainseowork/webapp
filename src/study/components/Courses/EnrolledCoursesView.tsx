@@ -128,12 +128,19 @@ export function EnrolledCoursesView({
             <div className="relative overflow-hidden rounded-3xl shadow-[0_12px_40px_rgba(15,59,66,0.25)] border border-white/20 group animate-fadeIn">
               {(() => {
                 const currentBanner = purchasesBanners[purchasesBannerIndex % purchasesBanners.length];
-                const bannerCourse = currentBanner.courseId ? batches.find(b => b.courseId === currentBanner.courseId) : null;
+                const bannerCourse = currentBanner.courseId
+                  ? batches.find((b) => Number(b.courseId) === Number(currentBanner.courseId) || String(b.id) === String(currentBanner.courseId))
+                  : null;
                 return (
                   <div
                     onClick={() => {
-                      if (currentBanner.courseId) onOpenBatch(String(currentBanner.courseId));
-                      else if (currentBanner.linkUrl) window.open(currentBanner.linkUrl, '_blank');
+                      if (bannerCourse) {
+                        onOpenBatch(String(bannerCourse.id));
+                      } else if (currentBanner.courseId) {
+                        onOpenBatch(String(currentBanner.courseId));
+                      } else if (currentBanner.linkUrl) {
+                        window.open(currentBanner.linkUrl, '_blank');
+                      }
                     }}
                     className={`relative w-full ${currentBanner.courseId || currentBanner.linkUrl ? 'cursor-pointer hover:opacity-95 transition-opacity' : ''}`}
                   >
@@ -142,15 +149,22 @@ export function EnrolledCoursesView({
                       alt={currentBanner.title || "Purchases Banner"}
                       className="w-full h-auto max-h-[280px] sm:max-h-[340px] object-cover rounded-3xl block"
                     />
-                    {currentBanner.title && (
-                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 sm:p-6 text-white rounded-b-3xl">
-                        <h2 className="text-lg sm:text-2xl font-bold">{currentBanner.title}</h2>
+                    {(currentBanner.title || bannerCourse) && (
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent p-4 sm:p-6 text-white rounded-b-3xl flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                        <div>
+                          {currentBanner.title && (
+                            <h2 className="text-lg sm:text-2xl font-bold leading-snug drop-shadow-sm">{currentBanner.title}</h2>
+                          )}
+                          {bannerCourse && (
+                            <p className="text-xs sm:text-sm text-white/90 mt-1 font-medium">
+                              Course: {bannerCourse.title}
+                            </p>
+                          )}
+                        </div>
                         {bannerCourse && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="text-xs bg-[#FAD9B5] text-[#0B1C30] font-semibold px-3 py-1 rounded-lg">
-                              View Course &rarr;
-                            </span>
-                          </div>
+                          <span className="self-start sm:self-auto inline-flex items-center gap-1.5 text-xs bg-[#FAD9B5] hover:bg-[#f8cb9c] text-[#0B1C30] font-bold px-4 py-2 rounded-xl shadow-md transition-all">
+                            Explore Course &rarr;
+                          </span>
                         )}
                       </div>
                     )}

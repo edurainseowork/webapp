@@ -167,6 +167,9 @@ function App() {
   const [bannerTitle, setBannerTitle] = useState<string>('');
   const [bannerInputKey, setBannerInputKey] = useState<number>(0);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const [hasUnsavedBannerOrder, setHasUnsavedBannerOrder] = useState(false);
+  const [isSavingBannerOrder, setIsSavingBannerOrder] = useState(false);
+  const bannerSaveButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Loading states for client-side skeletons (250ms rule)
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
@@ -176,9 +179,10 @@ function App() {
   const fetchBanners = async () => {
     setIsLoadingBanners(true);
     try {
-      const data = await apiFetch('/banners');
+      const data = await apiFetch('/banners?placement=all');
       if (data.success) {
         setBannersList(data.data);
+        setHasUnsavedBannerOrder(false);
       }
     } catch (e) {
       console.error("Failed to fetch banners", e);
@@ -420,6 +424,54 @@ function App() {
       }
     } catch (e: any) {
       showToast("Error: " + e.message, "error");
+    }
+  };
+
+  const handleMoveBanner = (bannerId: number, direction: 'left' | 'right') => {
+    const currentPlacementBanners = bannersList.filter(b => (b.placement || 'home') === bannerPlacement);
+    const index = currentPlacementBanners.findIndex(b => b.id === bannerId);
+    if (index === -1) return;
+    if (direction === 'left' && index === 0) return;
+    if (direction === 'right' && index === currentPlacementBanners.length - 1) return;
+
+    const targetIndex = direction === 'left' ? index - 1 : index + 1;
+    const reordered = [...currentPlacementBanners];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+
+    const otherBanners = bannersList.filter(b => (b.placement || 'home') !== bannerPlacement);
+    setBannersList([...otherBanners, ...reordered]);
+    setHasUnsavedBannerOrder(true);
+
+    setTimeout(() => {
+      bannerSaveButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 60);
+  };
+
+  const handleSaveBannerOrder = async () => {
+    const currentPlacementBanners = bannersList.filter(b => (b.placement || 'home') === bannerPlacement);
+    const items = currentPlacementBanners.map((b, idx) => ({
+      id: b.id,
+      sortOrder: idx,
+    }));
+
+    setIsSavingBannerOrder(true);
+    try {
+      const data = await apiFetch('/banners/reorder', {
+        method: 'PUT',
+        body: { items },
+      });
+      if (data.success) {
+        showToast("Banner order saved successfully! Applied across website and mobile app.", "success");
+        setHasUnsavedBannerOrder(false);
+        fetchBanners();
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (e: any) {
+      showToast("Error saving banner order: " + e.message, "error");
+    } finally {
+      setIsSavingBannerOrder(false);
     }
   };
 
@@ -877,9 +929,46 @@ function App() {
 
                   {/* Uploaded Banners Card */}
                   <div className="glass-card">
-                    <h3 style={{ marginBottom: 'var(--space-md)' }}>
-                      {bannerPlacement === 'purchases' ? '🎓 Uploaded Purchased Section Banners' : '📱 Uploaded Homepage Banners'} ({activeBanners.length}/5)
-                    </h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: 'var(--space-md)' }}>
+                      <h3 style={{ margin: 0 }}>
+                        {bannerPlacement === 'purchases' ? '🎓 Uploaded Purchased Section Banners' : '📱 Uploaded Homepage Banners'} ({activeBanners.length}/5)
+                      </h3>
+                      {activeBanners.length > 0 && (
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                          {hasUnsavedBannerOrder && (
+                            <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', animation: 'pulse 1.5s infinite' }} />
+                              Order Changed (Unsaved)
+                            </span>
+                          )}
+                          <button
+                            ref={bannerSaveButtonRef}
+                            type="button"
+                            onClick={handleSaveBannerOrder}
+                            disabled={!hasUnsavedBannerOrder || isSavingBannerOrder}
+                            className="btn"
+                            style={{
+                              background: hasUnsavedBannerOrder ? '#10b981' : 'rgba(255,255,255,0.08)',
+                              color: hasUnsavedBannerOrder ? '#ffffff' : 'rgba(255,255,255,0.4)',
+                              border: hasUnsavedBannerOrder ? '1px solid #059669' : '1px solid rgba(255,255,255,0.1)',
+                              padding: '8px 18px',
+                              fontSize: '0.85rem',
+                              fontWeight: 700,
+                              cursor: hasUnsavedBannerOrder ? 'pointer' : 'not-allowed',
+                              boxShadow: hasUnsavedBannerOrder ? '0 0 16px rgba(16, 185, 129, 0.5)' : 'none',
+                              transform: hasUnsavedBannerOrder ? 'scale(1.02)' : 'none',
+                              transition: 'all 0.25s ease',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            {isSavingBannerOrder ? '💾 Saving Order...' : '💾 Save Banner Order'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     {isLoadingBanners ? (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }} aria-busy="true" role="status">
                         <div className="skeleton-box" style={{ width: '100%', height: '140px', borderRadius: '12px' }} />
@@ -893,28 +982,90 @@ function App() {
                       </p>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                        {activeBanners.map(banner => {
+                        {activeBanners.map((banner, index) => {
                           const linkedCourse = banner.courseId ? coursesList.find(c => c.id === banner.courseId) : null;
                           return (
-                            <div key={banner.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: banner.placement === 'purchases' ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)' }}>
-                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
-                              <div style={{ padding: '8px 12px', fontSize: '0.8rem' }}>
-                                {banner.title && <div style={{ fontWeight: 'bold', color: 'white' }}>{banner.title}</div>}
-                                {linkedCourse && (
-                                  <div style={{ color: '#fcd34d', fontSize: '0.75rem', marginTop: '2px' }}>
-                                    🔗 Links to: {linkedCourse.title}
-                                  </div>
-                                )}
-                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', marginTop: '2px' }}>
-                                  Added: {new Date(banner.createdAt).toLocaleDateString()}
-                                </div>
+                            <div key={banner.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: banner.placement === 'purchases' ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
+                              {/* Order Badge */}
+                              <div style={{ position: 'absolute', top: '8px', left: '8px', zIndex: 2, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', color: '#10b981', border: '1px solid rgba(16,185,129,0.5)', borderRadius: '6px', padding: '3px 8px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                #{index + 1}
                               </div>
+
                               <button 
                                 onClick={() => handleDeleteBanner(banner.id)}
-                                style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(255,0,0,0.85)', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 2, background: 'rgba(255,0,0,0.85)', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                title="Delete Banner"
                               >
                                 Delete
                               </button>
+
+                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
+                              
+                              <div style={{ padding: '10px 12px', fontSize: '0.8rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
+                                <div>
+                                  {banner.title && <div style={{ fontWeight: 'bold', color: 'white' }}>{banner.title}</div>}
+                                  {linkedCourse ? (
+                                    <div style={{ color: '#fcd34d', fontSize: '0.75rem', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      🔗 Links to: <strong>{linkedCourse.title}</strong>
+                                    </div>
+                                  ) : (
+                                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', marginTop: '3px' }}>
+                                      🖼️ Graphic Only (No Course Link)
+                                    </div>
+                                  )}
+                                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', marginTop: '4px' }}>
+                                    Added: {new Date(banner.createdAt).toLocaleDateString()}
+                                  </div>
+                                </div>
+
+                                {/* Reorder Controls */}
+                                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '8px' }}>
+                                  <button
+                                    type="button"
+                                    disabled={index === 0}
+                                    onClick={() => handleMoveBanner(banner.id, 'left')}
+                                    style={{
+                                      flex: 1,
+                                      padding: '5px 8px',
+                                      fontSize: '0.75rem',
+                                      background: index === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.1)',
+                                      color: index === 0 ? 'rgba(255,255,255,0.2)' : 'white',
+                                      border: '1px solid rgba(255,255,255,0.15)',
+                                      borderRadius: '6px',
+                                      cursor: index === 0 ? 'not-allowed' : 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '4px',
+                                    }}
+                                    title="Move earlier in order"
+                                  >
+                                    ◀ Move Earlier
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={index === activeBanners.length - 1}
+                                    onClick={() => handleMoveBanner(banner.id, 'right')}
+                                    style={{
+                                      flex: 1,
+                                      padding: '5px 8px',
+                                      fontSize: '0.75rem',
+                                      background: index === activeBanners.length - 1 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.1)',
+                                      color: index === activeBanners.length - 1 ? 'rgba(255,255,255,0.2)' : 'white',
+                                      border: '1px solid rgba(255,255,255,0.15)',
+                                      borderRadius: '6px',
+                                      cursor: index === activeBanners.length - 1 ? 'not-allowed' : 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '4px',
+                                    }}
+                                    title="Move later in order"
+                                  >
+                                    Move Later ▶
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
@@ -959,8 +1110,7 @@ function App() {
                         <input key={bannerInputKey} type="file" accept="image/*" onChange={e => setBannerFile(e.target.files?.[0] || null)} className="input-field" style={{ width: '100%', padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', cursor: 'pointer' }} />
                       </div>
 
-                      {bannerPlacement === 'purchases' && (
-                        <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
                           <div style={{ flex: 1, minWidth: '220px' }}>
                             <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Link to Course (Optional)</label>
                             <CustomSelect
@@ -991,7 +1141,6 @@ function App() {
                             />
                           </div>
                         </div>
-                      )}
                       
                       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                         {bannerPlacement === 'purchases'

@@ -61,6 +61,7 @@ const STATEMENTS = [
   sql`ALTER TABLE banners ADD COLUMN IF NOT EXISTS course_id integer`,
   sql`ALTER TABLE banners ADD COLUMN IF NOT EXISTS title text`,
   sql`ALTER TABLE banners ADD COLUMN IF NOT EXISTS link_url text`,
+  sql`ALTER TABLE banners ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0`,
   // CMS → Support Contacts; see migrations/0009_support_contacts.sql
   sql`CREATE TABLE IF NOT EXISTS support_contacts (
         id serial PRIMARY KEY,
@@ -97,6 +98,7 @@ const STATEMENTS = [
   sql`CREATE INDEX IF NOT EXISTS users_email_idx ON users (email)`,
   sql`CREATE INDEX IF NOT EXISTS users_role_idx ON users (role)`,
   sql`CREATE INDEX IF NOT EXISTS banners_placement_idx ON banners (placement, created_at DESC)`,
+  sql`CREATE INDEX IF NOT EXISTS banners_sort_order_idx ON banners (placement, sort_order ASC, created_at DESC)`,
   sql`CREATE INDEX IF NOT EXISTS admin_notifications_created_at_idx ON admin_notifications (created_at DESC)`,
   sql`CREATE INDEX IF NOT EXISTS notifications_user_read_idx ON notifications (user_id, is_read, created_at DESC)`,
 ];
