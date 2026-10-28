@@ -8,6 +8,7 @@ import {
   Library,
   Crosshair,
   ChevronRight,
+  Home,
   LayoutGrid,
   Terminal,
   HelpCircle,
@@ -811,7 +812,7 @@ export function App() {
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <LayoutGrid className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+                <Home className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 <span>Home</span>
               </button>
 
@@ -820,18 +821,13 @@ export function App() {
                   navigateTo('pi');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center justify-between text-sm transition-all ${activeNav === 'pi'
+                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
                   ? 'bg-[#175A67] text-white shadow-sm'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <div className="flex items-center gap-3">
-                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
-                  <span>Daily Drop</span>
-                </div>
-                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 border border-amber-500/30">
-                  Daily
-                </span>
+                <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
+                <span>Daily Drop</span>
               </button>
 
               <button
@@ -853,18 +849,13 @@ export function App() {
                   navigateTo('test-series');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
+                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'test-series'
                   ? 'bg-[#175A67] text-white shadow-sm'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <div className="flex items-center gap-3">
-                  <Award className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-                  <span>ALL INDIA TEST PASS</span>
-                </div>
-                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-800 border border-indigo-500/30">
-                  Live
-                </span>
+                <Award className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                <span>ALL INDIA TEST PASS</span>
               </button>
             </div>
           </div>
@@ -904,24 +895,19 @@ export function App() {
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <LayoutGrid className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+                <Home className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 <span>Home</span>
               </button>
 
               <button
                 onClick={() => navigateTo('pi')}
-                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center justify-between text-sm transition-all ${activeNav === 'pi'
+                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
                   ? 'bg-[#175A67] text-white shadow-md'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <div className="flex items-center gap-3">
-                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
-                  <span>Daily Drop</span>
-                </div>
-                <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 border border-amber-500/30">
-                  Daily
-                </span>
+                <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
+                <span>Daily Drop</span>
               </button>
 
               <button
@@ -937,18 +923,13 @@ export function App() {
 
               <button
                 onClick={() => navigateTo('test-series')}
-                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
+                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'test-series'
                   ? 'bg-[#175A67] text-white shadow-md'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <div className="flex items-center gap-3">
-                  <Award className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
-                  <span>ALL INDIA TEST PASS</span>
-                </div>
-                <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-800 border border-indigo-500/30">
-                  Live
-                </span>
+                <Award className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                <span>ALL INDIA TEST PASS</span>
               </button>
             </div>
           </div>
@@ -1175,13 +1156,8 @@ export function App() {
                           <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br ${plan.gradient} text-white flex items-center justify-center shadow-lg ${plan.shadow} group-hover:scale-110 group-hover:rotate-2 transition-all duration-300 relative border border-white/30 flex-shrink-0`}>
                             <IconComponent className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                           </div>
-                          <div className="flex flex-col items-end gap-1.5">
-                            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${plan.badgeColor} tracking-wider uppercase`}>
-                              {plan.badge}
-                            </span>
-                            <div className="w-7 h-7 rounded-full bg-white/80 border border-white flex items-center justify-center text-[#175A67] shadow-sm group-hover:bg-[#175A67] group-hover:text-white group-hover:translate-x-1 transition-all">
-                              <ChevronRight className="w-4 h-4" />
-                            </div>
+                          <div className="w-8 h-8 rounded-full bg-white/80 border border-white flex items-center justify-center text-[#175A67] shadow-sm group-hover:bg-[#175A67] group-hover:text-white group-hover:translate-x-1 transition-all">
+                            <ChevronRight className="w-4 h-4" />
                           </div>
                         </div>
                         <div className="mt-3">
@@ -1240,16 +1216,6 @@ export function App() {
                         }}
                         className={`group bg-white/60 hover:bg-white/85 backdrop-blur-xl border border-white/80 ${item.borderHover || 'hover:border-white'} rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.05)] ${item.hoverGlow || 'hover:shadow-xl'} transition-all duration-300 hover:-translate-y-1.5 cursor-pointer flex flex-col items-center justify-between min-h-[220px] active:scale-[0.98] relative overflow-hidden`}
                       >
-                        {item.isLive && (
-                          <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-700 text-[10px] font-extrabold tracking-wider uppercase">
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                            </span>
-                            LIVE
-                          </div>
-                        )}
-
                         <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br ${item.gradient || 'from-[#175A67] to-[#2A707C]'} text-white flex items-center justify-center shadow-lg ${item.shadow || ''} group-hover:scale-110 group-hover:rotate-2 transition-all duration-300 border border-white/30 my-1`}>
                           <IconComp className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                         </div>
