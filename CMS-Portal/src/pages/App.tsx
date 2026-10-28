@@ -162,9 +162,8 @@ function App() {
   // Banners State
   const [bannersList, setBannersList] = useState<any[]>([]);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
-  const [bannerPlacement, setBannerPlacement] = useState<'home' | 'purchases'>('home');
+  const [bannerPlacement, setBannerPlacement] = useState<'home' | 'web_home' | 'purchases' | 'courses'>('home');
   const [bannerLinkedCourseId, setBannerLinkedCourseId] = useState<string>('');
-  const [bannerTitle, setBannerTitle] = useState<string>('');
   const [bannerInputKey, setBannerInputKey] = useState<number>(0);
   const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [hasUnsavedBannerOrder, setHasUnsavedBannerOrder] = useState(false);
@@ -369,20 +368,69 @@ function App() {
     }
   };
 
+
+  const PLACEMENT_CONFIG: Record<'home' | 'web_home' | 'purchases' | 'courses', { title: string; ratioName: string; minRatio: number; maxRatio: number; idealSize: string }> = {
+    home: { title: 'Mobile Home Page', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
+    web_home: { title: 'Web Home Page', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px (or 1600×500 px)' },
+    purchases: { title: 'Purchase', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
+    courses: { title: 'Courses Home Page', ratioName: '~3.2:1', minRatio: 2.85, maxRatio: 3.55, idealSize: '1200×375 px' },
+  };
+
+  const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setBannerFile(null);
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      showToast("Please choose a valid image file (PNG, JPG, WEBP)", "error");
+      e.target.value = '';
+      setBannerFile(null);
+      return;
+    }
+
+    const cfg = PLACEMENT_CONFIG[bannerPlacement];
+    const img = new Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objUrl);
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+      const ratio = width / height;
+
+      if (ratio < cfg.minRatio || ratio > cfg.maxRatio) {
+        showToast(`Invalid dimension! ${cfg.title} banner must have ${cfg.ratioName} aspect ratio (${cfg.idealSize}). Selected: ${width}×${height} (${ratio.toFixed(2)}:1).`, "error");
+        e.target.value = '';
+        setBannerFile(null);
+        return;
+      }
+
+      setBannerFile(file);
+      showToast(`Image verified: ${width}×${height} (${ratio.toFixed(2)}:1 ratio matches requirement)`, "success");
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objUrl);
+      showToast("Failed to read image file. Please try another image.", "error");
+      e.target.value = '';
+      setBannerFile(null);
+    };
+    img.src = objUrl;
+  };
+
   const handleUploadBanner = async () => {
     if (!bannerFile) {
-      showToast("Please select an image file first", "error");
+      showToast("Please select a verified banner image first", "error");
       return;
     }
     const currentPlacementBanners = bannersList.filter(b => (b.placement || 'home') === bannerPlacement);
     if (currentPlacementBanners.length >= 5) {
-      showToast(`Maximum 5 banners allowed for ${bannerPlacement === 'home' ? 'Homepage' : 'Purchases Section'}. Delete one first.`, "error");
+      showToast(`Maximum 5 banners allowed for ${PLACEMENT_CONFIG[bannerPlacement].title}. Delete one first.`, "error");
       return;
     }
     
     setIsUploadingBanner(true);
     try {
-      // Banners store absolute URLs (the banners API predates server-relative paths).
       const uploadedUrl = await uploadFile(bannerFile);
       const imageUrl = uploadedUrl.startsWith('/') ? API_BASE_URL + uploadedUrl : uploadedUrl;
 
@@ -392,13 +440,11 @@ function App() {
           imageUrl,
           placement: bannerPlacement,
           courseId: bannerLinkedCourseId ? Number(bannerLinkedCourseId) : null,
-          title: bannerTitle.trim() || null,
         },
       });
       if (data.success) {
-        showToast(`${bannerPlacement === 'purchases' ? 'Purchases section banner' : 'Homepage banner'} uploaded successfully!`, "success");
+        showToast(`${PLACEMENT_CONFIG[bannerPlacement].title} banner uploaded successfully!`, "success");
         setBannerFile(null);
-        setBannerTitle('');
         setBannerLinkedCourseId('');
         setBannerInputKey(k => k + 1);
         fetchBanners();
@@ -891,13 +937,15 @@ function App() {
 
             {activeTab === 'banners' && (() => {
               const activeBanners = bannersList.filter(b => (b.placement || 'home') === bannerPlacement);
+              const currentCfg = PLACEMENT_CONFIG[bannerPlacement];
+
               return (
                 <div className="animate-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-                  {/* Tab Selector */}
+                  {/* 4 Dedicated Placement Tabs */}
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
-                      onClick={() => setBannerPlacement('home')}
+                      onClick={() => { setBannerPlacement('home'); setBannerFile(null); }}
                       className="btn"
                       style={{
                         background: bannerPlacement === 'home' ? 'var(--mint)' : 'transparent',
@@ -908,11 +956,28 @@ function App() {
                         fontWeight: 600,
                       }}
                     >
-                      📱 Mobile Homepage Banners ({bannersList.filter(b => (b.placement || 'home') === 'home').length})
+                      📱 Mobile Home Page ({bannersList.filter(b => (b.placement || 'home') === 'home').length})
                     </button>
+
                     <button
                       type="button"
-                      onClick={() => setBannerPlacement('purchases')}
+                      onClick={() => { setBannerPlacement('web_home'); setBannerFile(null); }}
+                      className="btn"
+                      style={{
+                        background: bannerPlacement === 'web_home' ? '#38bdf8' : 'transparent',
+                        color: bannerPlacement === 'web_home' ? '#000' : 'white',
+                        border: '1px solid rgba(56,189,248,0.5)',
+                        padding: '8px 18px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      🌐 Web Home Page ({bannersList.filter(b => b.placement === 'web_home').length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setBannerPlacement('purchases'); setBannerFile(null); }}
                       className="btn"
                       style={{
                         background: bannerPlacement === 'purchases' ? '#f59e0b' : 'transparent',
@@ -923,7 +988,23 @@ function App() {
                         fontWeight: 600,
                       }}
                     >
-                      🎓 Purchased Section Banners ({bannersList.filter(b => b.placement === 'purchases').length})
+                      🎓 Purchase ({bannersList.filter(b => b.placement === 'purchases').length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setBannerPlacement('courses'); setBannerFile(null); }}
+                      className="btn"
+                      style={{
+                        background: bannerPlacement === 'courses' ? '#a855f7' : 'transparent',
+                        color: bannerPlacement === 'courses' ? '#fff' : 'white',
+                        border: '1px solid rgba(168,85,247,0.5)',
+                        padding: '8px 18px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      📚 Courses Home Page ({bannersList.filter(b => b.placement === 'courses').length})
                     </button>
                   </div>
 
@@ -931,7 +1012,7 @@ function App() {
                   <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: 'var(--space-md)' }}>
                       <h3 style={{ margin: 0 }}>
-                        {bannerPlacement === 'purchases' ? '🎓 Uploaded Purchased Section Banners' : '📱 Uploaded Homepage Banners'} ({activeBanners.length}/5)
+                        {currentCfg.title} Banners ({activeBanners.length}/5)
                       </h3>
                       {activeBanners.length > 0 && (
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -976,16 +1057,14 @@ function App() {
                       </div>
                     ) : activeBanners.length === 0 ? (
                       <p style={{ color: 'var(--text-secondary)' }}>
-                        {bannerPlacement === 'purchases'
-                          ? 'No banners uploaded for the Purchased section yet. Upload one below to feature it at the top of "Your Enrolled Courses".'
-                          : 'No homepage banners uploaded yet.'}
+                        No banners uploaded for {currentCfg.title} yet. Upload one below to feature it live.
                       </p>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                         {activeBanners.map((banner, index) => {
                           const linkedCourse = banner.courseId ? coursesList.find(c => c.id === banner.courseId) : null;
                           return (
-                            <div key={banner.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: banner.placement === 'purchases' ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
+                            <div key={banner.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
                               {/* Order Badge */}
                               <div style={{ position: 'absolute', top: '8px', left: '8px', zIndex: 2, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', color: '#10b981', border: '1px solid rgba(16,185,129,0.5)', borderRadius: '6px', padding: '3px 8px', fontSize: '0.75rem', fontWeight: 'bold' }}>
                                 #{index + 1}
@@ -1003,7 +1082,6 @@ function App() {
                               
                               <div style={{ padding: '10px 12px', fontSize: '0.8rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
                                 <div>
-                                  {banner.title && <div style={{ fontWeight: 'bold', color: 'white' }}>{banner.title}</div>}
                                   {linkedCourse ? (
                                     <div style={{ color: '#fcd34d', fontSize: '0.75rem', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                       🔗 Links to: <strong>{linkedCourse.title}</strong>
@@ -1076,76 +1154,49 @@ function App() {
                   {/* Upload Form Card */}
                   <div className="glass-card">
                     <h3 style={{ marginBottom: 'var(--space-md)' }}>
-                      Upload New {bannerPlacement === 'purchases' ? 'Purchased Section Banner' : 'Homepage Banner'}
+                      Upload New {currentCfg.title} Banner
                     </h3>
                     <form onSubmit={e => { e.preventDefault(); handleUploadBanner(); }} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-                      <div>
-                        <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Banner Placement Target</label>
-                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', cursor: 'pointer' }}>
-                            <input
-                              type="radio"
-                              name="bannerPlacement"
-                              checked={bannerPlacement === 'home'}
-                              onChange={() => setBannerPlacement('home')}
-                            />
-                            📱 Mobile App Homepage
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fcd34d', cursor: 'pointer', fontWeight: 600 }}>
-                            <input
-                              type="radio"
-                              name="bannerPlacement"
-                              checked={bannerPlacement === 'purchases'}
-                              onChange={() => setBannerPlacement('purchases')}
-                            />
-                            🎓 Purchased Section (Your Enrolled Courses)
-                          </label>
-                        </div>
-                      </div>
-
+                      
                       <div style={{ border: '2px dashed rgba(255,255,255,0.2)', padding: 'var(--space-xl)', textAlign: 'center', borderRadius: 'var(--radius-md)' }}>
-                        <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-sm)' }}>
-                          Select {bannerPlacement === 'purchases' ? 'Purchased Section' : 'Homepage'} Banner Image
+                        <p style={{ color: 'white', fontWeight: 600, marginBottom: '6px' }}>
+                          Select {currentCfg.title} Banner Image
                         </p>
-                        <input key={bannerInputKey} type="file" accept="image/*" onChange={e => setBannerFile(e.target.files?.[0] || null)} className="input-field" style={{ width: '100%', padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', cursor: 'pointer' }} />
+                        <p style={{ color: '#38bdf8', fontSize: '0.85rem', marginBottom: 'var(--space-md)' }}>
+                          📐 Required Aspect Ratio: <strong>{currentCfg.ratioName}</strong> ({currentCfg.idealSize})
+                        </p>
+                        <input
+                          key={bannerInputKey}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleBannerFileChange}
+                          className="input-field"
+                          style={{ width: '100%', maxWidth: '420px', margin: '0 auto', padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.3)', color: 'white', cursor: 'pointer' }}
+                        />
                       </div>
 
-                      <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
-                          <div style={{ flex: 1, minWidth: '220px' }}>
-                            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Link to Course (Optional)</label>
-                            <CustomSelect
-                              options={[
-                                { value: '', label: '-- No linked course (Display Graphic Only) --' },
-                                ...coursesList.map((c) => ({
-                                  value: String(c.id),
-                                  label: c.title,
-                                  category: c.category,
-                                  badge: c.isPublished ? 'Published' : 'Draft',
-                                })),
-                              ]}
-                              value={bannerLinkedCourseId}
-                              onChange={(val) => setBannerLinkedCourseId(String(val ?? ''))}
-                              placeholder="-- No linked course (Display Graphic Only) --"
-                              searchPlaceholder="Search course or category..."
-                              clearable
-                            />
-                          </div>
-                          <div style={{ flex: 1, minWidth: '220px' }}>
-                            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Banner Title / Caption (Optional)</label>
-                            <input
-                              type="text"
-                              value={bannerTitle}
-                              onChange={e => setBannerTitle(e.target.value)}
-                              placeholder="e.g. Special Offer for Enrolled Students"
-                              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                            />
-                          </div>
-                        </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Link to Course (Optional)</label>
+                        <CustomSelect
+                          options={[
+                            { value: '', label: '-- No linked course (Display Graphic Only) --' },
+                            ...coursesList.map((c) => ({
+                              value: String(c.id),
+                              label: c.title,
+                              category: c.category,
+                              badge: c.isPublished ? 'Published' : 'Draft',
+                            })),
+                          ]}
+                          value={bannerLinkedCourseId}
+                          onChange={(val) => setBannerLinkedCourseId(String(val ?? ''))}
+                          placeholder="-- No linked course (Display Graphic Only) --"
+                          searchPlaceholder="Search course or category..."
+                          clearable
+                        />
+                      </div>
                       
                       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        {bannerPlacement === 'purchases'
-                          ? 'Note: This banner will appear prominently as the hero banner at the top of the student\'s "Your Enrolled Courses" (My Purchases) page. Recommended: 16:9 or 21:9 banner image, max 500 KB.'
-                          : 'Note: These banners are used for notices and will appear as a sliding carousel on the top of the mobile app home screen.'}
+                        Note: Non-compliant banner ratios will be blocked to maintain layout symmetry across devices.
                       </p>
 
                       <button
@@ -1158,8 +1209,10 @@ function App() {
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '8px',
-                          background: bannerPlacement === 'purchases' ? '#d97706' : undefined,
-                          color: bannerPlacement === 'purchases' ? '#fff' : undefined,
+                          background: '#10b981',
+                          color: '#fff',
+                          fontWeight: 600,
+                          padding: '10px 22px',
                         }}
                       >
                         {isUploadingBanner && (
@@ -1168,7 +1221,7 @@ function App() {
                             <path d="M12 2a10 10 0 0 1 10 10" />
                           </svg>
                         )}
-                        {isUploadingBanner ? 'Uploading...' : bannerPlacement === 'purchases' ? 'Upload & Set in Purchases Section' : 'Upload & Set Live'}
+                        {isUploadingBanner ? 'Uploading...' : `Upload & Set Live in ${currentCfg.title}`}
                       </button>
                     </form>
                   </div>

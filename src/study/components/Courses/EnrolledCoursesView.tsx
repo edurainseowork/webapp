@@ -125,7 +125,7 @@ export function EnrolledCoursesView({
 
           {/* Hero Banner: Custom Purchases Banner (from Manage Banners) OR Promo Course Carousel */}
           {purchasesBanners.length > 0 ? (
-            <div className="relative overflow-hidden rounded-3xl shadow-[0_12px_40px_rgba(15,59,66,0.25)] border border-white/20 group animate-fadeIn">
+            <div className="relative overflow-hidden rounded-3xl shadow-[0_12px_40px_rgba(15,59,66,0.25)] border border-white/20 group animate-fadeIn" style={{ aspectRatio: '3.2 / 1', maxHeight: '340px' }}>
               {(() => {
                 const currentBanner = purchasesBanners[purchasesBannerIndex % purchasesBanners.length];
                 const bannerCourse = currentBanner.courseId
@@ -142,12 +142,12 @@ export function EnrolledCoursesView({
                         window.open(currentBanner.linkUrl, '_blank');
                       }
                     }}
-                    className={`relative w-full ${currentBanner.courseId || currentBanner.linkUrl ? 'cursor-pointer hover:opacity-95 transition-opacity' : ''}`}
+                    className={`relative w-full h-full ${currentBanner.courseId || currentBanner.linkUrl ? 'cursor-pointer hover:opacity-95 transition-opacity' : ''}`}
                   >
                     <img
                       src={currentBanner.imageUrl}
                       alt={currentBanner.title || "Purchases Banner"}
-                      className="w-full h-auto max-h-[280px] sm:max-h-[340px] object-cover rounded-3xl block"
+                      className="w-full h-full object-cover rounded-3xl block"
                     />
                     {(currentBanner.title || bannerCourse) && (
                       <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent p-4 sm:p-6 text-white rounded-b-3xl flex flex-col sm:flex-row sm:items-end justify-between gap-3">

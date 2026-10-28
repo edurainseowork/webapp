@@ -15,6 +15,7 @@ interface CoursesHubProps {
   searchQuery?: string;
   /** CMS category id of the student's goal: its tab is selected when the courses open */
   goalCategoryId?: number | null;
+  initialOpenBatchId?: string | null;
   onExit: () => void;
 }
 
@@ -24,9 +25,12 @@ interface CoursesHubProps {
  *  - enrolled → "Your Enrolled Courses"
  *  - clicking any course from either one → course detail page
  */
-export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, onExit }: CoursesHubProps) {
+export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, initialOpenBatchId, onExit }: CoursesHubProps) {
   const [view, setView] = useState<HubView>(mode);
-  const [openBatchId, setOpenBatchId] = useState<string | null>(null);
+  const [openBatchId, setOpenBatchId] = useState<string | null>(initialOpenBatchId ?? null);
+  useEffect(() => {
+    if (initialOpenBatchId) setOpenBatchId(initialOpenBatchId);
+  }, [initialOpenBatchId]);
   const [jumpToPlans, setJumpToPlans] = useState(false);
   const goalKey = goalCategoryId ? categoryKey(goalCategoryId) : null;
   // Category tab: starts on the student's goal and follows it when the goal changes;

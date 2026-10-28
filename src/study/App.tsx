@@ -52,6 +52,7 @@ import { BookmarksView } from './components/BookmarksView';
 import { EBookLibraryView } from './components/EBookLibraryView';
 import { useAuth } from './AuthGate';
 import { CoursesHub } from './components/Courses/CoursesHub';
+import { BannerCarousel } from './components/Courses/BannerCarousel';
 import { MentorshipHub } from './components/Mentorship/MentorshipHub';
 import { CourseTestSeriesView } from './components/CourseTestSeriesView';
 import { LiveClassesView } from './components/LiveClassesView';
@@ -68,6 +69,7 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState('Loading...');
+  const [directOpenCourseId, setDirectOpenCourseId] = useState<string | null>(null);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   // Student's goal = a CMS category, saved on their profile
   const [goal, setGoal] = useState<StudentGoal | null>(null);
@@ -1028,7 +1030,11 @@ export function App() {
               selectedBatch={selectedBatch}
               searchQuery={searchQuery}
               goalCategoryId={goal?.id ?? null}
-              onExit={() => navigateTo('study-central')}
+              initialOpenBatchId={directOpenCourseId}
+              onExit={() => {
+                setDirectOpenCourseId(null);
+                navigateTo('study-central');
+              }}
             />
           ) : activeNav === 'test-series' ? (
             <TestSeriesView
@@ -1069,6 +1075,16 @@ export function App() {
                   <span>Wi-Fi Preview Active: 192.168.29.39:5173</span>
                 </div> */}
               </div>
+
+              {/* Web Home Page Hero Banner (Strict 3.2:1 Aspect Ratio) */}
+              <BannerCarousel
+                placement="web_home"
+                className="mb-8"
+                onOpenBatch={(courseId) => {
+                  setDirectOpenCourseId(courseId);
+                  navigateTo('courses');
+                }}
+              />
 
               {/* Study Plans Row */}
               <section className="mb-8 sm:mb-10">

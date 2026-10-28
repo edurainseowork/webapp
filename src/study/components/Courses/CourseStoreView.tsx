@@ -8,6 +8,7 @@ import {
 import { useCatalog } from './courseData';
 import { LiveBatchCatalog, Toast, useSearchShortcut, useToast } from './CourseShared';
 import { SubPageHeader } from '../SubPageHeader';
+import { BannerCarousel } from './BannerCarousel';
 
 interface CourseStoreViewProps {
   onBack: () => void;
@@ -53,6 +54,9 @@ export function CourseStoreView({
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-16 space-y-6 sm:space-y-8">
           {/* 1. Standardized Back Button */}
           <SubPageHeader onBack={onBack} />
+
+          {/* Courses Page Hero Banner (Strict 3.2:1 Aspect Ratio) */}
+          <BannerCarousel placement="courses" onOpenBatch={onOpenBatch} />
 
           {/* Catalogue - Academic Batches & Crash Courses */}
           <section ref={batchesRef} className="scroll-mt-4">
