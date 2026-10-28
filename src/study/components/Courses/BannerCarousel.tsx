@@ -77,7 +77,7 @@ export function BannerCarousel({ placement, onOpenBatch, className = '' }: Banne
   return (
     <div
       className={`relative w-full overflow-hidden rounded-3xl shadow-[0_12px_40px_rgba(15,59,66,0.18)] border border-white/30 group animate-fadeIn ${className}`}
-      style={{ aspectRatio: '1200 / 250' }}
+      style={{ aspectRatio: '1276 / 250' }}
     >
       <div
         onClick={handleBannerClick}

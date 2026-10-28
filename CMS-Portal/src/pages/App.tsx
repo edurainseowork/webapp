@@ -375,9 +375,9 @@ function App() {
     'web_home' | 'courses' | 'purchases' | 'home' | 'mobile_courses' | 'mobile_purchases',
     { title: string; platform: 'Web' | 'Mobile'; ratioName: string; minRatio: number; maxRatio: number; idealSize: string }
   > = {
-    web_home: { title: 'Web Home Page', platform: 'Web', ratioName: '~4.8:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1200×250 px' },
-    courses: { title: 'Web Courses Page', platform: 'Web', ratioName: '~4.8:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1200×250 px' },
-    purchases: { title: 'Web Purchases (Your Enrolled Courses)', platform: 'Web', ratioName: '~4.8:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1200×250 px' },
+    web_home: { title: 'Web Home Page', platform: 'Web', ratioName: '~5.1:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1276×250 px' },
+    courses: { title: 'Web Courses Page', platform: 'Web', ratioName: '~5.1:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1276×250 px' },
+    purchases: { title: 'Web Purchases (Your Enrolled Courses)', platform: 'Web', ratioName: '~5.1:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1276×250 px' },
     home: { title: 'Mobile Home Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
     mobile_courses: { title: 'Mobile Courses Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
     mobile_purchases: { title: 'Mobile Purchases Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
@@ -1206,7 +1206,7 @@ function App() {
                                 Delete
                               </button>
 
-                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', aspectRatio: currentCfg.platform === 'Web' ? '1200 / 250' : '1080 / 600', objectFit: 'cover', display: 'block' }} />
+                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', aspectRatio: currentCfg.platform === 'Web' ? '1276 / 250' : '1080 / 600', objectFit: 'cover', display: 'block' }} />
                               
                               <div style={{ padding: '10px 12px', fontSize: '0.8rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
                                 <div>
@@ -1304,7 +1304,7 @@ function App() {
 
                         {bannerPreviewUrl && (
                           <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-                            <div style={{ width: '100%', maxWidth: '640px', aspectRatio: currentCfg.platform === 'Web' ? '1200 / 250' : '1080 / 600', borderRadius: '10px', overflow: 'hidden', border: '2px solid #10b981', boxShadow: '0 0 20px rgba(16,185,129,0.35)', position: 'relative' }}>
+                            <div style={{ width: '100%', maxWidth: '640px', aspectRatio: currentCfg.platform === 'Web' ? '1276 / 250' : '1080 / 600', borderRadius: '10px', overflow: 'hidden', border: '2px solid #10b981', boxShadow: '0 0 20px rgba(16,185,129,0.35)', position: 'relative' }}>
                               <img src={bannerPreviewUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                               <div style={{ position: 'absolute', bottom: '6px', left: '8px', background: 'rgba(0,0,0,0.8)', color: '#10b981', padding: '3px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
                                 ✅ Image Ready ({currentCfg.idealSize})
