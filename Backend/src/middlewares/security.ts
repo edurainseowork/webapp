@@ -45,7 +45,7 @@ export function corsOptions(): CorsOptions {
       return callback(null, false);
     },
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "Cache-Control", "Pragma", "X-Requested-With"],
     maxAge: 600,
   };
 }
