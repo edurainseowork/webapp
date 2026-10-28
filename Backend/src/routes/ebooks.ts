@@ -97,55 +97,8 @@ router.get("/", optionalAuth, async (req: Request, res: Response) => {
         updatedAt: row.updated_at,
       }));
 
-    // Also discover any PDFs uploaded directly into S3 under the `ebooks/` prefix
-    if (s3Client && bucket) {
-      try {
-        const listRes = await s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: "ebooks/",
-            MaxKeys: 100,
-          }),
-        );
-        const existingUrls = new Set(formatted.map((b) => b.pdfUrl));
-        for (const obj of listRes.Contents || []) {
-          if (!obj.Key || !obj.Key.toLowerCase().endsWith(".pdf") || (obj.Size ?? 0) === 0) continue;
-          const s3Url = `https://${bucket}.s3.${region}.amazonaws.com/${obj.Key}`;
-          if (existingUrls.has(s3Url)) continue;
-
-          const baseName = obj.Key.split("/").pop() || "E-Book.pdf";
-          const cleanTitle = baseName
-            .replace(/^\d+-[a-f0-9]{8}-/i, "")
-            .replace(/^\d+-/, "")
-            .replace(/\.pdf$/i, "")
-            .replace(/[-_]+/g, " ")
-            .trim();
-
-          const courseMatch = obj.Key.match(/^ebooks\/course-(\d+)\//);
-          const inferredCourseId = courseMatch ? Number(courseMatch[1]) : null;
-          if (courseId && courseId !== "all" && inferredCourseId !== Number(courseId)) continue;
-
-          formatted.push({
-            id: `s3-${Buffer.from(obj.Key).toString("base64url").slice(0, 32)}`,
-            title: cleanTitle || "Uploaded E-Book",
-            subject: "General",
-            courseId: inferredCourseId,
-            courseTitle: null,
-            totalPages: 100,
-            pagesRead: 0,
-            rating: 4.9,
-            isCourseBook: Boolean(inferredCourseId),
-            pdfUrl: s3Url,
-            fileSize: formatBytes(obj.Size),
-            createdAt: obj.LastModified ? obj.LastModified.toISOString() : new Date().toISOString(),
-            updatedAt: obj.LastModified ? obj.LastModified.toISOString() : new Date().toISOString(),
-          });
-        }
-      } catch (s3Err) {
-        logger.warn({ err: s3Err }, "[ebooks] Could not list S3 ebooks/ prefix");
-      }
-    }
-
+    // S3 ListObjectsV2 scanning disabled to prevent excessive AWS API billing and spam.
+    // All valid ebooks are already stored and managed in the PostgreSQL database.
     res.json({ success: true, ebooks: formatted });
   } catch (err: any) {
     logger.error({ err }, "[ebooks] Failed to fetch ebooks");
