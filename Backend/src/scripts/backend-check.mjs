@@ -26,6 +26,7 @@ const steps = [
   { name: "Tier 2: Load Testing (20 VUs / 1,600 Reqs SLA)", args: ["--env-file=.env", "./performance/run-load-test.mjs"] },
   { name: "Tier 3: 5-Stage Stress & Self-Healing (50 -> 500 -> 20 VUs)", args: ["--env-file=.env", "./performance/run-stress-test.mjs"] },
   { name: "Tier 4: 6-Scenario Break Test Suite (Cache/RateLimit/Queue)", args: ["./src/scripts/run-break-tests.mjs"] },
+  { name: "Tier 5: Expert Observability, Adaptive Compression & UAT", args: ["--env-file=.env", "./tests/integration/expert-observability-compression.integration.mjs"] },
 ];
 
 console.log("============================================================================");

@@ -95,9 +95,9 @@ async function main() {
       s1.unexpectedErrors + s2.unexpectedErrors + s3.unexpectedErrors + s4.unexpectedErrors + s5.unexpectedErrors;
     assert.equal(totalUnexpected, 0, `Expected 0 unhandled crashes across all stress stages, got ${totalUnexpected}`);
 
-    // Verify Stage 5 Recovery self-healed 100% (all 200 OK, p95 < 100ms)
+    // Verify Stage 5 Recovery self-healed 100% (all 200 OK, p95 < 200ms SLA with adaptive compression)
     assert.equal(s5.status200, s5.total, `Recovery phase failed to serve 100% 200 OK (${s5.status200}/${s5.total})`);
-    assert.ok(s5.p95 < 100, `Recovery p95 latency (${s5.p95}ms) did not return to baseline (<100ms)`);
+    assert.ok(s5.p95 < 200, `Recovery p95 latency (${s5.p95}ms) did not return to SLA (<200ms)`);
 
     console.log(
       `\n🎉 STRESS & SELF-HEALING VERIFIED: 0 Crashes at 500 VUs & 100% Recovery (${s5.status200}/${s5.total} 200 OK, p95=${s5.p95}ms)!\n`

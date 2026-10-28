@@ -7,58 +7,72 @@ import { sendSlackAlert } from "../lib/slackAlert";
 
 // Express 5 forwards rejected promises from async handlers here, so routes can just throw.
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
+  const requestId = (req as any).id || req.headers["x-request-id"] || `req-${Date.now().toString(36)}`;
+  res.setHeader("X-Request-Id", String(requestId));
+
   if (err instanceof ZodError) {
     res.status(400).json({
       error: "Validation failed",
+      requestId,
       issues: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
     });
     return;
   }
   if (err instanceof HttpError) {
-    res.status(err.status).json({ error: err.message });
+    res.status(err.status).json({ error: err.message, requestId });
     return;
   }
   if (err instanceof multer.MulterError) {
     const message = err.code === "LIMIT_FILE_SIZE" ? "File is too large" : "Invalid upload";
-    res.status(400).json({ error: message });
+    res.status(400).json({ error: message, requestId });
     return;
   }
   // Malformed JSON body from express.json()
   if (typeof err === "object" && err !== null && (err as { type?: string }).type === "entity.parse.failed") {
-    res.status(400).json({ error: "Invalid JSON body" });
+    res.status(400).json({ error: "Invalid JSON body", requestId });
     return;
   }
   if (typeof err === "object" && err !== null && (err as { type?: string }).type === "entity.too.large") {
-    res.status(413).json({ error: "Request body too large" });
+    res.status(413).json({ error: "Request body too large", requestId });
     return;
   }
   // Postgres unique violation (drizzle wraps driver errors in DrizzleQueryError.cause)
   if (pgErrorCode(err) === "23505") {
-    res.status(409).json({ error: "A record with the same value already exists" });
+    res.status(409).json({ error: "A record with the same value already exists", requestId });
     return;
   }
   // Postgres foreign-key violation (e.g. a row became referenced mid-request)
   if (pgErrorCode(err) === "23503") {
-    res.status(409).json({ error: "This record is still referenced by other data" });
+    res.status(409).json({ error: "This record is still referenced by other data", requestId });
     return;
   }
 
   // Client errors raised by Express internals (e.g. static file 403/404)
   const status = (err as { status?: unknown } | null)?.status;
   if (typeof status === "number" && status >= 400 && status < 500) {
-    res.status(status).json({ error: status === 404 ? "Not found" : "Bad request" });
+    res.status(status).json({ error: status === 404 ? "Not found" : "Bad request", requestId });
     return;
   }
 
-  // Never leak internals (SQL, stack traces) to clients.
-  logger.error({ err, path: req.originalUrl }, "Unhandled error");
-  sendSlackAlert(`500 API Error: ${req.method} ${req.originalUrl}`, err, {
+  // Never leak internals (SQL queries, postgres error codes, stack traces) to clients.
+  logger.error(
+    {
+      requestId,
+      method: req.method,
+      path: req.originalUrl,
+      err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+    },
+    "Unhandled production error captured by shield"
+  );
+
+  sendSlackAlert(`500 API Error: ${req.method} ${req.originalUrl} [${requestId}]`, err, {
     path: req.originalUrl,
     method: req.method,
     ip: req.ip,
     userId: (req as any).user?.id,
   }).catch(() => {});
-  res.status(500).json({ error: "Internal server error" });
+
+  res.status(500).json({ error: "Internal server error", requestId });
 }
 
 function pgErrorCode(err: unknown): string | undefined {

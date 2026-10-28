@@ -11,6 +11,7 @@ import {
   rateLimit,
   securityHeaders,
 } from "./middlewares/security";
+import { adaptiveCompression } from "./middlewares/compression";
 import { errorHandler } from "./middlewares/error-handler";
 
 const app: Express = express();
@@ -42,6 +43,7 @@ app.use(
 );
 app.use(securityHeaders);
 app.use(cors(corsOptions()));
+app.use(adaptiveCompression());
 // 5 MB JSON limit for tickets router to support compressed image attachments
 const ticketsJsonParser = express.json({ limit: "5mb", verify: (req: any, _res: any, buf: Buffer) => { req.rawBody = buf; } });
 app.use((req, res, next) => {

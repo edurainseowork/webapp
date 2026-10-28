@@ -9,6 +9,7 @@ import { HttpError, parseId } from "../lib/http-error";
 import { optionalAuth } from "../middlewares/auth";
 import { fetchCourseContentTree } from "./content.js";
 import { getOrSetCache } from "../lib/perfEngine";
+import { parsePagination, sendPaginatedResponse } from "../lib/pagination";
 
 // Public catalog used by the mobile app & web app. Only published courses are ever returned.
 // Admin CRUD lives in routes/admin/courses.ts.
@@ -36,7 +37,13 @@ router.get("/", async (req, res) => {
   });
 
   res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
-  res.json(coursesWithPlans.map((c) => withPublicThumbnail(c, req)));
+  const pagination = parsePagination(req, { defaultLimit: 20, maxLimit: 100 });
+  const allFormatted = coursesWithPlans.map((c) => withPublicThumbnail(c, req));
+  const paginatedItems = pagination.isExplicitPagination
+    ? allFormatted.slice(pagination.offset, pagination.offset + pagination.limit)
+    : allFormatted;
+
+  return sendPaginatedResponse(res, req, paginatedItems, allFormatted.length, pagination);
 });
 
 // GET /api/courses/:id/content — Return items for a given course filtered optionally by parentId, sorted ascending by order
