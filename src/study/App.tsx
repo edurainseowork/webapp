@@ -465,11 +465,11 @@ export function App() {
       actionLabel: 'Start Practice Test',
       tags: ['Full Syllabus', 'Part Tests', 'Real NTA Engine'],
       iconType: 'analytics',
-      gradient: 'from-indigo-500 to-blue-700',
-      shadow: 'shadow-indigo-900/20',
-      badgeColor: 'bg-indigo-500/15 text-indigo-800 border-indigo-500/30',
-      borderHover: 'hover:border-indigo-400/50',
-      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(99,102,241,0.22)]',
+      gradient: 'from-emerald-500 to-teal-700',
+      shadow: 'shadow-emerald-900/20',
+      badgeColor: 'bg-emerald-500/15 text-emerald-800 border-emerald-500/30',
+      borderHover: 'hover:border-emerald-500/50',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(16,185,129,0.22)]',
       description: 'Live adaptive mock test mirror mimicking actual JEE and NEET CBT interfaces with instant rank analytics.',
       downloadSize: 'Online CBT',
       rating: 4.9,
@@ -497,11 +497,11 @@ export function App() {
       subtitle: 'Snap a photo or chat with educators for instant step-by-step solutions',
       icon: HelpCircle,
       action: () => openSubView('doubts'),
-      gradient: 'from-sky-500 to-blue-700',
-      shadow: 'shadow-blue-900/20',
-      badgeColor: 'bg-sky-500/15 text-sky-800 border-sky-500/30',
-      borderHover: 'hover:border-sky-500/40',
-      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(14,165,233,0.22)]',
+      gradient: 'from-emerald-500 to-teal-700',
+      shadow: 'shadow-emerald-900/20',
+      badgeColor: 'bg-emerald-500/15 text-emerald-800 border-emerald-500/30',
+      borderHover: 'hover:border-emerald-500/40',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(16,185,129,0.22)]',
     },
     {
       id: 'sp3',
@@ -510,11 +510,11 @@ export function App() {
       subtitle: 'Adaptive AI problem-solver, revision quizzes & 24/7 concept breakdown',
       icon: Bot,
       action: () => openSubView('ai-mentor'),
-      gradient: 'from-violet-500 to-indigo-700',
-      shadow: 'shadow-indigo-900/20',
-      badgeColor: 'bg-violet-500/15 text-violet-800 border-violet-500/30',
-      borderHover: 'hover:border-violet-500/40',
-      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(139,92,246,0.22)]',
+      gradient: 'from-emerald-500 to-teal-700',
+      shadow: 'shadow-emerald-900/20',
+      badgeColor: 'bg-emerald-500/15 text-emerald-800 border-emerald-500/30',
+      borderHover: 'hover:border-emerald-500/40',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(16,185,129,0.22)]',
     }
   ];
 
@@ -808,7 +808,7 @@ export function App() {
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isLiveClassesOpen && !isMyCoursesOpen
-                  ? 'bg-[#175A67] text-white shadow-sm'
+                  ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
@@ -822,7 +822,7 @@ export function App() {
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
-                  ? 'bg-[#175A67] text-white shadow-sm'
+                  ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
@@ -836,11 +836,11 @@ export function App() {
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'courses' || isMyCoursesOpen
-                  ? 'bg-[#175A67] text-white shadow-sm'
+                  ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <BookOpen className="w-4 h-4 text-sky-600 group-hover:scale-110 transition-transform" />
+                <BookOpen className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 <span>COURSES</span>
               </button>
 
@@ -850,11 +850,11 @@ export function App() {
                   setIsMobileSidebarOpen(false);
                 }}
                 className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'test-series'
-                  ? 'bg-[#175A67] text-white shadow-sm'
+                  ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <Award className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                <Award className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 <span>ALL INDIA TEST PASS</span>
               </button>
             </div>
@@ -891,7 +891,7 @@ export function App() {
               <button
                 onClick={() => navigateTo('study-central')}
                 className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isLiveClassesOpen && !isMyCoursesOpen
-                  ? 'bg-[#175A67] text-white shadow-md'
+                  ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
@@ -902,7 +902,7 @@ export function App() {
               <button
                 onClick={() => navigateTo('pi')}
                 className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
-                  ? 'bg-[#175A67] text-white shadow-md'
+                  ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
@@ -913,22 +913,22 @@ export function App() {
               <button
                 onClick={() => navigateTo('courses')}
                 className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'courses' || isMyCoursesOpen
-                  ? 'bg-[#175A67] text-white shadow-md'
+                  ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <BookOpen className="w-4 h-4 text-sky-600 group-hover:scale-110 transition-transform" />
+                <BookOpen className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 <span>COURSES</span>
               </button>
 
               <button
                 onClick={() => navigateTo('test-series')}
                 className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'test-series'
-                  ? 'bg-[#175A67] text-white shadow-md'
+                  ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <Award className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                <Award className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 <span>ALL INDIA TEST PASS</span>
               </button>
             </div>
