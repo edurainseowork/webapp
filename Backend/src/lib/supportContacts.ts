@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@workspace/db";
 import { ensureMentorshipSchema } from "./mentorshipSchema";
 import { HttpError } from "./http-error";
+import { getOrSetCache, invalidateCachePrefix } from "./perfEngine";
 
 // Support phone numbers managed in the CMS (Support Contacts) and shown on the study website.
 // Table: support_contacts (created on first use, see lib/mentorshipSchema.ts).
@@ -36,9 +37,11 @@ export const supportContactUpdateSchema = supportContactSchema.partial().strict(
 const COLUMNS = sql`id, label, phone, whatsapp, sort_order AS "sortOrder"`;
 
 export async function listSupportContacts(): Promise<SupportContact[]> {
-  await ensureMentorshipSchema();
-  const { rows } = await db.execute<SupportContact>(sql`SELECT ${COLUMNS} FROM support_contacts ORDER BY sort_order, id`);
-  return rows;
+  return getOrSetCache("edurain:support:contacts", 1800, async () => {
+    await ensureMentorshipSchema();
+    const { rows } = await db.execute<SupportContact>(sql`SELECT ${COLUMNS} FROM support_contacts ORDER BY sort_order, id`);
+    return rows;
+  });
 }
 
 export async function createSupportContact(input: z.infer<typeof supportContactSchema>): Promise<SupportContact> {
@@ -47,6 +50,7 @@ export async function createSupportContact(input: z.infer<typeof supportContactS
     INSERT INTO support_contacts (label, phone, whatsapp, sort_order)
     VALUES (${input.label}, ${input.phone}, ${input.whatsapp}, ${input.sortOrder})
     RETURNING ${COLUMNS}`);
+  await invalidateCachePrefix("edurain:support");
   return rows[0];
 }
 
@@ -62,6 +66,7 @@ export async function updateSupportContact(id: number, input: z.infer<typeof sup
     WHERE id = ${id}
     RETURNING ${COLUMNS}`);
   if (!rows[0]) throw new HttpError(404, "Support contact not found");
+  await invalidateCachePrefix("edurain:support");
   return rows[0];
 }
 
@@ -69,4 +74,5 @@ export async function deleteSupportContact(id: number): Promise<void> {
   await ensureMentorshipSchema();
   const { rows } = await db.execute(sql`DELETE FROM support_contacts WHERE id = ${id} RETURNING id`);
   if (!rows[0]) throw new HttpError(404, "Support contact not found");
+  await invalidateCachePrefix("edurain:support");
 }

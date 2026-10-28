@@ -72,7 +72,7 @@ export interface CoursesState {
   ownedIds: number[];
 }
 
-const REFRESH_MS = 60_000;
+const STALE_MS = 5 * 60_000; // 5-minute client staleTime to prevent tab-switch DB spam
 
 let state: CoursesState = { status: 'loading', error: null, courses: [], categories: [], categoriesError: null, ownedIds: [] };
 let inFlight: Promise<void> | null = null;
@@ -159,20 +159,13 @@ export function useCourses(): CoursesState & { reload: () => Promise<void> } {
   const snapshot = useSyncExternalStore(subscribe, () => state);
 
   useEffect(() => {
-    if (Date.now() - lastLoadedAt > 5_000) void refreshCourses();
-    const onFocus = () => {
-      if (document.visibilityState === 'visible') void refreshCourses();
-    };
+    if (Date.now() - lastLoadedAt > STALE_MS) void refreshCourses();
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void refreshCourses();
-    }, REFRESH_MS);
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
+      if (document.visibilityState === 'visible' && Date.now() - lastLoadedAt > STALE_MS) {
+        void refreshCourses();
+      }
+    }, STALE_MS);
+    return () => clearInterval(timer);
   }, []);
 
   return { ...snapshot, reload: refreshCourses };

@@ -5,6 +5,7 @@ import { asc, count, eq, sql } from "drizzle-orm";
 import { createCategorySchema, slugify, updateCategorySchema } from "../../lib/course-schemas";
 import { HttpError, parseId } from "../../lib/http-error";
 import { logger } from "../../lib/logger";
+import { invalidateCachePrefix } from "../../lib/perfEngine";
 
 // Mounted behind requireAdmin in routes/admin/index.ts.
 const router = Router();
@@ -46,7 +47,9 @@ router.post("/", async (req, res) => {
     .values({ name: input.name, slug, sortOrder: input.sortOrder })
     .returning({ id: categoriesTable.id });
 
-  logger.info({ adminUid: req.auth?.uid, categoryId: created.id }, "Category created");
+  await invalidateCachePrefix("edurain:categories");
+  await invalidateCachePrefix("edurain:courses");
+  logger.info({ adminUid: req.auth?.uid, categoryId: created.id }, "Category created & cache invalidated");
   res.status(201).json({ success: true, data: await loadCategory(created.id) });
 });
 
@@ -69,7 +72,9 @@ router.patch("/:id", async (req, res) => {
     }
   });
 
-  logger.info({ adminUid: req.auth?.uid, categoryId, fields: Object.keys(input) }, "Category updated");
+  await invalidateCachePrefix("edurain:categories");
+  await invalidateCachePrefix("edurain:courses");
+  logger.info({ adminUid: req.auth?.uid, categoryId, fields: Object.keys(input) }, "Category updated & cache invalidated");
   res.json({ success: true, data: await loadCategory(categoryId) });
 });
 
@@ -91,7 +96,9 @@ router.delete("/:id", async (req, res) => {
     .returning({ id: categoriesTable.id });
   if (deleted.length === 0) throw new HttpError(404, "Category not found");
 
-  logger.info({ adminUid: req.auth?.uid, categoryId }, "Category deleted");
+  await invalidateCachePrefix("edurain:categories");
+  await invalidateCachePrefix("edurain:courses");
+  logger.info({ adminUid: req.auth?.uid, categoryId }, "Category deleted & cache invalidated");
   res.json({ success: true });
 });
 

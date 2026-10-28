@@ -9,6 +9,23 @@ import { logger } from "../../lib/logger";
 import { detectImageType, uploadPublicImage } from "../../lib/s3";
 import { sendExpoPush } from "../../lib/expoPush";
 import { rateLimit } from "../../middlewares/security";
+import { notificationBroadcastQueue } from "../../lib/perfEngine";
+
+// Register pull-based background worker for bulk push notifications (retries + DLQ + idempotency)
+notificationBroadcastQueue.process(async (job) => {
+  const { notificationId, tokens, title, body, imageUrl, link, type } = job.data;
+  if (!tokens.length) return;
+  const push = await sendExpoPush(tokens, {
+    title,
+    body,
+    imageUrl,
+    data: { type, adminNotificationId: notificationId, link: link || undefined },
+  });
+  await db
+    .update(adminNotificationsTable)
+    .set({ pushSentCount: push.sent, pushFailedCount: push.failed })
+    .where(eq(adminNotificationsTable.id, notificationId));
+});
 
 // Admin notifications (CMS sidebar → Notifications). Separate from live class notifications.
 // Mounted under /api/admin, so every route here already requires an admin token.

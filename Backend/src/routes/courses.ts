@@ -8,30 +8,35 @@ import { publicCourseQuerySchema } from "../lib/course-schemas";
 import { HttpError, parseId } from "../lib/http-error";
 import { optionalAuth } from "../middlewares/auth";
 import { fetchCourseContentTree } from "./content.js";
+import { getOrSetCache } from "../lib/perfEngine";
 
-// Public catalog used by the mobile app. Only published courses are ever returned.
+// Public catalog used by the mobile app & web app. Only published courses are ever returned.
 // Admin CRUD lives in routes/admin/courses.ts.
 const router = Router();
 
 // GET /api/courses?category=<slug>
 router.get("/", async (req, res) => {
   const { category } = publicCourseQuerySchema.parse(req.query);
+  const cacheKey = `edurain:courses:list:${category || "all"}`;
 
-  const courses = await db
-    .select(publicCourseColumns)
-    .from(coursesTable)
-    .leftJoin(categoriesTable, eq(coursesTable.categoryId, categoriesTable.id))
-    .where(
-      and(
-        eq(coursesTable.isPublished, true),
-        category ? eq(categoriesTable.slug, category) : undefined,
-      ),
-    )
-    .orderBy(asc(categoriesTable.sortOrder), desc(coursesTable.publishedAt), desc(coursesTable.id));
+  const coursesWithPlans = await getOrSetCache(cacheKey, 300, async () => {
+    const courses = await db
+      .select(publicCourseColumns)
+      .from(coursesTable)
+      .leftJoin(categoriesTable, eq(coursesTable.categoryId, categoriesTable.id))
+      .where(
+        and(
+          eq(coursesTable.isPublished, true),
+          category ? eq(categoriesTable.slug, category) : undefined,
+        ),
+      )
+      .orderBy(asc(categoriesTable.sortOrder), desc(coursesTable.publishedAt), desc(coursesTable.id));
 
-  // plans: Pro / Pro Max prices (Basic = price / originalPrice)
-  res.json((await withCoursePlans(courses)).map((c) => withPublicThumbnail(c, req)));
+    return withCoursePlans(courses);
+  });
 
+  res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
+  res.json(coursesWithPlans.map((c) => withPublicThumbnail(c, req)));
 });
 
 // GET /api/courses/:id/content — Return items for a given course filtered optionally by parentId, sorted ascending by order
@@ -40,24 +45,30 @@ router.get("/:id/content", optionalAuth, async (req, res) => {
   const rawParentId = req.query.parentId !== undefined ? req.query.parentId : req.query.parent_id;
   const parentId = rawParentId !== undefined && rawParentId !== null ? String(rawParentId) : undefined;
   const items = await fetchCourseContentTree(courseId, parentId, req);
-  console.log(`[BACKEND CONTENT FETCH] Course: ${req.params.id}, ParentId: ${req.query.parentId}, Found Rows: ${items.length}`);
   res.json({ success: true, data: items, content: items });
 });
 
 // GET /api/courses/:id
 router.get("/:id", async (req, res) => {
   const courseId = parseId(req.params.id);
+  const cacheKey = `edurain:courses:detail:${courseId}`;
 
-  const [course] = await db
-    .select(publicCourseColumns)
-    .from(coursesTable)
-    .leftJoin(categoriesTable, eq(coursesTable.categoryId, categoriesTable.id))
-    .where(and(eq(coursesTable.id, courseId), eq(coursesTable.isPublished, true)));
+  const withPlans = await getOrSetCache(cacheKey, 300, async () => {
+    const [course] = await db
+      .select(publicCourseColumns)
+      .from(coursesTable)
+      .leftJoin(categoriesTable, eq(coursesTable.categoryId, categoriesTable.id))
+      .where(and(eq(coursesTable.id, courseId), eq(coursesTable.isPublished, true)));
+
+    if (!course) return null;
+    const [enriched] = await withCoursePlans([course]);
+    return enriched;
+  });
 
   // Drafts answer 404, not 403, so their existence is not revealed.
-  if (!course) throw new HttpError(404, "Course not found");
+  if (!withPlans) throw new HttpError(404, "Course not found");
 
-  const [withPlans] = await withCoursePlans([course]);
+  res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
   res.json(withPublicThumbnail(withPlans, req));
 });
 

@@ -2,13 +2,21 @@ import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import { getAuth } from '../lib/firebaseAdmin.js';
 import type { UserRecord } from 'firebase-admin/auth';
-import { authenticateToken, extractUserRole, requireAdminOrFaculty } from '../middleware/auth';
+import { authenticateToken, extractUserRole } from '../middleware/auth';
 import { firebaseAuth } from '../lib/firebase-admin';
 import { rateLimit } from '../middlewares/security';
 import { hasPrivilegedClaims, isSuperAdminEmail, isSuperAdminToken } from '../lib/superAdmin';
 import { deskRoleFromClaims } from '../lib/deskRoles';
+import { emailDispatchQueue } from '../lib/perfEngine';
 
 export const authRouter = Router();
+
+// Strict brute-force rate limiter for sensitive auth & OTP routes (10 attempts per 15 minutes)
+const authStrictLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  message: 'Too many authentication attempts, please try again after 15 minutes',
+});
 
 // Staff accounts (Super Admin, admins, faculty, mentors, teacher assistance) can't be taken over by app sign-up
 const isPrivilegedAccount = (user: UserRecord) =>
@@ -51,10 +59,8 @@ authRouter.post('/cms-handoff', rateLimit({ windowMs: 60_000, max: 10 }), authen
   const token = await firebaseAuth.createCustomToken(req.auth!.uid);
   res.json({ token });
 });
-// Backend is fully stateless for AWS Lambda. 
-// We will send reqId to the frontend and expect it back during verification.
 
-authRouter.post('/verify-otp-and-signup', async (req: Request, res: Response): Promise<any> => {
+authRouter.post('/verify-otp-and-signup', authStrictLimiter, async (req: Request, res: Response): Promise<any> => {
   try {
     const { name, email, password, phone, accessToken } = req.body;
     if (!phone || !accessToken || !email || !password || !name) {
@@ -137,7 +143,7 @@ authRouter.post('/verify-otp-and-signup', async (req: Request, res: Response): P
   }
 });
 
-authRouter.post('/get-email-by-phone', async (req: Request, res: Response): Promise<any> => {
+authRouter.post('/get-email-by-phone', authStrictLimiter, async (req: Request, res: Response): Promise<any> => {
   try {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone number is required' });
@@ -160,7 +166,7 @@ authRouter.post('/get-email-by-phone', async (req: Request, res: Response): Prom
   }
 });
 
-authRouter.post('/send-password-reset', async (req: Request, res: Response): Promise<any> => {
+authRouter.post('/send-password-reset', authStrictLimiter, async (req: Request, res: Response): Promise<any> => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -180,7 +186,7 @@ authRouter.post('/send-password-reset', async (req: Request, res: Response): Pro
     const actionCodeSettings = { url: 'https://edurain-pvt.web.app/login' };
     const link = await getAuth().generatePasswordResetLink(email, actionCodeSettings);
 
-    // Send `link` to user via MSG91 Email API
+    // Send `link` to user via MSG91 Email API using background queue with exponential backoff
     const emailPayload = {
       from: { email: "support@edurain.in", name: "Edurain" },
       domain: "edurain.in",
@@ -196,15 +202,30 @@ authRouter.post('/send-password-reset', async (req: Request, res: Response): Pro
       ]
     };
 
-    await axios.post('https://control.msg91.com/api/v5/email/send', emailPayload, {
-      headers: {
-        'authkey': MSG91_AUTH_KEY,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+    const minuteBucket = Math.floor(Date.now() / 60_000);
+    await emailDispatchQueue.add(
+      "password-reset-email",
+      {
+        userIdOrEmail: String(email).trim().toLowerCase(),
+        subject: "Password Reset",
+        sendFn: async () => {
+          await axios.post('https://control.msg91.com/api/v5/email/send', emailPayload, {
+            headers: {
+              'authkey': MSG91_AUTH_KEY,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          });
+        },
+      },
+      {
+        jobId: `pwd-reset:${String(email).trim().toLowerCase()}:${minuteBucket}`,
+        attempts: 3,
+        backoffDelayMs: 1000,
       }
-    });
+    );
 
-    res.json({ success: true, message: 'Password reset link sent to email' });
+    res.json({ success: true, message: 'Password reset link queued for delivery' });
   } catch (error: any) {
     console.error('Error sending reset email:', error?.response?.data || error.message);
     res.status(500).json({ error: 'Failed to send reset link via email' });

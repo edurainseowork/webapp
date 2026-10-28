@@ -15,6 +15,8 @@ import { logger } from "../../lib/logger";
 import { resolveCourseMentors } from "../../lib/courseMentors";
 import { saveCoursePlans, withCoursePlans } from "../../lib/coursePlans";
 import { ensureMentorshipSchema } from "../../lib/mentorshipSchema";
+import { invalidateCachePrefix } from "../../lib/perfEngine";
+
 // Mounted behind requireAdmin in routes/admin/index.ts.
 const router = Router();
 
@@ -45,9 +47,13 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-// GET /api/admin/courses?status=all|published|draft&categoryId=&q=
+// GET /api/admin/courses?status=all|published|draft&categoryId=&q=&limit=&offset=
 router.get("/", async (req, res) => {
   const { status, categoryId, q } = adminCourseQuerySchema.parse(req.query);
+  const rawLimit = Number(req.query.limit);
+  const rawOffset = Number(req.query.offset);
+  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 200;
+  const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
   const filters: (SQL | undefined)[] = [];
   if (status === "published") filters.push(eq(coursesTable.isPublished, true));
@@ -63,7 +69,9 @@ router.get("/", async (req, res) => {
     .from(coursesTable)
     .leftJoin(categoriesTable, eq(coursesTable.categoryId, categoriesTable.id))
     .where(and(...filters))
-    .orderBy(desc(coursesTable.updatedAt), desc(coursesTable.id));
+    .orderBy(desc(coursesTable.updatedAt), desc(coursesTable.id))
+    .limit(limit)
+    .offset(offset);
 
   res.json({ success: true, data: (await withCoursePlans(courses)).map((c) => withPublicThumbnail(c, req)) });
 });
@@ -92,7 +100,7 @@ router.post("/", async (req, res) => {
       category: category.name,
       isPublished: input.isPublished,
       publishedAt: input.isPublished ? now : null,
-                  mentors: await resolveCourseMentors(input.mentors),
+      mentors: await resolveCourseMentors(input.mentors),
       studentsEnrolled: input.studentsEnrolled ?? null,
       duration: input.duration ?? null,
       totalLessons: input.totalLessons ?? null,
@@ -106,7 +114,8 @@ router.post("/", async (req, res) => {
   // Pro / Pro Max prices; a bad plan fails validation above, before the course is created
   if (input.plans) await saveCoursePlans(created.id, input.plans);
 
-  logger.info({ adminUid: req.auth?.uid, courseId: created.id }, "Course created");
+  await invalidateCachePrefix("edurain:courses");
+  logger.info({ adminUid: req.auth?.uid, courseId: created.id }, "Course created & cache invalidated");
   const course = await loadCourse(created.id);
   res.status(201).json({ success: true, data: withPublicThumbnail(course, req) });
 });
@@ -165,12 +174,11 @@ router.patch("/:id", async (req, res) => {
   });
 
   await deleteUnreferencedThumbnail(previousThumbnail);
-  logger.info({ adminUid: req.auth?.uid, courseId, fields: Object.keys(input) }, "Course updated");
+  await invalidateCachePrefix("edurain:courses");
+  logger.info({ adminUid: req.auth?.uid, courseId, fields: Object.keys(input) }, "Course updated & cache invalidated");
   const course = await loadCourse(courseId);
   res.json({ success: true, data: withPublicThumbnail(course, req) });
 });
-
-
 
 // PATCH /api/admin/courses/:id/publish  { isPublished: boolean }
 router.patch("/:id/publish", async (req, res) => {
@@ -192,7 +200,8 @@ router.patch("/:id/publish", async (req, res) => {
         ...(isPublished ? { publishedAt: new Date() } : {}),
       })
       .where(eq(coursesTable.id, courseId));
-    logger.info({ adminUid: req.auth?.uid, courseId, isPublished }, "Course publish state changed");
+    await invalidateCachePrefix("edurain:courses");
+    logger.info({ adminUid: req.auth?.uid, courseId, isPublished }, "Course publish state changed & cache invalidated");
   }
 
   const course = await loadCourse(courseId);
@@ -229,7 +238,8 @@ router.delete("/:id", async (req, res) => {
   });
 
   await deleteUnreferencedThumbnail(thumbnail);
-  logger.info({ adminUid: req.auth?.uid, courseId }, "Course deleted");
+  await invalidateCachePrefix("edurain:courses");
+  logger.info({ adminUid: req.auth?.uid, courseId }, "Course deleted & cache invalidated");
   res.json({ success: true });
 });
 

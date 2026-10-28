@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import type { CorsOptions } from "cors";
+import { perfMetrics } from "../lib/perfEngine.ts";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -15,10 +16,12 @@ export function securityHeaders(_req: Request, res: Response, next: NextFunction
   next();
 }
 
-/** JSON API responses never need to load anything. */
+/** JSON API responses never need to load anything. Public GET routes override Cache-Control. */
 export function apiContentSecurityPolicy(_req: Request, res: Response, next: NextFunction) {
   res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
-  res.setHeader("Cache-Control", "no-store");
+  if (!res.getHeader("Cache-Control")) {
+    res.setHeader("Cache-Control", "no-store");
+  }
   next();
 }
 
@@ -47,30 +50,93 @@ export function corsOptions(): CorsOptions {
   };
 }
 
+export interface RateLimitOptions {
+  windowMs: number;
+  max?: number;
+  limit?: number;
+  keyGenerator?: (req: Request) => string;
+  message?: string;
+}
+
 /**
- * Small fixed-window, per-IP rate limiter. It is per process, so on Lambda it only
- * blunts bursts within one instance — also configure API Gateway throttling.
+ * Sliding-window / bucket rate limiter with standard RateLimit-* and Retry-After headers.
+ * Supports IP-based and User-based (`keyGenerator`) budgets.
  */
-export function rateLimit({ windowMs, max }: { windowMs: number; max: number }) {
-  const hits = new Map<string, { count: number; resetAt: number }>();
+export function rateLimit(opts: RateLimitOptions) {
+  const maxAllowed = opts.limit ?? opts.max ?? 100;
+  const { windowMs, keyGenerator, message } = opts;
+  const hits = new Map<string, { timestamps: number[]; resetAt: number }>();
 
   return (req: Request, res: Response, next: NextFunction) => {
     const now = Date.now();
-    const key = req.ip ?? "unknown";
+    const windowStart = now - windowMs;
+    const key = keyGenerator ? keyGenerator(req) : (req.ip ?? "unknown");
+
     let entry = hits.get(key);
     if (!entry || entry.resetAt <= now) {
-      entry = { count: 0, resetAt: now + windowMs };
+      entry = { timestamps: [], resetAt: now + windowMs };
       hits.set(key, entry);
       if (hits.size > 10_000) {
         for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
       }
     }
-    entry.count += 1;
-    if (entry.count > max) {
-      res.setHeader("Retry-After", Math.ceil((entry.resetAt - now) / 1000));
-      res.status(429).json({ error: "Too many requests, please try again later" });
+
+    // Sliding window filter: keep only requests within the active windowMs
+    entry.timestamps = entry.timestamps.filter((ts) => ts > windowStart);
+
+    if (entry.timestamps.length >= maxAllowed) {
+      perfMetrics.rateLimitBlocks += 1;
+      const oldestInWindow = entry.timestamps[0] ?? now;
+      const retryAfterSec = Math.max(1, Math.ceil((oldestInWindow + windowMs - now) / 1000));
+      res.setHeader("Retry-After", String(retryAfterSec));
+      res.setHeader("RateLimit-Limit", String(maxAllowed));
+      res.setHeader("RateLimit-Remaining", "0");
+      res.setHeader("RateLimit-Reset", String(retryAfterSec));
+      res.status(429).json({
+        error: message || "Too many requests, please try again later",
+        retryAfter: retryAfterSec,
+      });
       return;
     }
+
+    entry.timestamps.push(now);
+    entry.resetAt = now + windowMs;
+    res.setHeader("RateLimit-Limit", String(maxAllowed));
+    res.setHeader("RateLimit-Remaining", String(Math.max(0, maxAllowed - entry.timestamps.length)));
+    next();
+  };
+}
+
+/**
+ * Backpressure & Load Shedding Middleware (Reel 2: "1,000 IN • 100 OUT").
+ * Protects Node.js and PostgreSQL from unbounded in-flight request accumulation and OOM crashes.
+ */
+export function backpressureGuard(options?: { maxConcurrent?: number }) {
+  const maxConcurrent = options?.maxConcurrent ?? 400;
+  let activeInFlight = 0;
+
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (activeInFlight >= maxConcurrent) {
+      perfMetrics.backpressureSheds += 1;
+      res.setHeader("Retry-After", "10");
+      res.status(503).json({
+        error: "Server is at capacity (backpressure load shedding active). Please retry shortly.",
+        retryAfter: 10,
+      });
+      return;
+    }
+
+    activeInFlight += 1;
+    let released = false;
+    const release = () => {
+      if (!released) {
+        released = true;
+        activeInFlight = Math.max(0, activeInFlight - 1);
+      }
+    };
+
+    res.on("finish", release);
+    res.on("close", release);
     next();
   };
 }

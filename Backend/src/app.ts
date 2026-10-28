@@ -6,6 +6,7 @@ import { logger } from "./lib/logger";
 import { UPLOAD_DIR } from "./lib/media";
 import {
   apiContentSecurityPolicy,
+  backpressureGuard,
   corsOptions,
   rateLimit,
   securityHeaders,
@@ -76,7 +77,7 @@ app.use(
   }),
 );
 
-app.use("/api", apiContentSecurityPolicy, rateLimit({ windowMs: 60_000, max: 300 }), router);
+app.use("/api", apiContentSecurityPolicy, backpressureGuard({ maxConcurrent: 400 }), rateLimit({ windowMs: 60_000, max: 300 }), router);
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });
 });

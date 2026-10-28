@@ -14,6 +14,7 @@ import {
   type AcademicCohort,
 } from "../lib/geminiClient.js";
 import { inspectStudentMessage } from "../lib/abuseGuardEngine.js";
+import { rateLimit } from "../middlewares/security.js";
 import {
   checkUserLockStatus,
   issueModerationStrike,
@@ -225,7 +226,14 @@ async function streamPrecomputedResponse(
  * 5. POST /api/v1/ai/doubt/stream
  * Core Server-Sent Events (SSE) streaming endpoint
  */
-router.post("/stream", async (req: Request, res: Response) => {
+const aiStreamLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  keyGenerator: resolveUserIdentifier,
+  message: "Too many AI doubt requests per minute. Please wait a moment.",
+});
+
+router.post("/stream", aiStreamLimiter, async (req: Request, res: Response) => {
   await ensureAiTables();
   const userId = resolveUserIdentifier(req);
   const { prompt, sessionId, cohort } = req.body || {};
