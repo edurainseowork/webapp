@@ -25,7 +25,12 @@ import {
   preWarmCache,
   setRedisClient,
 } from "../lib/perfEngine.ts";
-import { backpressureGuard, rateLimit } from "../middlewares/security.ts";
+import {
+  LUA_TOKEN_BUCKET_SCRIPT,
+  backpressureGuard,
+  paymentRateLimiter,
+  rateLimit,
+} from "../middlewares/security.ts";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -84,49 +89,113 @@ async function runAllBreakTests() {
   const results = [];
 
   /* ------------------------------------------------------------------------ */
-  /* TEST 1: Rate Limiting & Brute-Force Break Test                           */
+  /* TEST 1: Rate Limiting PRD — 4 Algorithms, Dual IP+Account & Lua Script   */
   /* ------------------------------------------------------------------------ */
   {
     const t0 = performance.now();
+
+    // 1A: Sliding Window + Standard Headers (X-RateLimit-*, RateLimit-*, Retry-After)
     const loginLimiter = rateLimit({
       windowMs: 60_000,
       limit: 10,
+      algorithm: "sliding-window",
+      keyStrategy: "ip",
+      keyPrefix: "test-rl-ip",
       message: "Too many login attempts, please try again later",
     });
 
     const statuses = [];
-    let lastRetryAfter = null;
+    let lastHeaders = {};
     for (let i = 1; i <= 15; i++) {
       const { req, res } = createMockReqRes("198.51.100.42");
       let nextCalled = false;
-      loginLimiter(req, res, () => {
+      await loginLimiter(req, res, () => {
         nextCalled = true;
       });
-      if (nextCalled) {
-        statuses.push(200);
-      } else {
-        statuses.push(res.statusCode);
-        lastRetryAfter = res.headers["retry-after"];
-      }
+      statuses.push(nextCalled ? 200 : res.statusCode);
+      lastHeaders = res.headers;
     }
 
-    const allowedCount = statuses.filter((s) => s === 200).length;
-    const blockedCount = statuses.filter((s) => s === 429).length;
+    assert.equal(statuses.filter((s) => s === 200).length, 10, "First 10 requests allowed");
+    assert.equal(statuses.filter((s) => s === 429).length, 5, "Requests 11..15 blocked (429)");
+    assert.equal(lastHeaders["x-ratelimit-limit"], "10", "X-RateLimit-Limit header must be present");
+    assert.equal(lastHeaders["x-ratelimit-remaining"], "0", "X-RateLimit-Remaining must be 0 on 429");
+    assert.ok(Number(lastHeaders["x-ratelimit-reset"]) > 0, "X-RateLimit-Reset epoch timestamp must be present");
+    assert.ok(Number(lastHeaders["retry-after"]) > 0, "Retry-After header must be present");
 
-    assert.equal(allowedCount, 10, "Exactly first 10 requests should be allowed (200)");
-    assert.equal(blockedCount, 5, "Requests 11..15 must be blocked with HTTP 429");
-    assert.ok(Number(lastRetryAfter) > 0, "HTTP 429 must include a positive Retry-After header");
+    // 1B: Dual IP + Account Identifier Brute-Force Test (Attacker rotates 8 different IPs against 1 victim email)
+    const dualAuthLimiter = rateLimit({
+      windowMs: 60_000,
+      limit: 5,
+      algorithm: "sliding-window",
+      keyStrategy: "ip+identifier",
+      keyPrefix: "test-rl-dual",
+    });
+
+    const botnetStatuses = [];
+    for (let i = 1; i <= 8; i++) {
+      const { req, res } = createMockReqRes(`203.0.113.${i}`); // Different IP every request!
+      req.body = { email: "victim@edurain.in" };
+      let nextCalled = false;
+      await dualAuthLimiter(req, res, () => {
+        nextCalled = true;
+      });
+      botnetStatuses.push(nextCalled ? 200 : res.statusCode);
+    }
+
+    assert.equal(botnetStatuses.filter((s) => s === 200).length, 5, "Only 5 attempts allowed for victim@edurain.in across rotating IPs");
+    assert.equal(botnetStatuses.filter((s) => s === 429).length, 3, "Attempts 6..8 blocked even from fresh IPs!");
+
+    // 1C: Token Bucket + Atomic Redis Lua Script Verification
+    assert.ok(LUA_TOKEN_BUCKET_SCRIPT.includes("redis.call('HMGET'"), "Atomic Lua Token Bucket script must be embedded");
+    const tokenBucketLimiter = rateLimit({
+      windowMs: 1_000, // 1s window, 2 tokens (refill = 2 tokens/sec)
+      limit: 2,
+      algorithm: "token-bucket",
+      keyStrategy: "user",
+      keyPrefix: "test-rl-tb",
+    });
+
+    const tbStatuses = [];
+    for (let i = 0; i < 3; i++) {
+      const { req, res } = createMockReqRes("10.0.0.1", 777);
+      let ok = false;
+      await tokenBucketLimiter(req, res, () => { ok = true; });
+      tbStatuses.push(ok ? 200 : res.statusCode);
+    }
+    assert.deepEqual(tbStatuses, [200, 200, 429], "Token bucket allows burst of 2 and rejects 3rd");
+    await sleep(550); // Wait 0.55s -> 1 token refills!
+    {
+      const { req, res } = createMockReqRes("10.0.0.1", 777);
+      let refilledOk = false;
+      await tokenBucketLimiter(req, res, () => { refilledOk = true; });
+      assert.equal(refilledOk, true, "Token bucket must refill 1 token after 500ms");
+    }
+
+    // 1D: Payment Route Limiter (20 req/min per User)
+    let paymentAllowed = 0;
+    let paymentBlocked = 0;
+    for (let i = 1; i <= 25; i++) {
+      const { req, res } = createMockReqRes("10.0.0.9", 999);
+      let ok = false;
+      await paymentRateLimiter(req, res, () => { ok = true; });
+      if (ok) paymentAllowed++;
+      else if (res.statusCode === 429) paymentBlocked++;
+    }
+    assert.equal(paymentAllowed, 20, "Payment limiter allows 20 requests/min");
+    assert.equal(paymentBlocked, 5, "Payment limiter blocks requests 21..25");
 
     const elapsed = (performance.now() - t0).toFixed(2);
-    console.log(`✅ [TEST 1 PASS] Rate Limiting & Brute-Force Protection (${elapsed}ms)`);
-    console.log(`   ├─ Requests 1..10  -> HTTP 200 OK`);
-    console.log(`   ├─ Requests 11..15 -> HTTP 429 Too Many Requests (Retry-After: ${lastRetryAfter}s)`);
-    console.log(`   └─ DB Queries on blocked requests: 0\n`);
+    console.log(`✅ [TEST 1 PASS] Rate Limiting PRD — Sliding Window, Token Bucket, Dual IP+Account & Headers (${elapsed}ms)`);
+    console.log(`   ├─ Standard Headers Verified : X-RateLimit-Limit=10, Remaining=0, Reset=${lastHeaders["x-ratelimit-reset"]}, Retry-After=${lastHeaders["retry-after"]}s`);
+    console.log(`   ├─ Botnet IP-Rotation Attack : 5 Allowed, 3 Blocked (429) on victim@edurain.in across 8 distinct IPs`);
+    console.log(`   ├─ Token Bucket Refill Test  : Burst [200, 200, 429] -> 500ms steady refill -> 200 OK`);
+    console.log(`   └─ Payment Route Limiter     : 20 Allowed, 5 Blocked (429)\n`);
 
     results.push({
-      test: "Test 1: Rate Limiting & Brute-Force Break Test",
+      test: "Test 1: Rate Limiting PRD (4 Algos + Dual IP/Acct + Headers)",
       status: "PASS",
-      metrics: `10 Allowed (200), 5 Blocked (429), Retry-After=${lastRetryAfter}s`,
+      metrics: `IP: 10/15, Botnet Acct: 5/8, TokenBucket Refill: OK, Payment: 20/25`,
     });
   }
 

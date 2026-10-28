@@ -16,12 +16,10 @@ import { errorHandler } from "./middlewares/error-handler";
 const app: Express = express();
 
 app.disable("x-powered-by");
-// Number of reverse proxies in front of the app (API Gateway / load balancer), so req.ip
-// is the real client IP for rate limiting. Leave unset when running directly.
-const trustProxy = process.env.TRUST_PROXY;
-if (trustProxy) {
-  app.set("trust proxy", /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
-}
+// Number of reverse proxies in front of the app (API Gateway / load balancer / Cloudflare), so req.ip
+// safely reads X-Forwarded-For without IP spoofing (PRD Section 15: default 1 hop).
+const trustProxy = process.env.TRUST_PROXY ?? "1";
+app.set("trust proxy", /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 
 app.use(
   pinoHttp({

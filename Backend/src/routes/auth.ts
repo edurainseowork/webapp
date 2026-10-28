@@ -11,10 +11,13 @@ import { emailDispatchQueue } from '../lib/perfEngine';
 
 export const authRouter = Router();
 
-// Strict brute-force rate limiter for sensitive auth & OTP routes (10 attempts per 15 minutes)
+// Strict brute-force rate limiter for sensitive auth & OTP routes (10 attempts per 15 minutes by IP AND Email/Phone)
 const authStrictLimiter = rateLimit({
   windowMs: 15 * 60_000,
   limit: 10,
+  algorithm: 'sliding-window',
+  keyStrategy: 'ip+identifier',
+  keyPrefix: 'rl:auth-strict',
   message: 'Too many authentication attempts, please try again after 15 minutes',
 });
 

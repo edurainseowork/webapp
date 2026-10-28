@@ -15,7 +15,7 @@ import liveClassesRouter from "./liveClasses.js";
 import notificationsRouter from "./notifications.js";
 import enrollmentsRouter from "./enrollments.js";
 import adminNotificationsRouter from "./adminNotifications.js";
-import profileRouter from "./profile.js"
+import profileRouter from "./profile.js";
 import bunnyRouter from "./bunny.routes.js";
 import cmsTestsRouter from "./cmsTests.js";
 import testsRouter from "./tests.js";
@@ -29,48 +29,66 @@ import ebooksRouter from "./ebooks.js";
 import aiDoubtRouter from "./aiDoubt.js";
 import supportContactsRouter from "./supportContacts.js";
 import { restrictDeskRoles, authenticateToken } from "../middleware/auth.js";
+import {
+  adminApiLimiter,
+  aiRateLimiter,
+  catalogReadLimiter,
+  paymentRateLimiter,
+  studentActionLimiter,
+  uploadLeakyLimiter,
+} from "../middlewares/security.js";
+
 const router = Router();
 
 // Mentor / Teacher Assistance accounts may only reach /auth/me and their own desk API
 router.use(restrictDeskRoles);
 
 router.use("/health", healthRouter);
-router.use("/courses", coursesRouter);
-router.use("/categories", categoriesRouter);
-router.use("/admin", adminRouter);
-router.use("/coupons", couponsRouter);
-router.use("/razorpay", razorpayRouter);
-router.use("/google-play", googlePlayRouter);
-router.use("/content", contentRouter);
-router.use("/ebooks", ebooksRouter);
-router.use("/upload", uploadRouter);
-router.use("/banners", bannersRouter);
+
+// 1. Public Catalog & Read Endpoints (100 req / 60s Token Bucket per IP)
+router.use("/courses", catalogReadLimiter, coursesRouter);
+router.use("/categories", catalogReadLimiter, categoriesRouter);
+router.use("/banners", catalogReadLimiter, bannersRouter);
+router.use("/ebooks", catalogReadLimiter, ebooksRouter);
+router.use("/content", catalogReadLimiter, contentRouter);
+router.use("/tests", catalogReadLimiter, testsRouter);
+router.use("/support-contacts", catalogReadLimiter, supportContactsRouter);
+
+// 2. Payment, Coupon & Enrollment Endpoints (20 req / 60s Token Bucket per User/IP)
+router.use("/coupons", paymentRateLimiter, couponsRouter);
+router.use("/razorpay", paymentRateLimiter, razorpayRouter);
+router.use("/google-play", paymentRateLimiter, googlePlayRouter);
+router.use("/enrollments", paymentRateLimiter, enrollmentsRouter);
+
+// 3. Heavy Media & Video Upload Endpoints (20 req / 60s Leaky Bucket per User)
+router.use("/upload", uploadLeakyLimiter, uploadRouter);
+
+// 4. Authentication Endpoints (Strict Sliding Window IP + Identifier inside authRouter)
 router.use("/auth", authRouter);
-// The signed-in student's own profile, photo and day streak
-router.use("/profile", profileRouter);
-router.use("/tickets", authenticateToken, ticketsRouter);
-// The signed-in student's goal (exam / cohort) and 1:1 mentorship
-router.use("/me/goal", studentGoalRouter);
-router.use("/mentorship", mentorshipRouter);
-// Lessons the student has opened (syllabus progress)
-router.use("/progress", progressRouter);
-router.use("/stats", statsRouter);
-router.use("/enrollments", enrollmentsRouter);
-router.use("/cms/tests", cmsTestsRouter);
-router.use("/tests", testsRouter);
-router.use("/support-contacts", supportContactsRouter);
-// Super Admin only: create and remove CMS admins
-router.use("/cms/admins", cmsAdminsRouter);
-// Desk APIs, each limited to its own role
-router.use("/mentor-desk", mentorDeskRouter);
-router.use("/teacher-assistant-desk", teacherAssistantDeskRouter);
-// Mounted at the root: serves /courses/:courseId/live-classes and /live-classes/:id
+
+// 5. Student Write & Interactive Endpoints (60 req / 60s Token Bucket per User)
+router.use("/profile", studentActionLimiter, profileRouter);
+router.use("/tickets", authenticateToken, studentActionLimiter, ticketsRouter);
+router.use("/me/goal", studentActionLimiter, studentGoalRouter);
+router.use("/mentorship", studentActionLimiter, mentorshipRouter);
+router.use("/progress", studentActionLimiter, progressRouter);
+router.use("/notifications", studentActionLimiter, notificationsRouter);
+router.use("/admin-notifications", studentActionLimiter, adminNotificationsRouter);
+
+// 6. Admin, CMS & Staff Desk Endpoints (120 req / 60s Token Bucket per Admin/Staff)
+router.use("/admin", adminApiLimiter, adminRouter);
+router.use("/stats", adminApiLimiter, statsRouter);
+router.use("/cms/tests", adminApiLimiter, cmsTestsRouter);
+router.use("/cms/admins", adminApiLimiter, cmsAdminsRouter);
+router.use("/mentor-desk", adminApiLimiter, mentorDeskRouter);
+router.use("/teacher-assistant-desk", adminApiLimiter, teacherAssistantDeskRouter);
+
+// 7. AI Doubt Solver Endpoints (10 req / 60s Token Bucket per Student)
+router.use("/ai/doubt", aiRateLimiter, aiDoubtRouter);
+router.use("/ai", aiRateLimiter, aiDoubtRouter);
+
+// Mounted at root: live classes & bunny video streaming
 router.use(liveClassesRouter);
-router.use("/notifications", notificationsRouter);
-// Admin notifications for the app (separate from the live class notifications above)
-router.use("/admin-notifications", adminNotificationsRouter);
-router.use("/ai/doubt", aiDoubtRouter);
-router.use("/ai", aiDoubtRouter);
 router.use(bunnyRouter);
 
 export default router;

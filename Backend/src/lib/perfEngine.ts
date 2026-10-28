@@ -64,6 +64,10 @@ export function setRedisClient(client: RedisLikeClient | null): void {
   circuitOpenUntil = 0;
 }
 
+export function getRedisClient(): RedisLikeClient | null {
+  return Date.now() < circuitOpenUntil ? null : redisClient;
+}
+
 export function getCircuitState(): "CLOSED" | "OPEN" {
   return Date.now() < circuitOpenUntil ? "OPEN" : "CLOSED";
 }
