@@ -29,6 +29,10 @@ import {
   Award,
   Radio,
   Target,
+  Zap,
+  Flame,
+  Bookmark,
+  Video,
 } from 'lucide-react';
 import { UpgradeModal } from './components/Modals/UpgradeModal';
 import { DoubtSolverModal } from './components/Modals/DoubtSolverModal';
@@ -397,12 +401,18 @@ export function App() {
   const vaultItems: VaultResource[] = [
     {
       id: 'vault-physics',
-      title: 'Bookmark',
+      title: 'Saved Bookmarks',
       subject: 'Physics',
-      second_text: 'Watch Later',
-      countLabel: 'saved Items',
+      second_text: 'Watch Later & Fast Revision',
+      countLabel: 'Saved Items',
+      actionLabel: 'Open Bookmarks',
       tags: ['Rotational Motion', 'Wave Optics', 'Electrodynamics'],
-      iconType: 'book',
+      iconType: 'bookmark',
+      gradient: 'from-amber-400 to-amber-600',
+      shadow: 'shadow-amber-900/20',
+      badgeColor: 'bg-amber-500/15 text-amber-800 border-amber-500/30',
+      borderHover: 'hover:border-amber-400/50',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(245,158,11,0.22)]',
       description: 'Comprehensive high-yield notes, derivation sheets, and Irodov problem breakdowns curated by IIT Top 100 rankers.',
       downloadSize: '48.2 MB',
       rating: 4.9,
@@ -411,36 +421,54 @@ export function App() {
       id: 'vault-chemistry',
       title: 'Your Class Material',
       subject: 'Chemistry',
-      second_text: 'Recorded Lecture',
-      countLabel: 'Lecture Notes',
+      second_text: 'Recorded Lectures & Archives',
+      countLabel: 'PDF Notes & Maps',
+      actionLabel: 'View Materials',
       tags: ['Reaction Maps', 'Coordination Chem', 'Thermodynamics'],
       iconType: 'archive',
+      gradient: 'from-emerald-500 to-teal-700',
+      shadow: 'shadow-emerald-900/20',
+      badgeColor: 'bg-emerald-500/15 text-emerald-800 border-emerald-500/30',
+      borderHover: 'hover:border-emerald-500/50',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(16,185,129,0.22)]',
       description: 'Master organic synthesis pathways, NCERT line-by-line highlight maps, and inorganic memorization mnemonics.',
       downloadSize: '64.5 MB',
       rating: 4.8,
     },
     {
       id: 'vault-live-classes',
-      title: 'Your Live Class',
+      title: 'Your Live Classes',
       subject: 'Live Sessions',
-      second_text: 'Interactive Classes',
-      countLabel: 'LIVE NOW',
+      second_text: 'Interactive Q&A Rooms',
+      countLabel: 'LIVE STREAM',
+      actionLabel: 'Join Live Room',
       tags: ['Live Stream', 'Doubt Solving', 'Teacher Connect'],
       iconType: 'live',
       isLive: true,
       statusText: 'LIVE NOW',
+      gradient: 'from-rose-500 to-red-600',
+      shadow: 'shadow-rose-900/20',
+      badgeColor: 'bg-rose-500/15 text-rose-800 border-rose-500/30',
+      borderHover: 'hover:border-rose-400/50',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(244,63,94,0.25)]',
       description: 'Join live interactive classes directly with expert educators with real-time doubt resolution.',
       downloadSize: 'Live Stream',
       rating: 5.0,
     },
     {
       id: 'vault-math',
-      title: 'Test Series',
-      second_text: '',
+      title: 'All India Test Series',
+      second_text: 'Real NTA Exam Pattern',
       subject: 'Mock Tests',
-      countLabel: 'Active Tests',
+      countLabel: 'Active CBT Tests',
+      actionLabel: 'Start Practice Test',
       tags: ['Full Syllabus', 'Part Tests', 'Real NTA Engine'],
       iconType: 'analytics',
+      gradient: 'from-indigo-500 to-blue-700',
+      shadow: 'shadow-indigo-900/20',
+      badgeColor: 'bg-indigo-500/15 text-indigo-800 border-indigo-500/30',
+      borderHover: 'hover:border-indigo-400/50',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(99,102,241,0.22)]',
       description: 'Live adaptive mock test mirror mimicking actual JEE and NEET CBT interfaces with instant rank analytics.',
       downloadSize: 'Online CBT',
       rating: 4.9,
@@ -450,24 +478,42 @@ export function App() {
   const studyPlans = [
     {
       id: 'sp1',
-      title: '1 to 1 MENTORSHIP',
-      subtitle: '',
+      title: '1 to 1 Mentorship',
+      badge: 'TOP IIT / AIIMS MENTORS',
+      subtitle: 'Personalized 1-on-1 strategy, rank roadmap & study motivation',
       icon: Users,
       action: () => openSubView('mentorship'),
+      gradient: 'from-emerald-500 to-teal-700',
+      shadow: 'shadow-emerald-900/20',
+      badgeColor: 'bg-emerald-500/15 text-emerald-800 border-emerald-500/30',
+      borderHover: 'hover:border-emerald-500/40',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(16,185,129,0.22)]',
     },
     {
       id: 'sp2',
-      title: 'ASK YOUR DOUBT',
-      subtitle: '',
+      title: 'Ask Your Doubt',
+      badge: 'INSTANT 24/7 HELP',
+      subtitle: 'Snap a photo or chat with educators for instant step-by-step solutions',
       icon: HelpCircle,
       action: () => openSubView('doubts'),
+      gradient: 'from-sky-500 to-blue-700',
+      shadow: 'shadow-blue-900/20',
+      badgeColor: 'bg-sky-500/15 text-sky-800 border-sky-500/30',
+      borderHover: 'hover:border-sky-500/40',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(14,165,233,0.22)]',
     },
     {
       id: 'sp3',
-      title: 'EduAI',
-      subtitle: '',
+      title: 'EduAI Tutor',
+      badge: 'SMART AI ASSISTANT',
+      subtitle: 'Adaptive AI problem-solver, revision quizzes & 24/7 concept breakdown',
       icon: Bot,
       action: () => openSubView('ai-mentor'),
+      gradient: 'from-violet-500 to-indigo-700',
+      shadow: 'shadow-indigo-900/20',
+      badgeColor: 'bg-violet-500/15 text-violet-800 border-violet-500/30',
+      borderHover: 'hover:border-violet-500/40',
+      hoverGlow: 'hover:shadow-[0_16px_40px_-8px_rgba(139,92,246,0.22)]',
     }
   ];
 
@@ -760,12 +806,12 @@ export function App() {
                   navigateTo('study-central');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isLiveClassesOpen && !isMyCoursesOpen
+                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isLiveClassesOpen && !isMyCoursesOpen
                   ? 'bg-[#175A67] text-white shadow-sm'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <LayoutGrid className="w-4 h-4" />
+                <LayoutGrid className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
                 <span>Home</span>
               </button>
 
@@ -774,13 +820,18 @@ export function App() {
                   navigateTo('pi');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
+                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center justify-between text-sm transition-all ${activeNav === 'pi'
                   ? 'bg-[#175A67] text-white shadow-sm'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <Terminal className="w-4 h-4" />
-                <span>Daily Drop</span>
+                <div className="flex items-center gap-3">
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
+                  <span>Daily Drop</span>
+                </div>
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 border border-amber-500/30">
+                  Daily
+                </span>
               </button>
 
               <button
@@ -788,12 +839,12 @@ export function App() {
                   navigateTo('courses');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'courses' || isMyCoursesOpen
+                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'courses' || isMyCoursesOpen
                   ? 'bg-[#175A67] text-white shadow-sm'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <BookOpen className="w-4 h-4" />
+                <BookOpen className="w-4 h-4 text-sky-600 group-hover:scale-110 transition-transform" />
                 <span>COURSES</span>
               </button>
 
@@ -802,15 +853,18 @@ export function App() {
                   navigateTo('test-series');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
+                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
                   ? 'bg-[#175A67] text-white shadow-sm'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
                 <div className="flex items-center gap-3">
-                  <Award className="w-4 h-4" />
+                  <Award className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
                   <span>ALL INDIA TEST PASS</span>
                 </div>
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-800 border border-indigo-500/30">
+                  Live
+                </span>
               </button>
             </div>
           </div>
@@ -845,48 +899,56 @@ export function App() {
             <div className="space-y-1">
               <button
                 onClick={() => navigateTo('study-central')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isLiveClassesOpen && !isMyCoursesOpen
+                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'study-central' && !isAiMentorPageOpen && !isBookDoubtSessionOpen && !isBookmarksPageOpen && !isEbookLibraryOpen && !isLiveClassesOpen && !isMyCoursesOpen
                   ? 'bg-[#175A67] text-white shadow-md'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <LayoutGrid className="w-4 h-4" />
+                <LayoutGrid className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
                 <span>Home</span>
               </button>
 
               <button
                 onClick={() => navigateTo('pi')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
-                  ? 'bg-[#175A67] text-white shadow-md'
-                  : 'text-[#175A67] hover:bg-[#175A67]/10'
-                  }`}
-              >
-                <Terminal className="w-4 h-4" />
-                <span>Daily Drop</span>
-              </button>
-
-              <button
-                onClick={() => navigateTo('courses')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'courses' || isMyCoursesOpen
-                  ? 'bg-[#175A67] text-white shadow-md'
-                  : 'text-[#175A67] hover:bg-[#175A67]/10'
-                  }`}
-              >
-                <BookOpen className="w-4 h-4" />
-                <span>COURSES</span>
-              </button>
-
-              <button
-                onClick={() => navigateTo('test-series')}
-                className={`w-full font-semibold rounded-xl px-4 py-3 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
+                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center justify-between text-sm transition-all ${activeNav === 'pi'
                   ? 'bg-[#175A67] text-white shadow-md'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
                 <div className="flex items-center gap-3">
-                  <Award className="w-4 h-4" />
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
+                  <span>Daily Drop</span>
+                </div>
+                <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 border border-amber-500/30">
+                  Daily
+                </span>
+              </button>
+
+              <button
+                onClick={() => navigateTo('courses')}
+                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'courses' || isMyCoursesOpen
+                  ? 'bg-[#175A67] text-white shadow-md'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
+              >
+                <BookOpen className="w-4 h-4 text-sky-600 group-hover:scale-110 transition-transform" />
+                <span>COURSES</span>
+              </button>
+
+              <button
+                onClick={() => navigateTo('test-series')}
+                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
+                  ? 'bg-[#175A67] text-white shadow-md'
+                  : 'text-[#175A67] hover:bg-[#175A67]/10'
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Award className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
                   <span>ALL INDIA TEST PASS</span>
                 </div>
+                <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-800 border border-indigo-500/30">
+                  Live
+                </span>
               </button>
             </div>
           </div>
@@ -1100,26 +1162,35 @@ export function App() {
                   <h2 className="text-lg sm:text-xl font-bold text-[#175A67]">Features</h2>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-4">
-                  {filteredStudyPlans.map((plan) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
+                  {filteredStudyPlans.map((plan: any) => {
                     const IconComponent = plan.icon;
                     return (
                       <div
                         key={plan.id}
                         onClick={plan.action}
-                        className="group bg-white/50 hover:bg-white/70 backdrop-blur-xl border border-white/70 hover:border-white rounded-2xl p-5 sm:p-6 shadow-[0_8px_32px_0_rgba(31,38,135,0.07)] hover:shadow-[0_14px_44px_0_rgba(31,38,135,0.12)] transition-all duration-300 ease-out hover:-translate-y-1 cursor-pointer flex flex-col  min-h-[140px] sm:min-h-[120px] active:scale-[0.98]"
+                        className={`group relative bg-white/60 hover:bg-white/85 backdrop-blur-xl border border-white/80 ${plan.borderHover || 'hover:border-white'} rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.05)] ${plan.hoverGlow || 'hover:shadow-lg'} transition-all duration-300 ease-out hover:-translate-y-1.5 cursor-pointer flex flex-col justify-between min-h-[160px] active:scale-[0.98] overflow-hidden`}
                       >
-                        <div className="w-full flex items-start justify-between">
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#1a5b65] text-white rounded-xl flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
-                            <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                        <div className="w-full flex items-start justify-between gap-3">
+                          <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br ${plan.gradient} text-white flex items-center justify-center shadow-lg ${plan.shadow} group-hover:scale-110 group-hover:rotate-2 transition-all duration-300 relative border border-white/30 flex-shrink-0`}>
+                            <IconComponent className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                           </div>
-                          <ChevronRight className="w-5 h-5 text-[#175A67] group-hover:translate-x-1 transition-transform" />
+                          <div className="flex flex-col items-end gap-1.5">
+                            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${plan.badgeColor} tracking-wider uppercase`}>
+                              {plan.badge}
+                            </span>
+                            <div className="w-7 h-7 rounded-full bg-white/80 border border-white flex items-center justify-center text-[#175A67] shadow-sm group-hover:bg-[#175A67] group-hover:text-white group-hover:translate-x-1 transition-all">
+                              <ChevronRight className="w-4 h-4" />
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-bold text-[#175A67] text-[15px] mt-3 leading-tight tracking-tightt">
+                        <div className="mt-3">
+                          <h3 className="font-extrabold text-[#175A67] text-[15px] sm:text-base leading-tight tracking-tight">
                             {plan.title}
                           </h3>
-                          <p className="text-[#2A707C] text-[12px] mt-1 font-medium">{plan.subtitle}</p>
+                          <p className="text-[#2A707C] text-xs sm:text-[13px] mt-1.5 font-medium leading-relaxed">
+                            {plan.subtitle}
+                          </p>
                         </div>
                       </div>
                     );
@@ -1136,14 +1207,15 @@ export function App() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-4">
-                  {filteredVaultItems.map((item) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 lg:gap-5">
+                  {filteredVaultItems.map((item: any) => {
                     const iconMap: Record<string, any> = {
-                      book: BookOpen,
+                      bookmark: Bookmark,
+                      book: Bookmark,
                       archive: Library,
                       combat: Swords,
-                      live: Radio,
-                      analytics: Crosshair
+                      live: Video,
+                      analytics: Target
                     };
                     const IconComp = iconMap[item.iconType] || BookOpen;
 
@@ -1166,25 +1238,38 @@ export function App() {
                             setSelectedVaultItem(item);
                           }
                         }}
-                        className="bg-white/60 hover:bg-white/85 backdrop-blur-md border border-white/80 rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.05)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.09)] transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col items-center justify-between min-h-[190px] sm:min-h-[220px] active:scale-[0.98]"
+                        className={`group bg-white/60 hover:bg-white/85 backdrop-blur-xl border border-white/80 ${item.borderHover || 'hover:border-white'} rounded-2xl p-5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.05)] ${item.hoverGlow || 'hover:shadow-xl'} transition-all duration-300 hover:-translate-y-1.5 cursor-pointer flex flex-col items-center justify-between min-h-[220px] active:scale-[0.98] relative overflow-hidden`}
                       >
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-[#175A67] text-white rounded-2xl flex items-center justify-center shadow-md mb-2 sm:mb-3">
-                          <IconComp className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+                        {item.isLive && (
+                          <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-700 text-[10px] font-extrabold tracking-wider uppercase">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                            </span>
+                            LIVE
+                          </div>
+                        )}
+
+                        <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br ${item.gradient || 'from-[#175A67] to-[#2A707C]'} text-white flex items-center justify-center shadow-lg ${item.shadow || ''} group-hover:scale-110 group-hover:rotate-2 transition-all duration-300 border border-white/30 my-1`}>
+                          <IconComp className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                         </div>
-                        <div className="text-center">
-                          <h3 className="font-bold text-[#175A67] text-center text-base sm:text-lg lg:text-[15px] lg:min-w-[200px] lg:leading-normal">{item.title}</h3>
-                          <p className={`text-xs text-center mt-1 ${item.isLive ? 'text-[#10B981] font-bold' : 'text-[#2A707C]'
-                            }`}>
+
+                        <div className="text-center w-full">
+                          <h3 className="font-extrabold text-[#175A67] text-center text-base sm:text-[17px] leading-snug">
+                            {item.title}
+                          </h3>
+                          <p className="text-xs font-bold text-[#175A67]/80 mt-1">
                             {item.countLabel}
                           </p>
-                          <p className={`text-xs text-center mt-1 ${item.isLive ? 'text-[#10B981] font-bold' : 'text-[#2A707C]'
-                            }`}>
+                          <p className="text-[11px] text-[#2A707C] mt-0.5 font-medium">
                             {item.second_text}
                           </p>
                         </div>
-                        <span className="text-[#175A67] text-xs text-center block mt-2 sm:mt-3 font-semibold hover:underline">
-                          Enter Library &gt;
-                        </span>
+
+                        <div className="w-full pt-2.5 border-t border-[#175A67]/10 flex items-center justify-center gap-1.5 text-xs font-bold text-[#175A67] group-hover:text-emerald-700 transition-colors">
+                          <span>{item.actionLabel || 'Enter Library'}</span>
+                          <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                        </div>
                       </div>
                     );
                   })}

@@ -16,8 +16,14 @@ export interface VaultResource {
   title: string;
   subject: 'Physics' | 'Chemistry' | 'Mathematics' | 'Mock Tests' | 'Live Sessions';
   countLabel: string;
+  actionLabel?: string;
   tags: string[];
-  iconType: 'book' | 'archive' | 'combat' | 'analytics' | 'live';
+  iconType: 'book' | 'archive' | 'combat' | 'analytics' | 'live' | 'bookmark';
+  gradient?: string;
+  shadow?: string;
+  badgeColor?: string;
+  borderHover?: string;
+  hoverGlow?: string;
   isLive?: boolean;
   statusText?: string;
   description: string;
