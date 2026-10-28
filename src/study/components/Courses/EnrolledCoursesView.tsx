@@ -28,12 +28,6 @@ const MAX_PROMOS = 3;
 const PROMO_INTERVAL_MS = 6000;
 
 const pickPromos = (batches: Batch[], isOwned: (id: string) => boolean): Batch[] => {
-  // 1. Prioritize courses explicitly set as banner in CMS Course Manager
-  const chosen = batches.filter((b) => b.isPurchasedBanner && !isOwned(b.id));
-  if (chosen.length > 0) {
-    return chosen.slice(0, MAX_PROMOS);
-  }
-  // 2. Fall back to best CMS offers not owned
   return batches
     .filter((b) => !isOwned(b.id) && b.price > 0)
     .sort((a, b) => discountPct(b.price, b.mrp) - discountPct(a.price, a.mrp))

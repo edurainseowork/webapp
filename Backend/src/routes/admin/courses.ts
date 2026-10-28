@@ -170,33 +170,7 @@ router.patch("/:id", async (req, res) => {
   res.json({ success: true, data: withPublicThumbnail(course, req) });
 });
 
-// PATCH /api/admin/courses/:id/purchased-banner  { isPurchasedBanner: boolean }
-router.patch("/:id/purchased-banner", async (req, res) => {
-  const courseId = parseId(req.params.id);
-  const isPurchasedBanner = Boolean(req.body.isPurchasedBanner);
 
-  const [existing] = await db
-    .select({ isPurchasedBanner: coursesTable.isPurchasedBanner })
-    .from(coursesTable)
-    .where(eq(coursesTable.id, courseId));
-  if (!existing) throw new HttpError(404, "Course not found");
-
-  if (isPurchasedBanner) {
-    await db
-      .update(coursesTable)
-      .set({ isPurchasedBanner: false, updatedAt: new Date() })
-      .where(eq(coursesTable.isPurchasedBanner, true));
-  }
-
-  await db
-    .update(coursesTable)
-    .set({ isPurchasedBanner, updatedAt: new Date() })
-    .where(eq(coursesTable.id, courseId));
-
-  logger.info({ adminUid: req.auth?.uid, courseId, isPurchasedBanner }, "Course purchased banner status updated");
-  const course = await loadCourse(courseId);
-  res.json({ success: true, data: withPublicThumbnail(course, req) });
-});
 
 // PATCH /api/admin/courses/:id/publish  { isPublished: boolean }
 router.patch("/:id/publish", async (req, res) => {
