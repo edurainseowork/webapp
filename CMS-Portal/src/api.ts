@@ -111,7 +111,7 @@ export type AdminCourse = {
   plans?: CoursePlans;
 };
 
-export const MAX_UPLOAD_BYTES = 500 * 1024;
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB allows high-res graphics (384x286 px, 1448x1073 px)
 
 export const rupeesToPaise = (rupees: string) => Math.round(Number(rupees) * 100);
 export const paiseToRupees = (paise: number) => (paise / 100).toString();

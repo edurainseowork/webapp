@@ -728,12 +728,17 @@ export function CourseDetailView({
             {/* Summary / checkout card */}
             <aside className="lg:sticky lg:top-16 bg-white rounded-2xl p-3 shadow-[0_12px_40px_rgba(11,28,32,0.08)]">
               {batch.thumbnail && !thumbFailed && (
-                <img
-                  src={batch.thumbnail}
-                  alt={batch.title}
-                  className="w-full aspect-[2/1] object-cover rounded-xl"
-                  onError={() => setThumbFailed(true)}
-                />
+                <div className="flex justify-center pb-2">
+                  <div className="w-[184px] h-[137px] rounded-xl overflow-hidden shadow-sm relative shrink-0">
+                    <img
+                      src={batch.thumbnail}
+                      alt={batch.title}
+                      style={{ width: '184px', height: '137px' }}
+                      className="w-[184px] h-[137px] object-cover rounded-xl"
+                      onError={() => setThumbFailed(true)}
+                    />
+                  </div>
+                </div>
               )}
               <div className="px-2 pt-3 pb-2">
               <div className="flex items-center justify-between gap-2">

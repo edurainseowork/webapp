@@ -227,11 +227,11 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
       return;
     }
     if (file && file.size > MAX_UPLOAD_BYTES) {
-      showToast('Thumbnail must be 500 KB or smaller', 'error');
+      showToast('Thumbnail must be 5 MB or smaller', 'error');
       return;
     }
     setThumbnailFile(file);
-  };
+  };
 
   const pickMentorPhoto = (row: MentorRow, file: File | null) => {
     if (!file) return;
@@ -424,7 +424,7 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
             {visibleCourses.map((course) => (
               <div key={course.id} style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <img src={course.thumbnail} alt="" style={{ width: '96px', height: '54px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0, background: 'rgba(255,255,255,0.05)' }} />
+                <img src={course.thumbnail} alt="" style={{ width: '72px', height: '54px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0, background: 'rgba(255,255,255,0.05)' }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                     <h4 style={{ color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{course.title}</h4>
@@ -550,11 +550,11 @@ export default function CourseManager({ courses, isLoading = false, reloadCourse
             <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center' }}>
               <input type="file" accept="image/png, image/jpeg, image/webp" onChange={e => pickThumbnail(e.target.files?.[0] || null)} className="input-field" style={{ ...inputStyle, padding: '9px', cursor: 'pointer', flex: 1 }} />
               {(thumbnailPreview || editing?.thumbnail) && (
-                <img src={thumbnailPreview || editing!.thumbnail} alt="Thumbnail preview" style={{ width: '128px', height: '72px', objectFit: 'cover', borderRadius: '6px' }} />
+                <img src={thumbnailPreview || editing!.thumbnail} alt="Thumbnail preview" style={{ width: '184px', height: '137px', objectFit: 'cover', borderRadius: '8px' }} />
               )}
             </div>
-            <p style={{ fontSize: '0.75rem', color: '#ff5e5e', marginTop: '6px' }}>
-              * Max size: 500 KB. Recommended: 1280x720 px (16:9) to prevent UI breaking.
+            <p style={{ fontSize: '0.75rem', color: '#68d391', marginTop: '6px' }}>
+              * Max size: 5 MB. Target display: 184×137 px. Supports high-res graphics (e.g. 384×286 px, 1448×1073 px, ~1.34:1 / 4:3 ratio).
             </p>
           </div>
 
