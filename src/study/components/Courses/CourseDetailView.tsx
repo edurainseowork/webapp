@@ -37,6 +37,7 @@ import { couponLabel, fetchPublicCoupons, validateCoupon, type AppliedCoupon, ty
 import { useSupportContacts } from '../../lib/support';
 import { SupportContactList } from '../Support/SupportContactList';
 import { CourseFaqs } from './CourseFaqs';
+import { CourseLiveClasses } from '../LiveClasses/CourseLiveClasses';
 type TabId = 'description' | 'syllabus';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -692,6 +693,8 @@ export function CourseDetailView({
                   fallback={batch.features}
                 />
               )}
+              {/* Live classes (CMS → Go Live): Join link only for enrolled students */}
+              <CourseLiveClasses courseId={batch.courseId} isEnrolled={isEnrolled} />
 
               {/* Description from the CMS, below the plans */}
               {batch.description && (

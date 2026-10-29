@@ -10,6 +10,7 @@ import { requireAuth } from "../middlewares/auth.js";
 import { logger } from "../lib/logger";
 import { reportAlternativeBillingToGoogle } from "./google-play.js";
 import { PLAN_NAMES, planIdSchema, planPrice } from "../lib/coursePlans";
+import { notifyUpcomingLiveClasses } from "../lib/liveClasses";
 import { sql } from "drizzle-orm";
 
 const router = Router();
@@ -57,6 +58,8 @@ const enroll = async (tx: Tx, userId: number, courseId: number, payment?: { orde
     razorpayOrderId: payment?.orderId ?? null,
     razorpayPaymentId: payment?.paymentId ?? null,
   });
+  // Live classes already scheduled for this course show up in the student's notifications
+  await notifyUpcomingLiveClasses(tx, userId, courseId);
 };
 
 const signatureIsValid = (orderId: string, paymentId: string, signature: string, secret: string) => {

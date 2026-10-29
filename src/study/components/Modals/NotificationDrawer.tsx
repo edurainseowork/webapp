@@ -100,7 +100,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       className="inline-flex items-center gap-1 mt-2 text-xs font-bold text-[#175A67] hover:underline"
                     >
-                      Open Link &rarr;
+                      {n.linkLabel ?? 'Open Link'} &rarr;
                     </a>
                   )}
                 </div>

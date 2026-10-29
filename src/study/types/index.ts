@@ -42,6 +42,8 @@ export interface NotificationItem {
   type: 'test' | 'doubt' | 'system' | 'streak';
   imageUrl?: string | null;
   link?: string | null;
+  /** Button text for the link (default "Open Link") */
+  linkLabel?: string;
 }
 
 export interface QuizQuestion {

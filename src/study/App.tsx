@@ -188,7 +188,9 @@ export function App() {
           read: isRead,
           type: row.type === 'test' ? 'test' : row.type === 'doubt' ? 'doubt' : 'system',
           imageUrl: row.imageUrl ?? null,
+          // Live classes: the server sends the Meet link only to enrolled students and only until the class ends
           link: row.link ?? (row.liveClass?.meetUrl || null),
+          linkLabel: row.liveClass?.meetUrl ? (row.liveClass.status === 'live' ? 'Join Live Class now' : 'Google Meet link') : undefined,
         };
       });
       setNotifications(mapped);

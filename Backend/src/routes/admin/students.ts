@@ -4,7 +4,7 @@ import { usersTable, userCoursesTable, coursesTable } from "@workspace/db/schema
 import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { HttpError, parseId } from "../../lib/http-error";
 import { logger } from "../../lib/logger";
-
+import { notifyUpcomingLiveClasses } from "../../lib/liveClasses";
 const router = Router();
 
 // GET /api/admin/students - list students with their enrolled courses
@@ -136,6 +136,7 @@ router.post("/:userId/enroll", async (req, res) => {
     userId,
     courseId,
   });
+  await notifyUpcomingLiveClasses(db, userId, courseId);
 
   logger.info({ studentId: userId, courseId, adminEmail: req.auth?.email }, "Student course access granted by admin");
   res.json({ success: true, message: `Access granted to "${course.title}"` });
