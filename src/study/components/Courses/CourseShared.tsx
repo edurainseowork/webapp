@@ -91,29 +91,26 @@ export function BatchCard({ batch, onOpen, onBuy, owned = false }: { batch: Batc
       onClick={onOpen}
       className="group bg-white rounded-2xl overflow-hidden border border-slate-200/80 hover:border-slate-300 shadow-[0_4px_18px_rgb(0,0,0,0.04)] hover:shadow-[0_14px_36px_rgb(0,0,0,0.10)] transition-all duration-300 cursor-pointer flex flex-col"
     >
-      {/* Banner: CMS thumbnail rendered at 184px x 137px */}
-      <div className={`relative flex items-center justify-center p-3.5 overflow-hidden ${showImage ? 'bg-gradient-to-b from-[#FFF9F2] to-[#FFF3E3]/60' : tone.header}`}>
+      {/* Banner: CMS thumbnail at 384x286 (fills the card width, never wider than 384px) */}
+      <div className={`relative flex justify-center overflow-hidden ${showImage ? 'bg-[#FFF6EA]' : tone.header}`}>
         {showImage ? (
-          <div className="w-[184px] h-[137px] rounded-xl overflow-hidden shadow-sm relative shrink-0">
-            <img
-              src={batch.thumbnail!}
-              alt={batch.title}
-              loading="lazy"
-              style={{ width: '184px', height: '137px' }}
-              className="w-[184px] h-[137px] object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-              onError={() => setImgFailed(true)}
-            />
-          </div>
+          <img
+            src={batch.thumbnail!}
+            alt={batch.title}
+            loading="lazy"
+            className="w-full max-w-[384px] aspect-[384/286] object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            onError={() => setImgFailed(true)}
+          />
         ) : (
-          <div className="w-[184px] h-[137px] rounded-xl flex flex-col justify-end p-3 relative">
+          <div className="w-full max-w-[384px] aspect-[384/286] flex flex-col justify-end p-5">
             <span className={`self-start text-[9px] font-bold uppercase tracking-wider border px-2 py-0.5 rounded-full ${tone.label}`}>{batch.label}</span>
-            <h3 className="text-white font-bold text-base mt-1.5 leading-snug line-clamp-2">{batch.name}</h3>
+            <h3 className="text-white font-bold text-xl mt-2 leading-snug line-clamp-2">{batch.name}</h3>
           </div>
         )}
         {paidPlans.length > 0 && (
-          <span className="absolute top-0 inset-x-0 flex items-center justify-center gap-1.5 bg-white/85 backdrop-blur-sm text-[11px] text-[#0B1C30] py-1">
-            <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-            Multiple plans inside: <span className="font-semibold">{paidPlans.map((p) => p.name).join(', ')}</span>
+          <span className="absolute top-2 left-2 flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 text-[11px] text-white">
+            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            Multiple plans inside: <span className="font-semibold">{(batch.plans ?? []).map((p) => p.name).join(', ')}</span>
           </span>
         )}
       </div>
