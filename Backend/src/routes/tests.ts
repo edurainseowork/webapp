@@ -99,7 +99,7 @@ router.get("/", async (req, res) => {
     if (isAdmin || isFree || owned.includes(courseId)) {
       courseIds = [courseId];
     }
-  } else if (isAdmin || isFree || owned.length === 0) {
+  } else if (isAdmin || isFree) {
     const allCourses = await db.select({ id: coursesTable.id }).from(coursesTable);
     courseIds = allCourses.map((c) => c.id);
   } else {
