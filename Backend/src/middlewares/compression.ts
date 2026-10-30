@@ -19,12 +19,13 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import {
-  brotliCompressSync,
-  constants as zlibConstants,
-  gzipSync,
-  zstdCompressSync,
-} from "node:zlib";
+import * as zlib from "node:zlib";
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
+
+// zstd only exists in Node 22.15+. Lambda's nodejs20.x has no such export, and a named import of a missing export
+// stops the whole app at start (API Gateway then answers "Internal Server Error" to everything). The typeof check
+// below turns zstd off when it is missing.
+const zstdCompressSync = (zlib as unknown as { zstdCompressSync: (buf: Buffer) => Buffer }).zstdCompressSync;
 
 // MIME types that are already compressed at binary level — compressing them wastes CPU
 const ALREADY_COMPRESSED_REGEX =
