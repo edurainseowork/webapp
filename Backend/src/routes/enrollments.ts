@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { coursesTable, liveClassesTable, notificationsTable, userCoursesTable } from "@workspace/db/schema";
-import { and, eq, gt } from "drizzle-orm";
+import { coursesTable, userCoursesTable } from "@workspace/db/schema";
+import { and, eq } from "drizzle-orm";
+import { notifyUpcomingLiveClasses } from "../lib/liveClasses";
 import { findDbUserId, requireAuth } from "../middlewares/auth.js";
 
 // TEMPORARY until Razorpay checkout is live: lets the app's "Buy now" record the enrollment in user_courses
@@ -41,18 +42,7 @@ router.post("/", requireAuth, async (req, res) => {
       await db.insert(userCoursesTable).values({ userId, courseId });
     }
 
-    // Also notify the student about live classes already scheduled for this course
-    const upcoming = await db.select().from(liveClassesTable)
-      .where(and(eq(liveClassesTable.courseId, courseId), gt(liveClassesTable.endTime, new Date())));
-    if (upcoming.length > 0) {
-      await db.insert(notificationsTable).values(upcoming.map((liveClass) => ({
-        userId,
-        type: "live_class",
-        title: "New Live Class Scheduled",
-        body: `${liveClass.title} · ${course.title}`,
-        liveClassId: liveClass.id,
-      }))).onConflictDoNothing();
-    }
+    await notifyUpcomingLiveClasses(db, userId, courseId);
 
     res.json({ success: true, enrolled: true, alreadyEnrolled: !!existing });
   } catch (error) {

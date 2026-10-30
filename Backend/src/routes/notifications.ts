@@ -7,7 +7,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { testStatusSql } from "../lib/testAttempts";
 import { findDbUserId, requireAuth } from "../middlewares/auth.js";
 import { MAX_NOTIFICATIONS_PER_USER } from "./liveClasses.js";
-
+import { enrolledCourseIds } from "../lib/liveClasses";
 const router = Router();
 const testCourses = alias(coursesTable, "test_courses");
 
@@ -58,6 +58,10 @@ router.get("/", async (req, res) => {
         .limit(30),
     ]);
 
+    // The Google Meet link goes only to students still enrolled in that course, and only until the class ends
+    const liveCourseIds = [...new Set(personalRows.flatMap(({ liveClass }) => (liveClass ? [liveClass.courseId] : [])))];
+    const stillEnrolled = userId !== null ? await enrolledCourseIds(userId, liveCourseIds) : new Set<number>();
+
     const personalItems = personalRows.map(({ notification, liveClass, courseTitle, test }) => ({
       ...notification,
       imageUrl: null as string | null,
@@ -65,7 +69,11 @@ router.get("/", async (req, res) => {
       // Drafts and archived tests are no longer shown to students
       test: test && test.id !== null && test.status !== "DRAFT" && test.status !== "ARCHIVED" ? test : null,
       liveClass: liveClass
-        ? { ...liveClass, courseTitle, status: getLiveClassStatus(liveClass.startTime, liveClass.endTime) }
+        ? (() => {
+            const status = getLiveClassStatus(liveClass.startTime, liveClass.endTime);
+            const meetUrl = status !== "ended" && stillEnrolled.has(liveClass.courseId) ? liveClass.meetUrl : null;
+            return { ...liveClass, meetUrl, courseTitle, status };
+          })()
         : null,
     }));
 

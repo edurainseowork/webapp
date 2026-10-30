@@ -6,7 +6,7 @@ import { VerifyGooglePlayPaymentBody } from "@workspace/api-zod";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth.js";
 import { logger } from "../lib/logger";
-
+import { notifyUpcomingLiveClasses } from "../lib/liveClasses";
 const router = Router();
 
 const PACKAGE_NAME = process.env.GOOGLE_PLAY_PACKAGE_NAME || "com.edurainindia.app";
@@ -177,6 +177,7 @@ const enrollGooglePlay = async (
       playPurchaseToken: purchaseToken,
       playOrderId: `gplay_${productId}_${Date.now()}`,
     });
+    await notifyUpcomingLiveClasses(tx, userId, courseId);
 
     await tx.insert(paymentsTable).values({
       userId,

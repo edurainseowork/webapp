@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { paymentsTable, userCoursesTable } from "@workspace/db/schema";
 import { redeemCoupon } from "../routes/coupons.js";
 import { getRazorpayClient } from "./razorpayClient";
+import { notifyUpcomingLiveClasses } from "./liveClasses";
 import { logger } from "./logger";
 
 export type PaymentRow = typeof paymentsTable.$inferSelect;
@@ -30,6 +31,8 @@ export const enroll = async (tx: Tx, userId: number, courseId: number, payment?:
     razorpayOrderId: payment?.orderId ?? null,
     razorpayPaymentId: payment?.paymentId ?? null,
   }).onConflictDoNothing();
+  // Live classes already scheduled for this course show up in the student's notifications
+  await notifyUpcomingLiveClasses(tx, userId, courseId);
 };
 
 /**

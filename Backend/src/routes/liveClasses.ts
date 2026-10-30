@@ -2,25 +2,34 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { coursesTable, liveClassesTable, notificationsTable, userCoursesTable, type LiveClass } from "@workspace/db/schema";
 import { CreateLiveClassBody, getLiveClassStatus } from "@workspace/api-zod";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
-import { canAccessCourse, requireAdmin, requireAuth } from "../middlewares/auth.js";
+import { eq } from "drizzle-orm";
+import { findDbUserId, requireAdmin, requireAuth } from "../middlewares/auth.js";
+import { rateLimit } from "../middlewares/security";
+import { logger } from "../lib/logger";
+import {
+  MAX_NOTIFICATIONS_PER_USER,
+  canSeeLiveClasses,
+  invalidateLiveClasses,
+  listCourseLiveClasses,
+  listMyLiveClasses,
+  pruneOldNotifications,
+  serializeLiveClass,
+} from "../lib/liveClasses";
+
+// Kept here as well: notifications.ts imports it from this file
+export { MAX_NOTIFICATIONS_PER_USER, pruneOldNotifications };
 
 const router = Router();
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-// Each student keeps only their most recent notifications; older ones are deleted
-export const MAX_NOTIFICATIONS_PER_USER = 20;
+// This router is mounted at /api (no prefix), so limits go on each route, never router.use()
+const studentReadLimiter = rateLimit({ windowMs: 60_000, limit: 60, keyPrefix: "rl:live-classes:", keyStrategy: "ip+identifier", algorithm: "token-bucket" });
 
 const parseId = (value: string) => {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
 };
-
-const serializeLiveClass = (liveClass: LiveClass) => ({
-  ...liveClass,
-  status: getLiveClassStatus(liveClass.startTime, liveClass.endTime),
-});
 
 // Creates one in-app notification per enrolled student; students already notified are skipped
 const notifyEnrolledStudents = async (tx: Tx, liveClass: LiveClass, courseTitle: string) => {
@@ -39,23 +48,6 @@ const notifyEnrolledStudents = async (tx: Tx, liveClass: LiveClass, courseTitle:
 
   await pruneOldNotifications(tx, enrolled.map(({ userId }) => userId));
   return inserted.length;
-};
-
-// Deletes everything beyond each user's newest MAX_NOTIFICATIONS_PER_USER notifications
-export const pruneOldNotifications = async (tx: Tx, userIds: number[]) => {
-  if (userIds.length === 0) return;
-  await tx.execute(sql`
-    DELETE FROM ${notificationsTable}
-    WHERE ${notificationsTable.id} IN (
-      SELECT id FROM (
-        SELECT ${notificationsTable.id} AS id,
-               row_number() OVER (PARTITION BY ${notificationsTable.userId} ORDER BY ${notificationsTable.createdAt} DESC, ${notificationsTable.id} DESC) AS position
-        FROM ${notificationsTable}
-        WHERE ${notificationsTable.userId} IN (${sql.join(userIds.map((id) => sql`${id}`), sql`, `)})
-      ) ranked
-      WHERE position > ${MAX_NOTIFICATIONS_PER_USER}
-    )
-  `);
 };
 
 // Create a live class for a course and notify enrolled students (Admin)
@@ -91,16 +83,18 @@ router.post("/courses/:courseId/live-classes", requireAdmin, async (req, res) =>
       const notifiedCount = await notifyEnrolledStudents(tx, liveClass, course.title);
       return { liveClass, notifiedCount };
     });
+    await invalidateLiveClasses(courseId);
+    logger.info({ adminUid: req.auth?.uid, courseId, liveClassId: result.liveClass.id, notified: result.notifiedCount }, "Live class scheduled");
 
     res.status(201).json({ success: true, data: serializeLiveClass(result.liveClass), notifiedCount: result.notifiedCount });
   } catch (error: any) {
-    console.error("Failed to create live class", error);
+    logger.error({ err: error, courseId }, "Failed to create live class");
     res.status(500).json({ error: "Failed to create live class" });
   }
 });
 
 // Get live and upcoming classes for a course (Admin, or enrolled students)
-router.get("/courses/:courseId/live-classes", requireAuth, async (req, res) => {
+router.get("/courses/:courseId/live-classes", requireAuth, studentReadLimiter, async (req, res) => {
   const courseId = parseId(req.params.courseId as string);
   if (!courseId) {
     res.status(400).json({ error: "Invalid course ID" });
@@ -108,23 +102,31 @@ router.get("/courses/:courseId/live-classes", requireAuth, async (req, res) => {
   }
 
   try {
-    if (!(await canAccessCourse(req.auth!, courseId))) {
+    if (!(await canSeeLiveClasses(req, courseId))) {
       res.status(403).json({ error: "You are not enrolled in this course" });
       return;
     }
-
-    const liveClasses = await db.select().from(liveClassesTable)
-      .where(and(eq(liveClassesTable.courseId, courseId), gt(liveClassesTable.endTime, new Date())))
-      .orderBy(asc(liveClassesTable.startTime));
-    res.json({ success: true, data: liveClasses.map(serializeLiveClass) });
+    res.json({ success: true, data: await listCourseLiveClasses(courseId) });
   } catch (error) {
-    console.error("Failed to fetch live classes", error);
+    logger.error({ err: error, courseId }, "Failed to fetch live classes");
+    res.status(500).json({ error: "Failed to fetch live classes" });
+  }
+});
+
+// Live and upcoming classes of every course the signed-in student is enrolled in (website "Your Live Class")
+// Declared before /live-classes/:id so "my" is not read as an id
+router.get("/live-classes/my", requireAuth, studentReadLimiter, async (req, res) => {
+  try {
+    const userId = req.user?.id ?? (await findDbUserId(req.auth!.uid));
+    res.json({ success: true, data: userId ? await listMyLiveClasses(userId) : [] });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to fetch the student's live classes");
     res.status(500).json({ error: "Failed to fetch live classes" });
   }
 });
 
 // Get a single live class (Admin, or students enrolled in its course)
-router.get("/live-classes/:id", requireAuth, async (req, res) => {
+router.get("/live-classes/:id", requireAuth, studentReadLimiter, async (req, res) => {
   const id = parseId(req.params.id as string);
   if (!id) {
     res.status(400).json({ error: "Invalid live class ID" });
@@ -134,13 +136,13 @@ router.get("/live-classes/:id", requireAuth, async (req, res) => {
   try {
     const [liveClass] = await db.select().from(liveClassesTable).where(eq(liveClassesTable.id, id));
     // Same 404 for missing and not-enrolled so students cannot probe other courses' classes
-    if (!liveClass || !(await canAccessCourse(req.auth!, liveClass.courseId))) {
+    if (!liveClass || !(await canSeeLiveClasses(req, liveClass.courseId))) {
       res.status(404).json({ error: "Live class not found" });
       return;
     }
     res.json({ success: true, data: serializeLiveClass(liveClass) });
   } catch (error) {
-    console.error("Failed to fetch live class", error);
+    logger.error({ err: error, id }, "Failed to fetch live class");
     res.status(500).json({ error: "Failed to fetch live class" });
   }
 });
@@ -170,7 +172,7 @@ router.post("/live-classes/:id/notify", requireAdmin, async (req, res) => {
     const notifiedCount = await db.transaction((tx) => notifyEnrolledStudents(tx, row.liveClass, row.courseTitle));
     res.json({ success: true, notifiedCount });
   } catch (error) {
-    console.error("Failed to send live class notifications", error);
+    logger.error({ err: error, id }, "Failed to send live class notifications");
     res.status(500).json({ error: "Failed to send notifications" });
   }
 });
@@ -184,10 +186,15 @@ router.delete("/live-classes/:id", requireAdmin, async (req, res) => {
   }
 
   try {
-    await db.transaction(async (tx) => { await tx.delete(notificationsTable).where(eq(notificationsTable.liveClassId, id)); await tx.delete(liveClassesTable).where(eq(liveClassesTable.id, id)); });
+    const [deleted] = await db.transaction(async (tx) => {
+      await tx.delete(notificationsTable).where(eq(notificationsTable.liveClassId, id));
+      return tx.delete(liveClassesTable).where(eq(liveClassesTable.id, id)).returning({ courseId: liveClassesTable.courseId });
+    });
+    await invalidateLiveClasses(deleted?.courseId);
+    logger.info({ adminUid: req.auth?.uid, liveClassId: id }, "Live class cancelled");
     res.json({ success: true });
   } catch (error) {
-    console.error("Failed to delete live class", error);
+    logger.error({ err: error, id }, "Failed to delete live class");
     res.status(500).json({ error: "Failed to delete live class" });
   }
 });

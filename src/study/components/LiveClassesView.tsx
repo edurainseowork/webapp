@@ -1,29 +1,9 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import {
-  Radio,
-  Clock,
-  Video,
-  Play,
-  ShoppingBag,
-  ChevronRight,
-  ExternalLink,
-  Users,
-} from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Radio, ShoppingBag, ChevronRight } from 'lucide-react';
 import { SubPageHeader, type BreadcrumbCrumb } from './SubPageHeader';
 import { useCatalog } from './Courses/courseData';
-import { apiFetch } from '../lib/api';
-
-export interface LiveClassItem {
-  id: number;
-  courseId: number;
-  title: string;
-  description?: string | null;
-  startTime: string;
-  endTime: string;
-  status: 'UPCOMING' | 'LIVE' | 'COMPLETED';
-  meetingUrl?: string | null;
-  courseTitle?: string;
-}
+import { fetchMyLiveClasses, liveStatus, useNow, type LiveClass } from '../lib/liveClasses';
+import { LiveClassCard } from './LiveClasses/LiveClassCard';
 
 interface LiveClassesViewProps {
   onBack: () => void;
@@ -34,15 +14,15 @@ interface LiveClassesViewProps {
 
 export function LiveClassesView({
   onBack,
-  selectedBatch,
   searchQuery = '',
   onExploreCourses,
 }: LiveClassesViewProps) {
   const { ownedBatches, status: catalogStatus } = useCatalog();
   const hasActiveBatch = ownedBatches.length > 0;
 
-  const [liveClasses, setLiveClasses] = useState<LiveClassItem[]>([]);
+  const [liveClasses, setLiveClasses] = useState<LiveClass[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
+  const now = useNow();
 
   const crumbs: BreadcrumbCrumb[] = [
     { label: 'Home', onClick: onBack },
@@ -50,79 +30,36 @@ export function LiveClassesView({
     { label: 'Your Live Class' },
   ];
 
-  // Fetch live classes for all active enrolled courses
+  // Classes of every course the student is enrolled in (one call; the server checks the enrolment).
+  // Reloaded every 2 minutes so classes added in the CMS show up without a page reload.
+  const ownedKey = ownedBatches.map((b) => b.courseId).join(',');
   useEffect(() => {
     if (!hasActiveBatch) {
       setLiveClasses([]);
       return;
     }
-
-    let isMounted = true;
-    async function loadLiveClasses() {
-      setLoadingClasses(true);
-      try {
-        const results = await Promise.all(
-          ownedBatches.map(async (batch) => {
-            try {
-              const res = await apiFetch<{ success: boolean; data: LiveClassItem[] }>(
-                `/courses/${batch.courseId}/live-classes`
-              );
-              if (res?.data && Array.isArray(res.data)) {
-                return res.data.map((item) => ({
-                  ...item,
-                  courseTitle: batch.title,
-                }));
-              }
-              return [];
-            } catch {
-              return [];
-            }
-          })
-        );
-
-        if (isMounted) {
-          const all = results.flat();
-          // Filter out completed classes
-          const activeOrUpcoming = all.filter((c) => c.status === 'LIVE' || c.status === 'UPCOMING');
-          setLiveClasses(activeOrUpcoming);
-        }
-      } catch (err) {
-        console.warn('Could not load live classes:', err);
-      } finally {
-        if (isMounted) setLoadingClasses(false);
-      }
-    }
-
-    loadLiveClasses();
-    return () => {
-      isMounted = false;
+    let cancelled = false;
+    const load = (first: boolean) => {
+      if (first) setLoadingClasses(true);
+      fetchMyLiveClasses()
+        .then((list) => !cancelled && setLiveClasses(list))
+        .catch(() => undefined)
+        .finally(() => !cancelled && first && setLoadingClasses(false));
     };
-  }, [hasActiveBatch, ownedBatches]);
+    load(true);
+    const id = setInterval(() => document.visibilityState === 'visible' && load(false), 120_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [hasActiveBatch, ownedKey]);
 
   const q = searchQuery.trim().toLowerCase();
   const filteredClasses = useMemo(() => {
-    if (!q) return liveClasses;
-    return liveClasses.filter(
-      (c) =>
-        c.title.toLowerCase().includes(q) ||
-        (c.courseTitle && c.courseTitle.toLowerCase().includes(q)) ||
-        (c.description && c.description.toLowerCase().includes(q))
-    );
-  }, [liveClasses, q]);
-
-  const formatSchedule = (isoString: string) => {
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleDateString('en-IN', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return isoString;
-    }
-  };
+    const running = liveClasses.filter((c) => liveStatus(c, now) !== 'ended');
+    if (!q) return running;
+    return running.filter((c) => c.title.toLowerCase().includes(q) || (c.courseTitle ?? '').toLowerCase().includes(q));
+  }, [liveClasses, q, now]);
 
   return (
     <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 relative space-y-6 min-h-[calc(100vh-6rem)] flex flex-col justify-between">
@@ -195,66 +132,7 @@ export function LiveClassesView({
           /* Live classes sent from CMS Portal render here */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredClasses.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white/80 backdrop-blur-md border border-white/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <span className="text-[11px] font-bold text-[#2A707C] uppercase tracking-wide truncate">
-                      {item.courseTitle || 'Live Session'}
-                    </span>
-                    {item.status === 'LIVE' ? (
-                      <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
-                        <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
-                        LIVE NOW
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                        <Clock className="w-3 h-3" />
-                        UPCOMING
-                      </span>
-                    )}
-                  </div>
-
-                  <h3 className="font-bold text-[#0B1C30] text-base mb-1 line-clamp-2">
-                    {item.title}
-                  </h3>
-
-                  {item.description && (
-                    <p className="text-xs text-[#2A707C] line-clamp-2 mb-3">
-                      {item.description}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-2 text-xs text-[#2A707C] mt-3">
-                    <Clock className="w-3.5 h-3.5 text-[#175A67]" />
-                    <span>Starts {formatSchedule(item.startTime)}</span>
-                  </div>
-                </div>
-
-                <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
-                  {item.meetingUrl ? (
-                    <a
-                      href={item.meetingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full flex items-center justify-center gap-2 bg-[#0F3B42] hover:bg-[#0b2c31] text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Join Live Class</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  ) : (
-                    <button
-                      disabled
-                      className="w-full flex items-center justify-center gap-2 bg-slate-200 text-slate-500 text-xs font-semibold py-2.5 px-4 rounded-xl cursor-not-allowed"
-                    >
-                      <span>Link Available at Start Time</span>
-                    </button>
-                  )}
-                </div>
-              </div>
+              <LiveClassCard key={item.id} item={item} now={now} />
             ))}
           </div>
         )}
