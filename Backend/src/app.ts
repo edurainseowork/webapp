@@ -13,6 +13,7 @@ import {
 } from "./middlewares/security";
 import { adaptiveCompression } from "./middlewares/compression";
 import { errorHandler } from "./middlewares/error-handler";
+import { razorpayWebhookRouter } from "./routes/razorpay.js";
 
 const app: Express = express();
 
@@ -77,7 +78,13 @@ app.use(
   }),
 );
 
-app.use("/api", apiContentSecurityPolicy, backpressureGuard({ maxConcurrent: 400 }), rateLimit({ windowMs: 60_000, max: 300 }), router);
+// Razorpay's webhook comes from a few Razorpay addresses in big bursts: it gets no per-IP limit and no load shedding
+// (a refused delivery is only retried later, so the student's course would unlock late)
+app.use("/api/razorpay/webhook", razorpayWebhookRouter);
+// Per-process caps, tunable without a code change: requests in flight (503 above it) and requests per minute per IP
+const MAX_CONCURRENT_REQUESTS = Number(process.env.MAX_CONCURRENT_REQUESTS) || 400;
+const API_RATE_LIMIT = Number(process.env.API_RATE_LIMIT) || 300;
+app.use("/api", apiContentSecurityPolicy, backpressureGuard({ maxConcurrent: MAX_CONCURRENT_REQUESTS }), rateLimit({ windowMs: 60_000, max: API_RATE_LIMIT }), router);
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });
 });

@@ -5,6 +5,7 @@ import { logger } from "./lib/logger";
 import { initSocket } from "./socket";
 import { sendSlackAlert } from "./lib/slackAlert";
 import { ensureMentorshipSchema } from "./lib/mentorshipSchema";
+import { startPaymentJobs } from "./lib/paymentJobs";
 
 const rawPort = process.env["PORT"];
 
@@ -30,6 +31,9 @@ ensureMentorshipSchema().catch((err) => {
 server.listen(port, () => {
   logger.info({ port }, "Server listening with Socket.io");
 });
+
+// Safety nets for payments that stay pending (one runs at a time across servers). PAYMENT_JOBS=off turns them off.
+if (process.env.PAYMENT_JOBS !== "off") startPaymentJobs();
 
 // Graceful shutdown (PRD Section 3: close HTTP server & drain PostgreSQL pool cleanly)
 const shutdown = async (signal: string) => {

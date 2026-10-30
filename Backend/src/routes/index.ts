@@ -1,8 +1,9 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import healthRouter from "./health.js";
 import coursesRouter from "./courses.js";
 import couponsRouter from "./coupons.js";
 import razorpayRouter from "./razorpay.js";
+import internalRouter from "./internal.js";
 import googlePlayRouter from "./google-play.js";
 import contentRouter from "./content.js";
 import uploadRouter from "./upload.js";
@@ -29,7 +30,7 @@ import progressRouter from "./progress.js";
 import ebooksRouter from "./ebooks.js";
 import aiDoubtRouter from "./aiDoubt.js";
 import supportContactsRouter from "./supportContacts.js";
-import { restrictDeskRoles, authenticateToken } from "../middleware/auth.js";
+import { restrictDeskRoles, authenticateToken, verifyToken } from "../middleware/auth.js";
 import {
   adminApiLimiter,
   aiRateLimiter,
@@ -40,6 +41,19 @@ import {
 } from "../middlewares/security.js";
 
 const router = Router();
+
+// The payment limiter counts per student, but it runs before the routes sign the request in, so it only ever saw
+// the IP address: every student on one college Wi-Fi shared 20 payment calls a minute. This tells it who is calling
+// (signature check only, no database); a missing or bad token still falls back to the IP.
+const identifyStudent: RequestHandler = async (req, _res, next) => {
+  try {
+    const decoded = await verifyToken(req, false);
+    if (decoded) req.auth = decoded;
+  } catch {
+    // The route's own sign-in check answers 401
+  }
+  next();
+};
 
 // Mentor / Teacher Assistance accounts may only reach /auth/me and their own desk API
 router.use(restrictDeskRoles);
@@ -57,10 +71,11 @@ router.use("/tests", catalogReadLimiter, testsRouter);
 router.use("/support-contacts", catalogReadLimiter, supportContactsRouter);
 
 // 2. Payment, Coupon & Enrollment Endpoints (20 req / 60s Token Bucket per User/IP)
-router.use("/coupons", paymentRateLimiter, couponsRouter);
-router.use("/razorpay", paymentRateLimiter, razorpayRouter);
-router.use("/google-play", paymentRateLimiter, googlePlayRouter);
-router.use("/enrollments", paymentRateLimiter, enrollmentsRouter);
+router.use("/coupons", identifyStudent, paymentRateLimiter, couponsRouter);
+router.use("/razorpay", identifyStudent, paymentRateLimiter, razorpayRouter);
+router.use("/internal", internalRouter);
+router.use("/google-play", identifyStudent, paymentRateLimiter, googlePlayRouter);
+router.use("/enrollments", identifyStudent, paymentRateLimiter, enrollmentsRouter);
 
 // 3. Heavy Media & Video Upload Endpoints (20 req / 60s Leaky Bucket per User)
 router.use("/upload", uploadLeakyLimiter, uploadRouter);

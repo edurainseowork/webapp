@@ -10,6 +10,10 @@ provider:
     RAZORPAY_KEY_ID: ${env:RAZORPAY_KEY_ID, ''}
     RAZORPAY_KEY_SECRET: ${env:RAZORPAY_KEY_SECRET, ''}
     NODE_ENV: production
+    RAZORPAY_WEBHOOK_SECRET: ${env:RAZORPAY_WEBHOOK_SECRET, ''}
+    CRON_SECRET: ${env:CRON_SECRET, ''}
+    SLACK_WEBHOOK_URL: ${env:SLACK_WEBHOOK_URL, ''}
+    ALERT_WEBHOOK_URL: ${env:ALERT_WEBHOOK_URL, ''}
     CORS_ORIGINS: ${env:CORS_ORIGINS, ''}
     PUBLIC_BASE_URL: ${env:PUBLIC_BASE_URL, ''}
     FIREBASE_SERVICE_ACCOUNT: ${env:FIREBASE_SERVICE_ACCOUNT, ''}
@@ -48,3 +52,16 @@ functions:
     handler: dist/lambda.handler
     events:
       - httpApi: '*'
+  # Safety nets for pending payments. Same code, a longer timeout than a web request gets.
+  paymentJobs:
+    handler: dist/lambda.handler
+    timeout: 120
+    events:
+      - schedule:
+          rate: rate(5 minutes)
+          input:
+            task: sweep
+      - schedule:
+          rate: rate(1 hour)
+          input:
+            task: reconcile
