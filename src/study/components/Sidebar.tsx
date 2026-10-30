@@ -9,7 +9,6 @@ import {
   Flame, 
   Crown, 
   ChevronRight, 
-  HardDriveDownload,
   X,
   Target,
   Lock,
@@ -246,15 +245,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Daily Goal: 4 hrs</span>
             <span>3.1 hrs done</span>
           </div>
-        </div>
-
-        {/* Vault Sync Telemetry */}
-        <div className="px-2 flex items-center justify-between text-[11px] text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <HardDriveDownload className="w-3.5 h-3.5 text-teal-400" />
-            Vault Offline Cache
-          </span>
-          <span className="text-teal-300 font-mono font-medium">98% Synced</span>
         </div>
 
       </div>

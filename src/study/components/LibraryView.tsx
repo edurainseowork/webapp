@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { SubPageHeader, type BreadcrumbCrumb } from './SubPageHeader';
 import { apiFetch, ApiError } from '../lib/api';
+import { useCourses } from '../lib/courses';
+import { useActiveCourse } from '../lib/activeCourse';
 import { toggleSavePdf, getSavedPdfs, onSavedPdfsChange } from '../utils/bookmarkStorage';
 
 export type ContentType = 'folder' | 'video' | 'pdf' | 'note' | 'quiz';
@@ -38,19 +40,13 @@ export interface ContentItem {
   updatedAt?: string;
 }
 
-export interface CourseSummary {
-  id: number;
-  title: string;
-  category?: string;
-  categorySlug?: string;
-  thumbnail?: string;
-}
-
 interface LibraryViewProps {
   onOpenUpgrade?: () => void;
   onBack?: () => void;
   searchQuery?: string;
   onOpenEbooks?: () => void;
+  /** The student's target (goal), shown next to the course */
+  goalName?: string;
 }
 
 function isVimeoUrl(url: string): boolean {
@@ -64,11 +60,14 @@ function getVimeoEmbedUrl(url: string): string {
   return url;
 }
 
-export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpenEbooks }: LibraryViewProps) {
-  // Course State
-  const [courses, setCourses] = useState<CourseSummary[]>([]);
-  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
-  const [loadingCourses, setLoadingCourses] = useState(true);
+export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpenEbooks, goalName }: LibraryViewProps) {
+  // Only the student's own course: the active one (Your Enrolled Courses → Set as Active), else the first enrolled.
+  // The catalogue is never listed here, so a student cannot open another course's material.
+  const { courses: catalog, ownedIds } = useCourses();
+  const { activeCourseId } = useActiveCourse();
+  const enrolled = useMemo(() => catalog.filter((c) => ownedIds.includes(c.id)), [catalog, ownedIds]);
+  const selectedCourse = enrolled.find((c) => c.id === activeCourseId) ?? enrolled[0] ?? null;
+  const selectedCourseId = selectedCourse?.id ?? null;
 
   // Content State
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -110,30 +109,6 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpe
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  // 1. Fetch available courses on mount
-  const fetchCourses = useCallback(async () => {
-    setLoadingCourses(true);
-    try {
-      const data = await apiFetch<CourseSummary[]>('/courses');
-      if (Array.isArray(data)) {
-        setCourses(data);
-        if (data.length > 0 && selectedCourseId === null) {
-          // Default to first course or course 10/17 if available
-          const preferred = data.find((c) => c.id === 10 || c.id === 17) || data[0];
-          setSelectedCourseId(preferred.id);
-        }
-      }
-    } catch (err: any) {
-      console.error('[LibraryView] Failed to load courses:', err);
-    } finally {
-      setLoadingCourses(false);
-    }
-  }, [selectedCourseId]);
-
-  useEffect(() => {
-    fetchCourses();
-  }, [fetchCourses]);
-
   // 2. Fetch content for the selected course
   const fetchContent = useCallback(async (courseId: number) => {
     setLoadingContent(true);
@@ -163,11 +138,6 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpe
       fetchContent(selectedCourseId);
     }
   }, [selectedCourseId, fetchContent]);
-
-  // Active selected course info
-  const selectedCourse = useMemo(() => {
-    return courses.find((c) => c.id === selectedCourseId) || null;
-  }, [courses, selectedCourseId]);
 
   // Compute item counts inside each folder
   const folderItemCounts = useMemo(() => {
@@ -268,21 +238,6 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpe
         crumbs={crumbs}
         rightElement={
           <div className="flex items-center gap-2 flex-wrap">
-            {courses.length > 1 && (
-              <select
-                aria-label="Select course"
-                value={selectedCourseId ?? ''}
-                onChange={(e) => setSelectedCourseId(Number(e.target.value))}
-                className="bg-white/90 border border-white/80 rounded-xl px-3 py-1.5 text-xs font-semibold text-[#175A67] shadow-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#175A67]/30 transition-all cursor-pointer"
-              >
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-            )}
-
             <button
               onClick={() => {
                 if (selectedCourseId !== null) {
@@ -311,6 +266,20 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpe
             <p className="text-xs sm:text-sm text-[#2A707C] mt-0.5 font-medium">
               {selectedCourse ? selectedCourse.title : 'Your Daily Class Notes and Recorded Lectures'}
             </p>
+            {selectedCourse && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                {selectedCourse.category && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#EAF3F1] text-[#175A67] border border-[#175A67]/20 text-[10px] font-bold">
+                    {selectedCourse.category}
+                  </span>
+                )}
+                {goalName && goalName.trim().toLowerCase() !== selectedCourse.category.trim().toLowerCase() && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#EAF3F1] text-[#175A67] border border-[#175A67]/20 text-[10px] font-bold">
+                    Target: {goalName}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -423,12 +392,16 @@ export function LibraryView({ onBack, searchQuery: globalSearchQuery = '', onOpe
             <h3 className="text-lg font-bold text-[#0B1C30]">
               {effectiveSearch
                 ? `No materials found matching "${effectiveSearch}"`
-                : 'No Class Material Published Yet'}
+                : selectedCourse
+                ? 'No Class Material Published Yet'
+                : 'You have not enrolled in a course yet'}
             </h3>
             <p className="text-xs sm:text-sm text-[#2A707C] max-w-md mt-1.5 leading-relaxed font-medium">
               {effectiveSearch
                 ? 'Try a different search query or clear the filter.'
-                : 'When teachers upload PDF notes or recorded lecture videos for this course in the CMS portal, they will automatically appear here.'}
+                : selectedCourse
+                ? 'PDF notes and recorded lectures for this course will appear here as soon as your teachers add them.'
+                : 'Enroll in a course to see its class material here.'}
             </p>
 
             <div className="flex items-center gap-4 mt-6 text-xs text-slate-500 bg-white/80 border border-slate-200/60 rounded-xl px-4 py-2.5">

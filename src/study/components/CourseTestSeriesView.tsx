@@ -17,12 +17,8 @@ import {
 } from 'lucide-react';
 import { SubPageHeader } from './SubPageHeader';
 import { apiFetch, ApiError } from '../lib/api';
+import { useCourses } from '../lib/courses';
 import { TestSolverModal, type TestItem } from './TestSolverModal';
-
-interface CourseSummary {
-  id: number;
-  title: string;
-}
 
 interface CourseTestSeriesViewProps {
   onBack: () => void;
@@ -41,7 +37,6 @@ export function CourseTestSeriesView({
 }: CourseTestSeriesViewProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [tests, setTests] = useState<TestItem[]>([]);
-  const [courses, setCourses] = useState<CourseSummary[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<number | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,14 +49,9 @@ export function CourseTestSeriesView({
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  // 1. Fetch courses for filtering
-  useEffect(() => {
-    apiFetch<CourseSummary[]>('/courses')
-      .then((data) => {
-        if (Array.isArray(data)) setCourses(data);
-      })
-      .catch((e) => console.error('Failed to load courses for filter:', e));
-  }, []);
+  // Only the courses this student is enrolled in (never the whole catalogue)
+  const { courses: catalog, ownedIds } = useCourses();
+  const courses = useMemo(() => catalog.filter((c) => ownedIds.includes(c.id)), [catalog, ownedIds]);
 
   // 2. Fetch live tests
   const fetchTests = useCallback(async () => {
@@ -87,7 +77,9 @@ export function CourseTestSeriesView({
   // Filter tests by search query
   const filteredTests = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    // The server only sends the student's own courses; this keeps the list right even for staff accounts
     return tests.filter((t) => {
+      if (!ownedIds.includes(t.courseId)) return false;
       const matchSearch =
         !q ||
         t.title.toLowerCase().includes(q) ||
@@ -95,8 +87,10 @@ export function CourseTestSeriesView({
         (t.description && t.description.toLowerCase().includes(q));
       return matchSearch;
     });
-  }, [tests, searchQuery]);
+  }, [tests, searchQuery, ownedIds]);
 
+  // Batch Leaderboard sample data: switched off for now (remove the comment markers to bring it back)
+  /*
   const rankers = [
     { rank: 1, name: 'Siddharth M.', points: '4,920 XP', streak: '28 Days', college: 'IIT Bombay Target' },
     { rank: 2, name: 'Ananya Verma', points: '4,650 XP', streak: '24 Days', college: 'IIT Delhi Target' },
@@ -110,6 +104,7 @@ export function CourseTestSeriesView({
       isYou: true,
     },
   ];
+  */
 
   return (
     <div className="bg-[#DCEAE3] rounded-[28px] p-4 sm:p-6 lg:p-8 relative space-y-6 min-h-[calc(100vh-6rem)] animate-fadeIn">
@@ -123,14 +118,14 @@ export function CourseTestSeriesView({
         ]}
         rightElement={
           <div className="flex items-center gap-2 flex-wrap">
-            {courses.length > 0 && (
+            {courses.length > 1 && (
               <select
                 aria-label="Filter by course"
                 value={selectedCourseId}
                 onChange={(e) => setSelectedCourseId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
                 className="bg-white/90 border border-[#175A67]/20 text-[#0F3B42] text-xs font-bold rounded-xl px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#175A67]"
               >
-                <option value="all">All Courses ({tests.length})</option>
+                <option value="all">All my courses</option>
                 {courses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.title}
@@ -164,16 +159,9 @@ export function CourseTestSeriesView({
               </span>
             </div>
             <p className="text-xs text-[#2A707C] mt-0.5 font-medium">
-              Live Mock Tests, Chapter Quizzes &amp; Periodic Course Assessments uploaded via CMS
+              Live Mock Tests, Chapter Quizzes &amp; Periodic Course Assessments
             </p>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-            CMS Sync Active
-          </span>
         </div>
       </div>
 
@@ -182,7 +170,7 @@ export function CourseTestSeriesView({
         <section className="bg-white/70 backdrop-blur-md border border-white/80 p-12 rounded-[24px] shadow-[0_6px_24px_rgb(0,0,0,0.04)] min-h-[260px] flex flex-col items-center justify-center text-center space-y-3">
           <div className="w-10 h-10 border-4 border-[#0F3B42] border-t-transparent rounded-full animate-spin" />
           <p className="text-xs sm:text-sm font-semibold text-[#175A67]">
-            Fetching latest tests from CMS Portal...
+            Loading your tests...
           </p>
         </section>
       ) : error ? (
@@ -342,7 +330,7 @@ export function CourseTestSeriesView({
           </div>
           <h3 className="text-lg font-bold text-[#0B1C30]">No Course Tests Scheduled Yet</h3>
           <p className="text-xs sm:text-sm text-[#2A707C] max-w-md mt-1.5 leading-relaxed font-medium">
-            Weekly Saturday &amp; Sunday batch tests, chapter quizzes, and periodic tests published from the Admin CMS will appear here in compact test cards.
+            Weekly Saturday &amp; Sunday batch tests, chapter quizzes, and periodic tests for your course will appear here in compact test cards.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mt-6 text-xs text-slate-600 bg-white/80 border border-slate-200/60 rounded-xl px-5 py-3">
@@ -364,7 +352,7 @@ export function CourseTestSeriesView({
         </section>
       )}
 
-      {/* 2. Batch Leaderboard Section (Preserved intact) */}
+      {/* Batch Leaderboard: switched off for now (remove the comment markers to bring it back)
       <div className="rounded-2xl bg-white/70 backdrop-blur-md border border-white/80 p-5 sm:p-6 shadow-[0_6px_24px_rgb(0,0,0,0.04)]">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="flex items-center gap-2">
@@ -422,6 +410,7 @@ export function CourseTestSeriesView({
           ))}
         </div>
       </div>
+      */}
 
       {/* Active CBT Test Solver Modal */}
       {activeTest && (

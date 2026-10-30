@@ -1246,7 +1246,7 @@ export const TestSolverModal: React.FC<TestSolverModalProps> = ({
                 <span>Incident Logged on Examination Server:</span>
               </div>
               <div>• Violation Type: Tab switch / Window focus lost</div>
-              <div>• CMS Status: Student flagged for <strong>CHEATING</strong></div>
+              <div>• Status: Student flagged for <strong>CHEATING</strong></div>
               <div>• Test Status: Automatically finalized and submitted</div>
             </div>
 

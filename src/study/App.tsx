@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { usePolling } from './lib/usePolling';
 import logo from "../study/components/photos/EDURAIN_Logo-Photoroom.png";
 import {
   Menu,
@@ -197,20 +198,8 @@ export function App() {
     }
   };
 
-  useEffect(() => {
-    fetchStudentNotifications();
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchStudentNotifications();
-    }, 30_000);
-    const onFocus = () => fetchStudentNotifications();
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  }, [session.uid]);
+  // Every student runs this: once a minute while the tab is visible (not on every focus / alt-tab)
+  usePolling(fetchStudentNotifications, 60_000, session.uid);
 
   useEffect(() => {
     if (isNotificationOpen) fetchStudentNotifications();
@@ -1090,6 +1079,7 @@ export function App() {
             <LibraryView
               onBack={() => navigateTo('study-central')}
               onOpenEbooks={() => openSubView('ebooks')}
+              goalName={goal?.name}
             />
           ) : activeNav === 'pi' ? (
             <PiView
