@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { Batch, Chapter, CoursePlan, PlanId, Subject, buildSyllabus, lectureIcon } from './courseData';
 import { Toast, discountPct, formatINR, useToast } from './CourseShared';
-import { enrollInCourse, enrollWithCoupon, fetchCompletedLessons, fetchCourseContent, markLessonDone } from '../../lib/courses';
+import { payForCourse, fetchCompletedLessons, fetchCourseContent, markLessonDone } from '../../lib/courses';
 import { couponLabel, fetchPublicCoupons, validateCoupon, type AppliedCoupon, type PublicCoupon } from '../../lib/coupons';
 import { useSupportContacts } from '../../lib/support';
 import { SupportContactList } from '../Support/SupportContactList';
@@ -479,7 +479,9 @@ export function CourseDetailView({
   }, [subject]);
 
   useEffect(() => {
+    // "Buy Now" jumps to the plans; opening by photo / card starts at the top (the list may have been scrolled)
     if (scrollToPlans) plansRef.current?.scrollIntoView({ block: 'start' });
+    else window.scrollTo({ top: 0 });
   }, [scrollToPlans]);
 
   useEffect(() => {
@@ -553,26 +555,9 @@ export function CourseDetailView({
 
   const handleEnroll = async () => {
     if (enrolling) return;
-        // A coupon that makes the plan free enrols right away (the server checks the coupon and the price again)
-        if (appliedCoupon && appliedCoupon.finalPrice === 0) {
-          setEnrolling(true);
-          const result = await enrollWithCoupon(batch.courseId, appliedCoupon.code, selectedPlan.id);
-          setEnrolling(false);
-          if (!result.ok) {
-            showToast(result.error);
-            return;
-          }
-          confetti({ particleCount: 110, spread: 80, origin: { y: 0.6 }, colors: ['#10B981', '#175A67', '#F59E0B'] });
-          showToast(`You're enrolled in ${batch.title}!`);
-          return;
-        }
-    // A paid Pro / Pro Max must never fall through to the free Basic enrolment
-    if (showPlans && selectedPlan.id !== 'basic' && !isFree) {
-      showToast(`Online payment for ${selectedPlan.name} is coming soon.`);
-      return;
-    }
     setEnrolling(true);
-    const result = await enrollInCourse(batch.courseId);
+    // The server prices the order again (plan + coupon): a free one enrols at once, a paid one opens Razorpay
+    const result = await payForCourse(batch.courseId, selectedPlan.id, appliedCoupon?.code);
     setEnrolling(false);
     if (!result.ok) {
       showToast(result.error);
@@ -728,16 +713,13 @@ export function CourseDetailView({
             {/* Summary / checkout card */}
             <aside className="lg:sticky lg:top-16 bg-white rounded-2xl p-3 shadow-[0_12px_40px_rgba(11,28,32,0.08)]">
               {batch.thumbnail && !thumbFailed && (
-                <div className="flex justify-center pb-2">
-                  <div className="w-[184px] h-[137px] rounded-xl overflow-hidden shadow-sm relative shrink-0">
-                    <img
-                      src={batch.thumbnail}
-                      alt={batch.title}
-                      style={{ width: '184px', height: '137px' }}
-                      className="w-[184px] h-[137px] object-cover rounded-xl"
-                      onError={() => setThumbFailed(true)}
-                    />
-                  </div>
+                <div className="flex justify-center">
+                  <img
+                    src={batch.thumbnail}
+                    alt={batch.title}
+                    className="w-full max-w-[384px] aspect-[384/286] object-cover rounded-xl"
+                    onError={() => setThumbFailed(true)}
+                  />
                 </div>
               )}
               <div className="px-2 pt-3 pb-2">

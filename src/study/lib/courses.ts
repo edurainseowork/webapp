@@ -85,6 +85,7 @@ export function resetCoursesForUser(uid: string | null): void {
     currentUserId = uid;
     lastLoadedAt = 0;
     setState({ ownedIds: [] });
+    if (uid) void resumePendingPayment();
   }
 }
 
@@ -144,6 +145,178 @@ export function refreshCourses(): Promise<void> {
   return inFlight;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Razorpay checkout (web)                                             */
+/* ------------------------------------------------------------------ */
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => { open(): void; on(event: string, cb: (res: any) => void): void };
+  }
+}
+
+let checkoutScript: Promise<boolean> | null = null;
+const loadCheckout = () =>
+  (checkoutScript ??= new Promise<boolean>((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => {
+      checkoutScript = null; // let the next click try again
+      resolve(false);
+    };
+    document.body.appendChild(script);
+  }));
+
+interface OrderResponse {
+  free?: boolean;
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+  courseTitle: string;
+  prefill?: { name?: string; email?: string };
+}
+
+const CHECK_AFTER_SECONDS = [1, 2, 4, 8, 16, 32];
+
+/**
+ * A payment that is pending with the bank (UPI waiting, window closed early): ask the server, which asks Razorpay,
+ * now and then after 1s, 2s, 4s, 8s, 16s, 32s. 'cancelled' = the student closed the window before paying at all.
+ */
+async function waitForPayment(orderId: string): Promise<'paid' | 'failed' | 'cancelled' | 'pending'> {
+  for (let i = 0; i <= CHECK_AFTER_SECONDS.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, CHECK_AFTER_SECONDS[i - 1] * 1000));
+    try {
+      const res = await apiFetch<{ status: 'paid' | 'failed' | 'pending'; attempts?: number }>(`/razorpay/status/${orderId}`);
+      if (res.status === 'paid' || res.status === 'failed') return res.status;
+      if (!res.attempts) return 'cancelled';
+    } catch {
+      // A network blip: the next check tries again
+    }
+  }
+  return 'pending';
+}
+
+// The order being paid is remembered on this device, so a closed tab or a reload does not lose track of a payment
+// that is still pending with the bank: the app keeps asking until it is paid or failed.
+const PENDING_KEY = 'edurain.pendingPayment';
+const rememberPending = (order: { orderId: string; courseId: number } | null) => {
+  try {
+    if (order) localStorage.setItem(PENDING_KEY, JSON.stringify({ ...order, at: Date.now() }));
+    else localStorage.removeItem(PENDING_KEY);
+  } catch {
+    // Storage blocked: the webhook still unlocks the course
+  }
+};
+
+const markOwned = (courseId: number) => {
+  if (!state.ownedIds.includes(courseId)) setState({ ownedIds: [...state.ownedIds, courseId] });
+  void refreshOwnedCourses();
+};
+
+let resuming = false;
+
+/** After a sign-in or reload: finish checking a payment that was left pending. */
+export async function resumePendingPayment(): Promise<void> {
+  if (resuming) return;
+  let saved: { orderId: string; courseId: number; at: number } | null = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
+  } catch {
+    saved = null;
+  }
+  if (!saved?.orderId || Date.now() - saved.at > 24 * 3_600_000) {
+    rememberPending(null);
+    return;
+  }
+  resuming = true;
+  try {
+    const outcome = await waitForPayment(saved.orderId);
+    if (outcome === 'paid') markOwned(saved.courseId);
+    if (outcome !== 'pending') rememberPending(null);
+  } finally {
+    resuming = false;
+  }
+}
+
+/**
+ * Buys a plan: the server prices the order (plan + coupon). A free order enrols at once; otherwise the
+ * Razorpay window opens, and after payment the server checks Razorpay's signature before it unlocks the course.
+ */
+export async function payForCourse(courseId: number, plan: 'basic' | 'pro' | 'proMax', couponCode?: string): Promise<EnrollResult> {
+  let order: OrderResponse;
+  try {
+    order = await apiFetch<OrderResponse>('/razorpay/order', { body: { courseId, plan, couponCode } });
+  } catch (err) {
+    return { ok: false, paymentRequired: false, error: errorMessage(err, 'Could not start the payment. Please try again.') };
+  }
+  if (order.free) {
+    markOwned(courseId);
+    return { ok: true };
+  }
+  rememberPending({ orderId: order.orderId, courseId });
+  if (!(await loadCheckout()) || !window.Razorpay) {
+    return { ok: false, paymentRequired: false, error: 'Could not load the payment window. Check your internet and try again.' };
+  }
+
+  return new Promise<EnrollResult>((resolve) => {
+    let paid = false;
+    const checkout = new window.Razorpay!({
+      key: order.keyId,
+      order_id: order.orderId,
+      amount: order.amount,
+      currency: order.currency,
+      name: 'EduRain',
+      description: order.courseTitle,
+      prefill: order.prefill,
+      theme: { color: '#175A67' },
+      handler: async (res: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+        paid = true;
+        try {
+          await apiFetch('/razorpay/verify', {
+            body: { razorpay_order_id: res.razorpay_order_id, razorpay_payment_id: res.razorpay_payment_id, razorpay_signature: res.razorpay_signature },
+          });
+          rememberPending(null);
+          markOwned(courseId);
+          resolve({ ok: true });
+        } catch {
+          // The money is taken; Razorpay's webhook unlocks the course even when this call failed
+          void refreshOwnedCourses();
+          resolve({ ok: false, paymentRequired: false, error: 'Payment received, but we could not confirm it yet. The course unlocks on its own within a minute.' });
+        }
+      },
+      modal: {
+        // Closed without a success callback: it may still be pending with the bank, so check before giving up
+        ondismiss: async () => {
+          if (paid) return;
+          const outcome = await waitForPayment(order.orderId);
+          if (paid) return;
+          if (outcome === 'paid') {
+            rememberPending(null);
+            markOwned(courseId);
+            resolve({ ok: true });
+            return;
+          }
+          if (outcome !== 'pending') rememberPending(null);
+          void refreshOwnedCourses();
+          const error = {
+            cancelled: 'Payment cancelled.',
+            failed: 'Payment failed. Please try again.',
+            pending: 'Your bank is still confirming the payment. The course unlocks on its own once it is confirmed.',
+          }[outcome];
+          resolve({ ok: false, paymentRequired: false, error });
+        },
+      },
+    });
+    checkout.on('payment.failed', (res) => {
+      void apiFetch('/razorpay/failed', { body: { razorpay_order_id: order.orderId, reason: res?.error?.description } }).catch(() => undefined);
+    });
+    checkout.open();
+  });
+}
+
 /** Re-reads only the owned-course ids (after enrolling). */
 export async function refreshOwnedCourses(): Promise<void> {
   setState({ ownedIds: await fetchOwnedIds() });
@@ -166,7 +339,7 @@ export function useCourses(): CoursesState & { reload: () => Promise<void> } {
       }
     }, STALE_MS);
     const onFocus = () => {
-      if (Date.now() - lastLoadedAt > 15_000) void refreshCourses();
+      if (Date.now() - lastLoadedAt > 60_000) void refreshCourses(); // the browser keeps /courses for 60s anyway
     };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
