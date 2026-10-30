@@ -1,4 +1,4 @@
-﻿export interface Mission {
+export interface Mission {
   id: string;
   title: string;
   subtitle: string;
@@ -14,24 +14,34 @@ export interface VaultResource {
   second_text: string;
   id: string;
   title: string;
-  subject: 'Physics' | 'Chemistry' | 'Mathematics' | 'Mock Tests';
+  subject: 'Physics' | 'Chemistry' | 'Mathematics' | 'Mock Tests' | 'Live Sessions';
   countLabel: string;
+  actionLabel?: string;
   tags: string[];
-  iconType: 'book' | 'archive' | 'combat' | 'analytics';
+  iconType: 'book' | 'archive' | 'combat' | 'analytics' | 'live' | 'bookmark';
+  gradient?: string;
+  shadow?: string;
+  badgeColor?: string;
+  borderHover?: string;
+  hoverGlow?: string;
   isLive?: boolean;
   statusText?: string;
   description: string;
   downloadSize?: string;
   rating?: number;
+  pdfUrl?: string;
 }
 
 export interface NotificationItem {
   id: string;
+  rawId?: number;
   title: string;
   description: string;
   time: string;
   read: boolean;
   type: 'test' | 'doubt' | 'system' | 'streak';
+  imageUrl?: string | null;
+  link?: string | null;
 }
 
 export interface QuizQuestion {

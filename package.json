@@ -5,16 +5,27 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:backend": "npm --prefix Backend run dev",
+    "dev:cms": "npm --prefix CMS-Portal run dev",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@firebase/auth": "^1.13.8",
+    "@types/katex": "^0.16.8",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
+    "firebase": "^12.19.0",
+    "katex": "^0.19.1",
     "lucide-react": "^0.475.0",
     "mp4box": "^0.5.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "socket.io-client": "^4.8.4",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

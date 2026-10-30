@@ -11,6 +11,12 @@
   }
 }
 
+/* Prevent Tailwind space-y-* utilities from pushing fixed overlays down from top: 0 */
+[class*="space-y-"] > .fixed {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
 /* Custom Sleek Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -36,4 +42,79 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Enterprise Design System Motion Tokens (PDF Manual Specification) */
+:root {
+  --duration-instant: 100ms;
+  --duration-fast: 180ms;
+  --duration-normal: 260ms;
+  --duration-slow: 400ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-quad: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out-std: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 60fps Hardware-Accelerated Shimmer Wave Keyframe */
+@keyframes shimmerWave {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Light Theme Skeleton Shimmer */
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #e2e8f0 25%,
+    #f8fafc 50%,
+    #e2e8f0 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmerWave 1.6s infinite linear;
+}
+
+/* Dark Accent Skeleton Shimmer */
+.skeleton-shimmer-dark {
+  background: linear-gradient(
+    90deg,
+    rgba(23, 90, 103, 0.15) 25%,
+    rgba(23, 90, 103, 0.30) 50%,
+    rgba(23, 90, 103, 0.15) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmerWave 1.6s infinite linear;
+}
+
+/* Directional View Transition */
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-tab-content {
+  animation: fadeInSlide var(--duration-normal) var(--ease-out-expo) forwards;
+}
+
+/* WCAG 2.1 Reduced Motion Safety */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 120ms !important;
+    transition-property: opacity, background-color, color, border-color !important;
+  }
+  .skeleton-shimmer,
+  .skeleton-shimmer-dark {
+    animation: none !important;
+    background: #e2e8f0 !important;
+  }
 }

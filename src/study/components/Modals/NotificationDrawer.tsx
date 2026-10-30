@@ -7,6 +7,7 @@ interface NotificationDrawerProps {
   onClose: () => void;
   notifications: NotificationItem[];
   onMarkAllRead: () => void;
+  onMarkRead?: (id: string) => void;
 }
 
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
@@ -14,6 +15,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   onClose,
   notifications,
   onMarkAllRead,
+  onMarkRead,
 }) => {
   if (!isOpen) return null;
 
@@ -57,22 +59,53 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
 
           {/* List */}
           <div className="space-y-3 overflow-y-auto max-h-[72vh] no-scrollbar pr-1">
-            {notifications.map((n) => (
-              <div
-                key={n.id}
-                className={`p-4 rounded-2xl border transition-all ${
-                  n.read
-                    ? 'bg-white/40 border-[#175A67]/15 opacity-80'
-                    : 'bg-white/70 border-[#175A67]/30 shadow-sm'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <h4 className="font-bold text-[#175A67] text-xs sm:text-sm leading-tight">{n.title}</h4>
-                  <span className="text-[10px] text-[#2A707C] shrink-0">{n.time}</span>
-                </div>
-                <p className="text-xs text-[#2A707C] mt-1 leading-normal">{n.description}</p>
+            {notifications.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-white/40 border border-[#175A67]/15 text-center text-xs text-[#2A707C]">
+                No notifications yet. Important updates from your courses and mentors will appear here.
               </div>
-            ))}
+            ) : (
+              notifications.map((n) => (
+                <div
+                  key={n.id}
+                  onClick={() => onMarkRead?.(n.id)}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                    n.read
+                      ? 'bg-white/40 border-[#175A67]/15 opacity-80'
+                      : 'bg-white/75 border-[#175A67]/35 shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      {!n.read && <span className="w-2 h-2 rounded-full bg-[#10B981] shrink-0" />}
+                      <h4 className="font-bold text-[#175A67] text-xs sm:text-sm leading-tight">{n.title}</h4>
+                    </div>
+                    <span className="text-[10px] text-[#2A707C] shrink-0">{n.time}</span>
+                  </div>
+                  <p className="text-xs text-[#2A707C] mt-1.5 leading-normal whitespace-pre-line">{n.description}</p>
+                  {n.imageUrl && (
+                    <img
+                      src={n.imageUrl}
+                      alt=""
+                      className="mt-2.5 w-full max-h-40 object-cover rounded-xl border border-[#175A67]/15"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  )}
+                  {n.link && (
+                    <a
+                      href={n.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 mt-2 text-xs font-bold text-[#175A67] hover:underline"
+                    >
+                      Open Link &rarr;
+                    </a>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
 

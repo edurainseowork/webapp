@@ -99,10 +99,10 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Logo */}
           <div className="flex items-center gap-2.5 group cursor-pointer">
-            <img src={logoImage} alt="EduRAIN Logo" className="h-10 w-auto object-contain group-hover:scale-105 transition-transform" />
+            <img src={logoImage} alt="EduRain Logo" className="h-10 w-auto object-contain group-hover:scale-105 transition-transform" />
             <div className="flex items-center text-xl font-black tracking-tight font-sans">
               <span className="text-emerald-600 font-bold">Edu</span>
-              <span className="text-amber-400 font-black uppercase">RAIN</span>
+              <span className="text-amber-400 font-black">Rain</span>
               <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 ml-1.5">
                 LMS
               </span>
@@ -206,7 +206,8 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Gold CTA, Notifications & User Profile */}
         <div className="flex items-center gap-3 lg:gap-4 flex-shrink-0">
-          {/* Gold CTA Button */}
+          {/* Gold CTA Button (Hidden for now as requested) */}
+          {/*
           <button
             onClick={onOpenUpgrade}
             className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-extrabold text-xs uppercase tracking-wider px-4 py-2 rounded-lg shadow-[0_0_20px_rgba(245,158,11,0.35)] hover:shadow-[0_0_25px_rgba(245,158,11,0.6)] hover:brightness-105 active:scale-95 transition-all"
@@ -214,6 +215,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Crown className="w-3.5 h-3.5 fill-slate-950" />
             <span>UPGRADE TO PRO</span>
           </button>
+          */}
 
           {/* Notification Bell */}
           <button

@@ -1,6 +1,7 @@
-import React from 'react';
-import { X, Download, Star, FileText, CheckCircle2, BookOpen } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Bookmark, Star, FileText, CheckCircle2, BookOpen, Lock } from 'lucide-react';
 import { VaultResource } from '../../types';
+import { toggleSavePdf, isPdfSaved, onSavedPdfsChange } from '../../utils/bookmarkStorage';
 
 interface VaultDetailModalProps {
   item: VaultResource | null;
@@ -11,8 +12,28 @@ interface VaultDetailModalProps {
 export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({ item, onClose, onOpenUpgrade }) => {
   if (!item) return null;
 
-  const handleDownload = () => {
-    alert(`Downloading high-yield bundle: "${item.title}". File is saved to offline study cache.`);
+  const [isSaved, setIsSaved] = useState(() => isPdfSaved(String(item.id)));
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sync = () => setIsSaved(isPdfSaved(String(item.id)));
+    sync();
+    return onSavedPdfsChange(sync);
+  }, [item.id]);
+
+  const handleToggleSave = () => {
+    const nextSaved = toggleSavePdf({
+      id: String(item.id),
+      title: item.title,
+      mediaUrl: item.pdfUrl || '',
+      subject: item.subject,
+      courseTitle: 'High-Yield Exam Vault',
+      fileSize: item.downloadSize || '48.2 MB',
+      savedAt: new Date().toISOString(),
+    });
+    setIsSaved(nextSaved);
+    setToast(nextSaved ? 'Saved bundle to "Your Saved PDF" in Bookmarks!' : 'Removed bundle from bookmarks');
+    setTimeout(() => setToast(null), 3000);
   };
 
   return (
@@ -73,7 +94,7 @@ export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({ item, onClos
             <span className="font-bold text-[#175A67]">{item.countLabel}</span>
           </div>
           <div className="flex justify-between text-[#2A707C]">
-            <span>Download Package Size</span>
+            <span>Package Size</span>
             <span className="font-bold text-[#175A67]">{item.downloadSize || '48.2 MB'}</span>
           </div>
           <div className="flex justify-between text-[#2A707C]">
@@ -85,19 +106,36 @@ export const VaultDetailModal: React.FC<VaultDetailModalProps> = ({ item, onClos
         {/* Buttons */}
         <div className="space-y-2">
           <button
-            onClick={handleDownload}
-            className="w-full py-3 rounded-xl bg-[#175A67] hover:bg-[#124853] text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+            onClick={handleToggleSave}
+            className={`w-full py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 ${
+              isSaved
+                ? 'bg-amber-400 text-slate-900 font-bold'
+                : 'bg-[#175A67] hover:bg-[#124853] text-white'
+            }`}
           >
-            <Download className="w-4 h-4" />
-            <span>Download All High-Yield PDFs</span>
+            <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
+            <span>{isSaved ? 'Saved in Your Bookmarks' : 'Save Bundle to Your Saved PDF'}</span>
           </button>
+
+          <p className="text-[11px] text-center text-[#2A707C] flex items-center justify-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-[#175A67]" />
+            <span>Device download disabled • Access anytime in Bookmarks</span>
+          </p>
+
           <button
             onClick={onOpenUpgrade}
-            className="w-full py-2.5 rounded-xl bg-white/60 hover:bg-white text-[#175A67] border border-[#175A67]/25 font-bold text-xs transition-all"
+            className="w-full py-2.5 rounded-xl bg-white/60 hover:bg-white text-[#175A67] border border-[#175A67]/25 font-bold text-xs transition-all mt-1"
           >
             Upgrade for Physical Hardcopy Delivery
           </button>
         </div>
+
+        {/* Toast */}
+        {toast && (
+          <div className="mt-3 text-center text-xs font-bold text-emerald-800 bg-emerald-100/90 py-2 px-3 rounded-xl animate-fadeIn">
+            ✓ {toast}
+          </div>
+        )}
 
       </div>
     </div>

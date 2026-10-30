@@ -1,0 +1,342 @@
+import { Router } from "express";
+import Razorpay from "razorpay";
+import crypto from "crypto";
+import { db } from "@workspace/db";
+import { userCoursesTable, coursesTable, paymentsTable, usersTable } from "@workspace/db/schema";
+import { CreatePaymentOrderBody, PaymentFailedBody, VerifyPaymentBody } from "@workspace/api-zod";
+import { eq, and } from "drizzle-orm";
+import { calculateDiscount, checkCoupon, redeemCoupon } from "./coupons.js";
+import { requireAuth } from "../middlewares/auth.js";
+import { logger } from "../lib/logger";
+import { reportAlternativeBillingToGoogle } from "./google-play.js";
+import { PLAN_NAMES, planIdSchema, planPrice } from "../lib/coursePlans";
+import { sql } from "drizzle-orm";
+
+const router = Router();
+
+const getRazorpayCredentials = () => {
+  const sanitize = (val?: string) => val?.trim().replace(/^["']|["']$/g, "") || undefined;
+  const keyId = sanitize(process.env.RAZORPAY_KEY_ID);
+  const keySecret = sanitize(process.env.RAZORPAY_SECRET) || sanitize(process.env.RAZORPAY_KEY_SECRET);
+  return { keyId, keySecret };
+};
+
+const getRazorpayClient = () => {
+  const { keyId, keySecret } = getRazorpayCredentials();
+  return keyId && keySecret ? new Razorpay({ key_id: keyId, key_secret: keySecret }) : null;
+};
+
+// Razorpay does not accept orders below ₹1
+const MIN_AMOUNT_PAISE = 100;
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+const findUser = async (firebaseUid: string) => {
+  const [user] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.firebaseUid, firebaseUid));
+  return user ?? null;
+};
+
+const isEnrolled = async (userId: number, courseId: number) => {
+  const [row] = await db.select({ id: userCoursesTable.id }).from(userCoursesTable)
+    .where(and(eq(userCoursesTable.userId, userId), eq(userCoursesTable.courseId, courseId)))
+    .limit(1);
+  return !!row;
+};
+
+// Adds the course to the student's purchases unless it is already there
+const enroll = async (tx: Tx, userId: number, courseId: number, payment?: { orderId: string; paymentId: string }) => {
+  const [existing] = await tx.select({ id: userCoursesTable.id }).from(userCoursesTable)
+    .where(and(eq(userCoursesTable.userId, userId), eq(userCoursesTable.courseId, courseId)))
+    .limit(1);
+  if (existing) return;
+  await tx.insert(userCoursesTable).values({
+    userId,
+    courseId,
+    razorpayOrderId: payment?.orderId ?? null,
+    razorpayPaymentId: payment?.paymentId ?? null,
+  });
+};
+
+const signatureIsValid = (orderId: string, paymentId: string, signature: string, secret: string) => {
+  const expected = crypto.createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest("hex");
+  return expected.length === signature.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+};
+
+// Step 1: create a Razorpay order for a course. The amount comes from the database (and coupon), never the app.
+router.post("/order", requireAuth, async (req, res) => {
+  const parsed = CreatePaymentOrderBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid request" });
+    return;
+  }
+  const { courseId, couponCode } = parsed.data;
+  // Basic / Pro / Pro Max (optional; apps that don't send it buy Basic = the course price)
+  const planParsed = planIdSchema.safeParse(req.body?.plan ?? "basic");
+  if (!planParsed.success) {
+    res.status(400).json({ error: "Invalid plan" });
+    return;
+  }
+  const plan = planParsed.data;
+  try {
+    const user = await findUser(req.auth!.uid);
+    if (!user) {
+      res.status(404).json({ error: "User not found. Please log in again." });
+      return;
+    }
+    const [course] = await db.select({ id: coursesTable.id, title: coursesTable.title, price: coursesTable.price, isPublished: coursesTable.isPublished })
+      .from(coursesTable)
+      .where(eq(coursesTable.id, courseId));
+    if (!course || !course.isPublished) {
+      res.status(404).json({ error: "Course not found" });
+      return;
+    }
+    if (await isEnrolled(user.id, courseId)) {
+      res.status(409).json({ error: "You already own this course" });
+      return;
+    }
+
+    const listPrice = await planPrice(courseId, course.price, plan);
+    if (listPrice === null) {
+      res.status(400).json({ error: `This course has no ${PLAN_NAMES[plan]} plan` });
+      return;
+    }
+    let amount = listPrice;
+    let couponId: number | null = null;
+    if (couponCode) {
+      const result = await checkCoupon(couponCode, courseId);
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error });
+        return;
+      }
+      amount = calculateDiscount(listPrice, result.coupon.discountPercent, result.coupon.maxDiscountAmount).finalPrice;
+      couponId = result.coupon.id;
+    }
+
+    // Free after coupon (e.g. 100% off): no payment needed
+    if (amount <= 0) {
+      await db.transaction(async (tx) => {
+        await enroll(tx, user.id, courseId);
+        if (couponId) await redeemCoupon(tx, couponId, { courseId, firebaseUid: req.auth!.uid });
+      });
+      res.json({ success: true, free: true, courseId });
+      return;
+    }
+    if (amount < MIN_AMOUNT_PAISE) {
+      res.status(400).json({ error: "The amount after discount is below ₹1, which cannot be paid online" });
+      return;
+    }
+
+    const { keyId, keySecret } = getRazorpayCredentials();
+    const razorpay = getRazorpayClient();
+
+    if (!razorpay || !keyId || !keySecret) {
+      res.status(500).json({ error: "Payments are not configured. Set RAZORPAY_KEY_ID and RAZORPAY_SECRET in .env." });
+      return;
+    }
+
+    const order = await razorpay.orders.create({
+      amount,
+      currency: "INR",
+      receipt: `c${courseId}_u${user.id}_${Date.now()}`.slice(0, 40),
+      notes: { courseId: String(courseId), userId: String(user.id), plan, ...(couponId ? { couponId: String(couponId) } : {}) },
+    });
+
+    await db.insert(paymentsTable).values({
+      userId: user.id,
+      courseId,
+      razorpayOrderId: order.id,
+      amount,
+      currency: "INR",
+      couponId,
+    });
+    // Which plan this order is for (payments has no plan column; course_plans table set up by planPrice)
+    await db.execute(sql`INSERT INTO payment_plans (razorpay_order_id, plan) VALUES (${order.id}, ${plan}) ON CONFLICT DO NOTHING`);
+
+    res.json({
+      success: true,
+      free: false,
+      orderId: order.id,
+      amount,
+      currency: "INR",
+      keyId, // public key id only, safe for the app
+      courseTitle: plan === "basic" ? course.title : `${course.title} (${PLAN_NAMES[plan]})`,
+      plan,
+      prefill: { name: user.name ?? "", email: user.email },
+    });
+  } catch (error: any) {
+    const errorDescription = error?.error?.description || error?.message || "Failed to create payment order";
+    logger.error({ err: error }, `Failed to create Razorpay order: ${errorDescription}`);
+    res.status(500).json({ error: errorDescription });
+  }
+});
+
+// Step 2: after checkout succeeds, verify Razorpay's signature and unlock the course.
+// Safe to call more than once for the same order.
+router.post("/verify", requireAuth, async (req, res) => {
+  const parsed = VerifyPaymentBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid payment details" });
+    return;
+  }
+  const { razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: signature, googleAlternativeBillingToken } = parsed.data;
+  const { keySecret } = getRazorpayCredentials();
+  if (!keySecret) {
+    res.status(500).json({ error: "Payments are not configured. Set RAZORPAY_KEY_ID and RAZORPAY_SECRET in .env." });
+    return;
+  }
+
+  try {
+    const user = await findUser(req.auth!.uid);
+    const [payment] = await db.select().from(paymentsTable).where(eq(paymentsTable.razorpayOrderId, orderId));
+    // Same response for unknown orders and other users' orders
+    if (!user || !payment || payment.userId !== user.id) {
+      res.status(404).json({ error: "Payment order not found" });
+      return;
+    }
+    if (!signatureIsValid(orderId, paymentId, signature, keySecret)) {
+      logger.warn({ orderId, userId: user.id }, "Razorpay signature mismatch");
+      res.status(400).json({ success: false, error: "Payment could not be verified" });
+      return;
+    }
+
+    if (payment.status !== "paid") {
+      await db.transaction(async (tx) => {
+        await tx.update(paymentsTable)
+          .set({
+            status: "paid",
+            razorpayPaymentId: paymentId,
+            googleAlternativeBillingToken: googleAlternativeBillingToken || null,
+            failureReason: null,
+            updatedAt: new Date()
+          })
+          .where(eq(paymentsTable.id, payment.id));
+        await enroll(tx, payment.userId, payment.courseId, { orderId, paymentId });
+        // Count the coupon use once per order. The limit was checked when the order was created,
+        // so a payment that completes after the last slot was taken is still honoured.
+        if (payment.couponId) {
+          await redeemCoupon(tx, payment.couponId, { courseId: payment.courseId, firebaseUid: req.auth!.uid, razorpayOrderId: orderId }, { enforceLimit: false });
+        }
+      });
+      logger.info({ orderId, paymentId, userId: payment.userId, courseId: payment.courseId }, "Razorpay payment verified");
+
+      // Report to Google Play for User Choice Billing compliance if token was provided
+      if (googleAlternativeBillingToken) {
+        reportAlternativeBillingToGoogle({
+          externalTransactionId: `rzp_${paymentId}`,
+          originalAlternativeBillingToken: googleAlternativeBillingToken,
+          amountInPaise: payment.amount,
+          currency: payment.currency,
+        }).catch((err) => logger.error({ err }, "Background reporting to Google Play failed"));
+      }
+    }
+
+    res.json({ success: true, message: "Payment verified successfully", courseId: payment.courseId });
+  } catch (error) {
+    logger.error({ err: error, orderId }, "Payment verification failed");
+    res.status(500).json({ error: "Payment verification failed" });
+  }
+});
+
+// Optional: the app reports a failed or cancelled checkout so the order shows as failed
+router.post("/failed", requireAuth, async (req, res) => {
+  const parsed = PaymentFailedBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid request" });
+    return;
+  }
+  try {
+    const user = await findUser(req.auth!.uid);
+    if (user) {
+      await db.update(paymentsTable)
+        .set({ status: "failed", failureReason: parsed.data.reason ?? null, updatedAt: new Date() })
+        .where(and(
+          eq(paymentsTable.razorpayOrderId, parsed.data.razorpay_order_id),
+          eq(paymentsTable.userId, user.id),
+          eq(paymentsTable.status, "created"),
+        ));
+    }
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to record payment failure");
+    res.status(500).json({ error: "Failed to update payment" });
+  }
+});
+
+// Course ids the signed-in student has bought, so the app can unlock them on any device
+router.get("/my-courses", requireAuth, async (req, res) => {
+  try {
+    const user = await findUser(req.auth!.uid);
+    if (!user) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+    const rows = await db.selectDistinct({ courseId: userCoursesTable.courseId })
+      .from(userCoursesTable)
+      .where(eq(userCoursesTable.userId, user.id));
+    res.json({ success: true, data: rows.map((row) => row.courseId) });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to fetch purchased courses");
+    res.status(500).json({ error: "Failed to fetch purchased courses" });
+  }
+});
+
+
+// Step 4: Razorpay Webhook endpoint with HMAC-SHA256 signature verification & idempotency
+router.post("/webhook", async (req, res) => {
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_SECRET || process.env.RAZORPAY_KEY_SECRET;
+  const signature = req.headers["x-razorpay-signature"];
+
+  if (!webhookSecret || !signature || typeof signature !== "string") {
+    logger.warn("Razorpay webhook request missing signature or webhook secret is unconfigured");
+    res.status(400).json({ error: "Missing signature or unconfigured secret" });
+    return;
+  }
+
+  const rawPayload = (req as any).rawBody ? (req as any).rawBody.toString("utf8") : JSON.stringify(req.body);
+  const expectedSignature = crypto.createHmac("sha256", webhookSecret).update(rawPayload).digest("hex");
+
+  const signatureMatches = expectedSignature.length === signature.length &&
+    crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature));
+
+  if (!signatureMatches) {
+    logger.error("Razorpay webhook signature validation failed - unauthorized payload");
+    res.status(400).json({ error: "Invalid signature" });
+    return;
+  }
+
+  const event = req.body?.event;
+  const paymentEntity = req.body?.payload?.payment?.entity;
+  const orderId = paymentEntity?.order_id;
+  const paymentId = paymentEntity?.id;
+  const amount = paymentEntity?.amount;
+
+  if (event === "payment.captured" || event === "order.paid") {
+    if (orderId && paymentId) {
+      const [payment] = await db.select().from(paymentsTable).where(eq(paymentsTable.razorpayOrderId, orderId));
+      if (payment && payment.status !== "paid") {
+        if (amount && Number(amount) < Number(payment.amount)) {
+          logger.error({ orderId, amount, expected: payment.amount }, "Amount mismatch in webhook payment");
+          res.status(400).json({ error: "Amount mismatch" });
+          return;
+        }
+
+        await db.transaction(async (tx) => {
+          await tx.update(paymentsTable)
+            .set({ status: "paid", razorpayPaymentId: paymentId, updatedAt: new Date() })
+            .where(eq(paymentsTable.id, payment.id));
+          await enroll(tx, payment.userId, payment.courseId, { orderId, paymentId });
+          if (payment.couponId) {
+            await redeemCoupon(tx, payment.couponId, { courseId: payment.courseId, firebaseUid: `webhook-${payment.userId}`, razorpayOrderId: orderId }, { enforceLimit: false });
+          }
+        });
+        logger.info({ orderId, paymentId, event }, "Payment idempotently verified and enrolled via webhook");
+      }
+    }
+  }
+
+  res.status(200).json({ status: "ok" });
+});
+
+export default router;
