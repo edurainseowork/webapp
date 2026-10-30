@@ -15,7 +15,7 @@ export class ApiError extends Error {
  */
 export async function apiFetch<T = any>(
   path: string,
-  init: { method?: string; body?: unknown; retries?: number } = {}
+  init: { method?: string; body?: unknown; retries?: number; fresh?: boolean } = {}
 ): Promise<T> {
   const headers: Record<string, string> = {};
   const token = await auth.currentUser?.getIdToken();
@@ -32,6 +32,7 @@ export async function apiFetch<T = any>(
         method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
         headers,
         body: init.body !== undefined ? (typeof init.body === 'string' ? init.body : JSON.stringify(init.body)) : undefined,
+        cache: init.fresh ? 'reload' : undefined, // skip the browser cache once, then store the new answer
       });
     } catch {
       throw new ApiError(0, 'Could not reach the server. Check your internet connection and try again.');

@@ -4,8 +4,10 @@ import { bannersTable } from "@workspace/db/schema";
 import { eq, desc, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
 import { getOrSetCache, invalidateCachePrefix } from "../lib/perfEngine";
+import { broadcastCatalogChange } from "../lib/catalogSync";
 
 const router = Router();
+router.use(broadcastCatalogChange); // banner create / reorder / delete reach students at once
 
 // Complete set of allowed placements across Web & Mobile platforms:
 // Web (3.2:1 ratio): web_home, courses, purchases

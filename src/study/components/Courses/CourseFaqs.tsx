@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDown, HelpCircle } from 'lucide-react';
 import { fetchCourseFaqs, type CourseFaq } from '../../lib/courses';
+import { onCatalogUpdated } from '../../lib/catalogSync';
 
 // Frequently Asked Questions at the end of the course page (CMS → FAQs).
 // Answers are Markdown; react-markdown never renders raw HTML, and only the formats the CMS
@@ -17,15 +18,20 @@ export function CourseFaqs({ courseId }: { courseId: number }) {
     let cancelled = false;
     setFaqs([]);
     setOpenId(null);
-    fetchCourseFaqs(courseId)
-      .then((list) => {
-        if (cancelled) return;
-        setFaqs(list);
-        setOpenId(list[0]?.id ?? null); // first answer open, like most FAQ sections
-      })
-      .catch(() => undefined); // FAQs are extra: the course page works without them
+    const load = (keepOpen: boolean) =>
+      fetchCourseFaqs(courseId)
+        .then((list) => {
+          if (cancelled) return;
+          setFaqs(list);
+          // first answer open on load; a CMS refresh keeps the one the student is reading
+          setOpenId((open) => (keepOpen && list.some((f) => f.id === open) ? open : list[0]?.id ?? null));
+        })
+        .catch(() => undefined); // FAQs are extra: the course page works without them
+    void load(false);
+    const offCms = onCatalogUpdated(() => void load(true));
     return () => {
       cancelled = true;
+      offCms();
     };
   }, [courseId]);
 
