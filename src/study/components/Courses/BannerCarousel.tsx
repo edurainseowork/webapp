@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../lib/api';
+import { onCatalogUpdated } from '../../lib/catalogSync';
 import { useCatalog } from './courseData';
 
 const ROTATE_INTERVAL_MS = 5000;
@@ -45,10 +46,12 @@ export function BannerCarousel({ placement, onOpenBatch, className = '' }: Banne
     const onFocus = () => fetchBanners();
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
+    const offCms = onCatalogUpdated(fetchBanners);
     return () => {
       clearInterval(timer);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
+      offCms();
     };
   }, [fetchBanners]);
 

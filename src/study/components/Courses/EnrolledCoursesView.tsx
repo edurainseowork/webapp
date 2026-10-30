@@ -14,6 +14,7 @@ import {
 import { makeCourseActive, useActiveCourse } from '../../lib/activeCourse';
 import { SubPageHeader, BreadcrumbCrumb } from '../SubPageHeader';
 import { apiFetch } from '../../lib/api';
+import { onCatalogUpdated } from '../../lib/catalogSync';
 
 interface PurchasesBanner {
   id: number;
@@ -88,10 +89,12 @@ export function EnrolledCoursesView({
     const onFocus = () => fetchPurchasesBanners();
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
+    const offCms = onCatalogUpdated(fetchPurchasesBanners);
     return () => {
       clearInterval(timer);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
+      offCms();
     };
   }, [fetchPurchasesBanners]);
 
