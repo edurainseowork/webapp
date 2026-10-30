@@ -36,3 +36,6 @@ dist-ssr
 *.p12
 
 uploads/
+
+# serverless deploy output
+Backend/.serverless/
