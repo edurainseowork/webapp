@@ -59,6 +59,19 @@ const identifyStudent: RequestHandler = async (req, _res, next) => {
 // Mentor / Teacher Assistance accounts may only reach /auth/me and their own desk API
 router.use(restrictDeskRoles);
 
+router.get("/app-config", (req, res) => {
+  res.json({
+    success: true,
+    minVersion: process.env.APP_MIN_VERSION || "1.0.0",
+    latestVersion: process.env.APP_LATEST_VERSION || "1.0.0",
+    forceUpdate: false,
+    updateUrl: "https://play.google.com/store/apps/details?id=com.edurainindia.app",
+    supportEmail: "support@edurain.in",
+    privacyPolicyUrl: "https://edurain.in/privacy-policy",
+    termsUrl: "https://edurain.in/terms-and-conditions",
+  });
+});
+
 router.use("/health", healthRouter);
 router.use("/healthz", healthRouter);
 router.use("/sync", syncRouter);

@@ -228,6 +228,25 @@ router.post("/verify", requireAuth, async (req, res) => {
       return;
     }
 
+    // 1. Verify productId matches course configuration
+    if (course.playProductId && course.playProductId !== productId) {
+      logger.warn({ courseId, expected: course.playProductId, received: productId }, "Google Play productId mismatch");
+      res.status(400).json({ error: "Product ID does not match this course" });
+      return;
+    }
+
+    // 2. Prevent token replay attack: check if purchaseToken was already redeemed
+    const [existingToken] = await db
+      .select({ id: userCoursesTable.id })
+      .from(userCoursesTable)
+      .where(eq(userCoursesTable.playPurchaseToken, purchaseToken))
+      .limit(1);
+
+    if (existingToken) {
+      res.status(409).json({ error: "Google Play purchase token has already been redeemed" });
+      return;
+    }
+
     // Check if already enrolled
     const [alreadyEnrolled] = await db
       .select({ id: userCoursesTable.id })
@@ -282,9 +301,14 @@ router.post("/verify", requireAuth, async (req, res) => {
         });
       }
     } else {
-      // Development fallback if service account JSON not configured yet in local/testing
+      // Production guard: Never allow unverified fallback in production
+      if (process.env.NODE_ENV === "production") {
+        logger.error("GOOGLE_PLAY_SERVICE_ACCOUNT is not configured in production");
+        res.status(503).json({ error: "Google Play purchase verification service is not configured. Please contact support." });
+        return;
+      }
       logger.warn(
-        `GOOGLE_PLAY_SERVICE_ACCOUNT not configured. Accepting token for development/sandbox testing: ${purchaseToken.slice(0, 10)}...`
+        `[DEV ONLY] GOOGLE_PLAY_SERVICE_ACCOUNT not configured. Accepting token for development/sandbox testing: ${purchaseToken.slice(0, 10)}...`
       );
     }
 

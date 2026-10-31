@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { adminNotificationsTable, coursesTable, liveClassesTable, notificationsTable, testsTable } from "@workspace/db/schema";
+import { adminNotificationsTable, coursesTable, liveClassesTable, notificationsTable, testsTable, pushTokensTable } from "@workspace/db/schema";
 import { getLiveClassStatus } from "@workspace/api-zod";
 import { and, desc, eq, not, like } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -140,6 +140,42 @@ router.post("/:id/read", async (req, res) => {
   } catch (error) {
     console.error("Failed to update notification", error);
     res.status(500).json({ error: "Failed to update notification" });
+  }
+});
+
+// Register or update device push notification token
+router.post("/push-token", async (req, res) => {
+  try {
+    const userId = await findDbUserId(req.auth!.uid);
+    if (!userId) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    const { token, platform } = req.body;
+    if (!token || typeof token !== "string") {
+      res.status(400).json({ error: "Push token is required" });
+      return;
+    }
+    await db
+      .insert(pushTokensTable)
+      .values({
+        userId,
+        token: token.trim(),
+        platform: platform === "ios" ? "ios" : "android",
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: pushTokensTable.token,
+        set: {
+          userId,
+          platform: platform === "ios" ? "ios" : "android",
+          updatedAt: new Date(),
+        },
+      });
+    res.json({ success: true, message: "Push token registered successfully" });
+  } catch (error) {
+    console.error("Failed to register push token", error);
+    res.status(500).json({ error: "Failed to register push token" });
   }
 });
 
