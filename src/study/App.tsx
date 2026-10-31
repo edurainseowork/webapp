@@ -64,7 +64,18 @@ import { MentorshipHub } from './components/Mentorship/MentorshipHub';
 import { CourseTestSeriesView } from './components/CourseTestSeriesView';
 import { LiveClassesView } from './components/LiveClassesView';
 import { SavedPdfsView } from './components/SavedPdfsView';
+import { FeatureLockedView } from './components/FeatureLockedView';
 import { VaultResource, NotificationItem } from './types';
+
+// Environment check: in local dev, features are open for building; in live production, locked.
+const isLocalEnvironment = Boolean(
+  (typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.startsWith('192.168.') ||
+    window.location.hostname.endsWith('.local')
+  ))
+);
 
 export function App() {
   // Signed-in student (AuthGate only renders App when there is one)
@@ -363,8 +374,8 @@ export function App() {
     };
   }, [session.uid]);
   // After login: load the saved goal once; students who haven't picked one yet get the goal popup.
-  // Returning students with a goal land on Daily Drop (they can change the goal from the top navigation).
   const goalLoadedFor = useRef<string | null>(null);
+  const initialLandingDone = useRef(false);
   useEffect(() => {
     if (goalLoadedFor.current === session.uid) return;
     goalLoadedFor.current = session.uid;
@@ -374,17 +385,33 @@ export function App() {
         setGoal(saved);
         if (!saved) {
           setIsGoalModalOpen(true);
-          return;
-        }
-        // Opened on the home address (e.g. right after login): go to Daily Drop. A direct link or a
-        // refresh of another page (/study/courses, /study/mentorship…) stays where it is.
-        if (window.location.pathname.replace(/\/+$/, '') === '/study') {
-          setActiveNav('pi');
-          window.history.replaceState(null, '', '/study/daily-doubts');
         }
       })
       .catch((err) => console.error('Could not load the saved goal', err));
   }, [session.uid]);
+
+  // Smart landing routing on /study:
+  // - First-time: goal modal opens -> onConfirm directs to courses
+  // - Returning: unenrolled (ownedIds.length === 0) -> courses; enrolled (ownedIds.length > 0) -> study-central (home)
+  useEffect(() => {
+    if (initialLandingDone.current) return;
+    if (goalLoadedFor.current !== session.uid) return;
+    if (coursesStatus === 'loading') return;
+
+    const currentPath = window.location.pathname.replace(/\/+$/, '');
+    if (currentPath === '/study') {
+      initialLandingDone.current = true;
+      if (!goal) {
+        setIsGoalModalOpen(true);
+      } else if (ownedIds.length === 0) {
+        setActiveNav('courses');
+        window.history.replaceState(null, '', '/study/courses');
+      } else {
+        setActiveNav('study-central');
+        window.history.replaceState(null, '', '/study');
+      }
+    }
+  }, [session.uid, goal, coursesStatus, ownedIds.length]);
 
   const getSearchPlaceholder = () => {
     if (activeNav === 'courses' || isMyCoursesOpen) return 'Search in Courses';
@@ -838,13 +865,21 @@ export function App() {
                   navigateTo('pi');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
+                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center justify-between text-sm transition-all ${activeNav === 'pi'
                   ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
-                <span>Daily Drop</span>
+                <div className="flex items-center gap-3">
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
+                  <span>Daily Drop</span>
+                </div>
+                {!isLocalEnvironment && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                    <Lock className="w-2.5 h-2.5" />
+                    SOON
+                  </span>
+                )}
               </button>
 
               <button
@@ -866,13 +901,21 @@ export function App() {
                   navigateTo('test-series');
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center gap-3 text-sm transition-all ${activeNav === 'test-series'
+                className={`group w-full font-semibold rounded-xl px-3.5 py-2.5 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
                   ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <Award className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                <span>ALL INDIA TEST PASS</span>
+                <div className="flex items-center gap-3">
+                  <Award className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  <span>ALL INDIA TEST PASS</span>
+                </div>
+                {!isLocalEnvironment && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                    <Lock className="w-2.5 h-2.5" />
+                    SOON
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -918,13 +961,21 @@ export function App() {
 
               <button
                 onClick={() => navigateTo('pi')}
-                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'pi'
+                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center justify-between text-sm transition-all ${activeNav === 'pi'
                   ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
-                <span>Daily Drop</span>
+                <div className="flex items-center gap-3">
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20 group-hover:scale-110 transition-transform" />
+                  <span>Daily Drop</span>
+                </div>
+                {!isLocalEnvironment && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                    <Lock className="w-2.5 h-2.5" />
+                    SOON
+                  </span>
+                )}
               </button>
 
               <button
@@ -940,13 +991,21 @@ export function App() {
 
               <button
                 onClick={() => navigateTo('test-series')}
-                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center gap-3 text-sm transition-all ${activeNav === 'test-series'
+                className={`group w-full font-semibold rounded-xl px-4 py-3 flex items-center justify-between text-sm transition-all ${activeNav === 'test-series'
                   ? 'bg-gradient-to-r from-[#175A67] to-[#1e6f7e] text-white shadow-md shadow-[#175A67]/20 border border-white/20'
                   : 'text-[#175A67] hover:bg-[#175A67]/10'
                   }`}
               >
-                <Award className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                <span>ALL INDIA TEST PASS</span>
+                <div className="flex items-center gap-3">
+                  <Award className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  <span>ALL INDIA TEST PASS</span>
+                </div>
+                {!isLocalEnvironment && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                    <Lock className="w-2.5 h-2.5" />
+                    SOON
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -1084,12 +1143,21 @@ export function App() {
               goalName={goal?.name}
             />
           ) : activeNav === 'pi' ? (
-            <PiView
-              searchQuery={searchQuery}
-              onBack={() => navigateTo('study-central')}
-              onOpenUpgrade={() => setIsUpgradeOpen(true)}
-              onOpenDoubtSolver={() => setIsDoubtSolverOpen(true)}
-            />
+            !isLocalEnvironment ? (
+              <FeatureLockedView
+                feature="Daily Drop"
+                description="Daily Drop is currently locked in the live phase while daily questions and streak algorithms are finalized. Dive into your enrolled courses or browse available batches!"
+                onExploreCourses={() => navigateTo('courses')}
+                onBackHome={() => navigateTo('study-central')}
+              />
+            ) : (
+              <PiView
+                searchQuery={searchQuery}
+                onBack={() => navigateTo('study-central')}
+                onOpenUpgrade={() => setIsUpgradeOpen(true)}
+                onOpenDoubtSolver={() => setIsDoubtSolverOpen(true)}
+              />
+            )
           ) : activeNav === 'courses' ? (
             <CoursesHub
               // A new goal re-opens the catalogue on that goal's tab
@@ -1105,11 +1173,20 @@ export function App() {
               }}
             />
           ) : activeNav === 'test-series' ? (
-            <TestSeriesView
-              onBack={() => navigateTo('study-central')}
-              onOpenUpgrade={() => setIsUpgradeOpen(true)}
-              onOpenCourseTests={() => setIsCourseTestsOpen(true)}
-            />
+            !isLocalEnvironment ? (
+              <FeatureLockedView
+                feature="All India Test Pass"
+                description="All India Test Pass is locked during this phase while exam schedules and test papers are calibrated. Full test access will unlock in the upcoming release!"
+                onExploreCourses={() => navigateTo('courses')}
+                onBackHome={() => navigateTo('study-central')}
+              />
+            ) : (
+              <TestSeriesView
+                onBack={() => navigateTo('study-central')}
+                onOpenUpgrade={() => setIsUpgradeOpen(true)}
+                onOpenCourseTests={() => setIsCourseTestsOpen(true)}
+              />
+            )
           ) : (
             <div className="animate-tab-content">
               {/* Subheader & Wi-Fi Sync Indicator */}
@@ -1323,10 +1400,8 @@ export function App() {
               ? matchingEnrolled.map((c) => c.title).join(', ')
               : 'Not enrolled yet'
           );
-          // Stay on Home, Mentorship, or Courses when switching goals so the updated Target & Batch are visible
-          if (!isMentorshipOpen && activeNav !== 'courses' && activeNav !== 'study-central') {
-            navigateTo('pi');
-          }
+          // On first-time selection or target update: navigate directly to courses
+          navigateTo('courses');
         }}
       />
 

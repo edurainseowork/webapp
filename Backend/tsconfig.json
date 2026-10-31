@@ -6,9 +6,10 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"],
-     "allowJs": true
+    "allowJs": true
   },
   "include": ["src"],
+  "exclude": ["dist", "node_modules", "src/scripts"],
   "references": [
     {
       "path": "../shared/db"

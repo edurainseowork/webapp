@@ -5,7 +5,7 @@ import { coursesTable, liveClassesTable, notificationsTable, userCoursesTable, t
 import { getLiveClassStatus } from "@workspace/api-zod";
 import { findDbUserId } from "../middlewares/auth.js";
 import { isAdminOrFaculty } from "../middleware/auth.js";
-import { getOrSetCache, invalidateCachePrefix } from "./perfEngine";
+import { getOrSetCache, invalidateCachePrefix, invalidateSafe } from "./perfEngine";
 
 // Live classes (CMS → Go Live) for students.
 // Only students ENROLLED in the course (a row in user_courses) see a class and its Google Meet link.
@@ -39,7 +39,7 @@ export async function listCourseLiveClasses(courseId: number) {
 }
 
 export const invalidateLiveClasses = (courseId?: number) =>
-  invalidateCachePrefix(courseId ? courseKey(courseId) : CACHE_PREFIX);
+  invalidateSafe(() => invalidateCachePrefix(courseId ? courseKey(courseId) : CACHE_PREFIX));
 
 /** Course ids the student is actually enrolled in (user_courses), limited to `courseIds` when given. */
 export async function enrolledCourseIds(userId: number, courseIds?: number[]): Promise<Set<number>> {

@@ -22,6 +22,12 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     res.status(err.status).json({ error: err.message, requestId });
     return;
   }
+  if (typeof err === "object" && err !== null && (err as any).name === "ShedError") {
+    const retrySec = (err as any).retryAfter || 1;
+    res.setHeader("Retry-After", String(retrySec));
+    res.status(503).json({ error: (err as any).message || "Service busy, please retry", retryAfter: retrySec, requestId });
+    return;
+  }
   if (err instanceof multer.MulterError) {
     const message = err.code === "LIMIT_FILE_SIZE" ? "File is too large" : "Invalid upload";
     res.status(400).json({ error: message, requestId });

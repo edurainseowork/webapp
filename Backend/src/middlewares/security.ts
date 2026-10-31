@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import type { CorsOptions } from "cors";
-import { getRedisClient, perfMetrics } from "../lib/perfEngine.ts";
+import { getRedisClient, perfMetrics } from "../lib/perfEngine";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -46,6 +46,7 @@ export function corsOptions(): CorsOptions {
     },
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization", "Cache-Control", "Pragma", "X-Requested-With"],
+    exposedHeaders: ["X-Sync"],
     maxAge: 600,
   };
 }

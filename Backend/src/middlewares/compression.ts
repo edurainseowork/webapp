@@ -124,7 +124,10 @@ export function adaptiveCompression() {
         if (compressed.length < chunk.length) {
           res.setHeader("Content-Encoding", selectedEncoding);
           res.setHeader("Content-Length", compressed.length);
-          res.removeHeader("ETag"); // Raw ETag no longer matches compressed payload
+          // Only strip strong ETags; preserve weak ETags (W/) as they remain valid across byte-level compression
+          if (!String(res.getHeader("ETag") ?? "").startsWith("W/")) {
+            res.removeHeader("ETag");
+          }
           return originalSend(compressed);
         }
       } catch (err) {

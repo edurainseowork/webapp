@@ -24,6 +24,15 @@ provider:
     GOOGLE_PLAY_PACKAGE_NAME: ${env:GOOGLE_PLAY_PACKAGE_NAME, 'com.edurainindia.app'}
     GOOGLE_PLAY_SERVICE_ACCOUNT: ${env:GOOGLE_PLAY_SERVICE_ACCOUNT, ''}
     MSG91_AUTH_KEY: ${env:MSG91_AUTH_KEY, ''}
+    REDIS_URL: ${env:REDIS_URL, ''}
+    CACHE_EPOCH: ${env:CACHE_EPOCH, '1'}
+    CACHE_ENABLED: ${env:CACHE_ENABLED, 'true'}
+    CACHE_BYPASS: ${env:CACHE_BYPASS, 'false'}
+    SYNC_ENABLED: ${env:SYNC_ENABLED, 'true'}
+    SYNC_NEXT_SECONDS: ${env:SYNC_NEXT_SECONDS, '15'}
+    SYNC_ROLLOUT_PERCENT: ${env:SYNC_ROLLOUT_PERCENT, '100'}
+    DB_FETCH_GLOBAL_CAP: ${env:DB_FETCH_GLOBAL_CAP, '25'}
+    DB_POOL_MAX: ${env:DB_POOL_MAX, '2'}
   vpc:
     securityGroupIds:
       - sg-0c07d868d37903d36

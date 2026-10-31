@@ -30,6 +30,7 @@ import progressRouter from "./progress.js";
 import ebooksRouter from "./ebooks.js";
 import aiDoubtRouter from "./aiDoubt.js";
 import supportContactsRouter from "./supportContacts.js";
+import syncRouter from "./sync.js";
 import { restrictDeskRoles, authenticateToken, verifyToken } from "../middleware/auth.js";
 import {
   adminApiLimiter,
@@ -60,6 +61,7 @@ router.use(restrictDeskRoles);
 
 router.use("/health", healthRouter);
 router.use("/healthz", healthRouter);
+router.use("/sync", syncRouter);
 
 // 1. Public Catalog & Read Endpoints (100 req / 60s Token Bucket per IP)
 router.use("/courses", catalogReadLimiter, coursesRouter);

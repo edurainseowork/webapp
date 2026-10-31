@@ -15,6 +15,7 @@ import {
 import { HttpError, parseId } from "../lib/http-error";
 import { deleteLocalUpload, toPublicUrl } from "../lib/media";
 import { logger } from "../lib/logger";
+import { getOrSetCache, invalidateCachePrefix, invalidateSafe } from "../lib/perfEngine";
 
 const router = Router();
 
@@ -96,15 +97,18 @@ export async function fetchCourseContentTree(
     filterCondition = and(filterCondition, isNull(courseContentTable.parentId))!;
   }
 
-  const content = await db
-    .select()
-    .from(courseContentTable)
-    .where(filterCondition)
-    .orderBy(
-      asc(courseContentTable.order),
-      asc(courseContentTable.createdAt),
-      asc(courseContentTable.id),
-    );
+  const cacheKey = `edurain:content:course:${courseId}:${cleanParentId || "root"}`;
+  const content = await getOrSetCache(cacheKey, 600, async () => {
+    return db
+      .select()
+      .from(courseContentTable)
+      .where(filterCondition)
+      .orderBy(
+        asc(courseContentTable.order),
+        asc(courseContentTable.createdAt),
+        asc(courseContentTable.id),
+      );
+  }, { allowStalePrev: true });
 
   const items = content.map((item) => formatContentItem(item, req));
   const courseIdParam = req.params?.id ?? req.params?.courseId ?? String(courseId);
@@ -236,6 +240,7 @@ async function handleCreateContent(req: Request, paramCourseId?: number) {
     .returning();
 
   logger.info({ adminUid: req.auth?.uid, courseId, contentId: newContent.id, order: itemOrder }, "Course content created");
+  invalidateSafe(() => invalidateCachePrefix("edurain:content"));
   return formatContentItem(newContent, req);
 }
 
@@ -272,6 +277,7 @@ router.patch("/reorder", requireAdminOrFaculty, async (req, res) => {
     }
   });
 
+  invalidateSafe(() => invalidateCachePrefix("edurain:content"));
   logger.info({ adminUid: req.auth?.uid, count: items.length }, "Course content items reordered");
   res.json({ success: true, message: "Items reordered successfully", count: items.length });
 });
@@ -355,6 +361,7 @@ router.patch("/:id", requireAdminOrFaculty, async (req, res) => {
     .where(eq(courseContentTable.id, id))
     .returning();
 
+  invalidateSafe(() => invalidateCachePrefix("edurain:content"));
   logger.info({ adminUid: req.auth?.uid, id, updates }, "Course content item updated");
   res.json({ success: true, data: formatContentItem(updated, req) });
 });
@@ -388,6 +395,7 @@ router.delete("/:id", requireAdminOrFaculty, async (req, res) => {
 
   await db.delete(courseContentTable).where(inArray(courseContentTable.id, ids));
 
+  invalidateSafe(() => invalidateCachePrefix("edurain:content"));
   logger.info({ adminUid: req.auth?.uid, contentIds: ids }, "Course content cascade deleted");
   res.json({ success: true, deletedCount: ids.length, deletedIds: ids });
 });

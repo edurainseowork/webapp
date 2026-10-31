@@ -8,7 +8,7 @@ import { publicCourseQuerySchema } from "../lib/course-schemas";
 import { HttpError, parseId } from "../lib/http-error";
 import { optionalAuth } from "../middlewares/auth";
 import { fetchCourseContentTree } from "./content.js";
-import { getOrSetCache } from "../lib/perfEngine";
+import { getOrSetCache, sendIfChanged } from "../lib/perfEngine";
 import { courseFaqs } from "../lib/faqs";
 import { parsePagination, sendPaginatedResponse } from "../lib/pagination";
 
@@ -18,6 +18,7 @@ const router = Router();
 
 // GET /api/courses?category=<slug>
 router.get("/", async (req, res) => {
+  if (await sendIfChanged(req, res, ["edurain:courses", "edurain:categories"])) return;
   const { category } = publicCourseQuerySchema.parse(req.query);
   const cacheKey = `edurain:courses:list:${category || "all"}`;
 
@@ -37,7 +38,7 @@ router.get("/", async (req, res) => {
     return withCoursePlans(courses);
   });
 
-  res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
+  res.setHeader("Cache-Control", "no-cache");
   const pagination = parsePagination(req, { defaultLimit: 20, maxLimit: 100 });
   const allFormatted = coursesWithPlans.map((c) => withPublicThumbnail(c, req));
   const paginatedItems = pagination.isExplicitPagination
@@ -80,7 +81,7 @@ router.get("/:id", async (req, res) => {
   // Drafts answer 404, not 403, so their existence is not revealed.
   if (!withPlans) throw new HttpError(404, "Course not found");
 
-  res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
+  res.setHeader("Cache-Control", "no-cache");
   res.json(withPublicThumbnail(withPlans, req));
 });
 

@@ -4,7 +4,7 @@ import { couponCoursesTable, couponRedemptionsTable, couponsTable, coursesTable,
 import { ApplyCouponBody, CouponBody, normalizeCouponCode } from "@workspace/api-zod";
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { requireAdmin, requireAuth } from "../middlewares/auth.js";
-import { getOrSetCache, invalidateCachePrefix } from "../lib/perfEngine";
+import { getOrSetCache, invalidateCachePrefix, invalidateSafe } from "../lib/perfEngine";
 import { PLAN_NAMES, planIdSchema, planPrice } from "../lib/coursePlans";
 const router = Router();
 
@@ -307,7 +307,7 @@ router.post("/", requireAdmin, async (req, res) => {
       await tx.insert(couponCoursesTable).values(courseIds.map((courseId) => ({ couponId: created.id, courseId })));
       return created;
     });
-    await invalidateCachePrefix("edurain:coupons");
+    invalidateSafe(() => invalidateCachePrefix("edurain:coupons"));
     res.status(201).json({ success: true, data: serializeCoupon(coupon, courseIds) });
   } catch (error: any) {
     if (error?.code === "23505") {
@@ -366,7 +366,7 @@ router.put("/:id", requireAdmin, async (req, res) => {
       await tx.insert(couponCoursesTable).values(courseIds.map((courseId) => ({ couponId: id, courseId })));
       return updated;
     });
-    await invalidateCachePrefix("edurain:coupons");
+    invalidateSafe(() => invalidateCachePrefix("edurain:coupons"));
     res.json({ success: true, data: serializeCoupon(coupon, courseIds) });
   } catch (error: any) {
     if (error?.code === "23505") {
@@ -386,7 +386,7 @@ router.delete("/:id", requireAdmin, async (req, res) => {
   }
   try {
     await db.delete(couponsTable).where(eq(couponsTable.id, id));
-    await invalidateCachePrefix("edurain:coupons");
+    invalidateSafe(() => invalidateCachePrefix("edurain:coupons"));
     res.json({ success: true });
   } catch (error) {
     console.error("Failed to delete coupon", error);

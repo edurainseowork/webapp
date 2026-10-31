@@ -39,3 +39,9 @@ uploads/
 
 # serverless deploy output
 Backend/.serverless/
+
+# Graphify, agents, and python venv
+graphify-out/
+.agents/
+venv/
+.venv/

@@ -1,4 +1,4 @@
-import { logger } from "./logger.js";
+import { logger } from "./logger";
 
 /**
  * Parses the top application stack frame to extract the exact file and line number.

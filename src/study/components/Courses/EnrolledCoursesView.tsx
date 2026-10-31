@@ -80,22 +80,10 @@ export function EnrolledCoursesView({
       .catch(() => {});
   }, []);
 
-  // Fetch custom purchases banners uploaded in CMS Manage Banners (silent 30s + focus auto-refresh)
+  // Fetch custom purchases banners + real-time sync when banners are updated in CMS
   useEffect(() => {
     fetchPurchasesBanners();
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchPurchasesBanners();
-    }, 30_000);
-    const onFocus = () => fetchPurchasesBanners();
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    const offCms = onCatalogUpdated(fetchPurchasesBanners);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-      offCms();
-    };
+    return onCatalogUpdated(fetchPurchasesBanners, ['banners']);
   }, [fetchPurchasesBanners]);
 
   // Rotate custom purchases banner carousel

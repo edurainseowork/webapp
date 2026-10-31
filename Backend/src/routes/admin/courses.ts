@@ -15,7 +15,7 @@ import { logger } from "../../lib/logger";
 import { resolveCourseMentors } from "../../lib/courseMentors";
 import { saveCoursePlans, withCoursePlans } from "../../lib/coursePlans";
 import { ensureMentorshipSchema } from "../../lib/mentorshipSchema";
-import { invalidateCachePrefix } from "../../lib/perfEngine";
+import { invalidateCachePrefix, invalidateSafe } from "../../lib/perfEngine";
 
 // Mounted behind requireAdmin in routes/admin/index.ts.
 const router = Router();
@@ -114,7 +114,7 @@ router.post("/", async (req, res) => {
   // Pro / Pro Max prices; a bad plan fails validation above, before the course is created
   if (input.plans) await saveCoursePlans(created.id, input.plans);
 
-  await invalidateCachePrefix("edurain:courses");
+  invalidateSafe(() => invalidateCachePrefix("edurain:courses"));
   logger.info({ adminUid: req.auth?.uid, courseId: created.id }, "Course created & cache invalidated");
   const course = await loadCourse(created.id);
   res.status(201).json({ success: true, data: withPublicThumbnail(course, req) });
@@ -174,7 +174,7 @@ router.patch("/:id", async (req, res) => {
   });
 
   await deleteUnreferencedThumbnail(previousThumbnail);
-  await invalidateCachePrefix("edurain:courses");
+  invalidateSafe(() => invalidateCachePrefix("edurain:courses"));
   logger.info({ adminUid: req.auth?.uid, courseId, fields: Object.keys(input) }, "Course updated & cache invalidated");
   const course = await loadCourse(courseId);
   res.json({ success: true, data: withPublicThumbnail(course, req) });
@@ -200,7 +200,7 @@ router.patch("/:id/publish", async (req, res) => {
         ...(isPublished ? { publishedAt: new Date() } : {}),
       })
       .where(eq(coursesTable.id, courseId));
-    await invalidateCachePrefix("edurain:courses");
+    invalidateSafe(() => invalidateCachePrefix("edurain:courses"));
     logger.info({ adminUid: req.auth?.uid, courseId, isPublished }, "Course publish state changed & cache invalidated");
   }
 
@@ -238,7 +238,7 @@ router.delete("/:id", async (req, res) => {
   });
 
   await deleteUnreferencedThumbnail(thumbnail);
-  await invalidateCachePrefix("edurain:courses");
+  invalidateSafe(() => invalidateCachePrefix("edurain:courses"));
   logger.info({ adminUid: req.auth?.uid, courseId }, "Course deleted & cache invalidated");
   res.json({ success: true });
 });

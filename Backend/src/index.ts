@@ -6,6 +6,9 @@ import { initSocket } from "./socket";
 import { sendSlackAlert } from "./lib/slackAlert";
 import { ensureMentorshipSchema } from "./lib/mentorshipSchema";
 import { startPaymentJobs } from "./lib/paymentJobs";
+import { initRedis } from "./lib/redis";
+
+initRedis();
 
 const rawPort = process.env["PORT"];
 

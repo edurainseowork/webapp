@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { bannersTable } from "@workspace/db/schema";
 import { eq, desc, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
-import { getOrSetCache, invalidateCachePrefix } from "../lib/perfEngine";
+import { getOrSetCache, invalidateCachePrefix, invalidateSafe } from "../lib/perfEngine";
 import { broadcastCatalogChange } from "../lib/catalogSync";
 
 const router = Router();
@@ -91,7 +91,7 @@ router.post("/", requireAdmin, async (req, res) => {
       })
       .returning();
 
-    await invalidateCachePrefix("edurain:banners");
+    invalidateSafe(() => invalidateCachePrefix("edurain:banners"));
     return res.json({ success: true, data: newBanner[0] });
   } catch (error: any) {
     return res.status(500).json({ error: "Failed to create banner: " + error.message });
@@ -114,7 +114,7 @@ router.put("/reorder", requireAdmin, async (req, res) => {
           .where(eq(bannersTable.id, Number(item.id)));
       }
     }
-    await invalidateCachePrefix("edurain:banners");
+    invalidateSafe(() => invalidateCachePrefix("edurain:banners"));
     return res.json({ success: true, message: "Banner order updated successfully" });
   } catch (error: any) {
     return res.status(500).json({ error: "Failed to reorder banners: " + error.message });
@@ -126,7 +126,7 @@ router.delete("/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     await db.delete(bannersTable).where(eq(bannersTable.id, parseInt(String(id))));
-    await invalidateCachePrefix("edurain:banners");
+    invalidateSafe(() => invalidateCachePrefix("edurain:banners"));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to delete banner" });

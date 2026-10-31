@@ -19,6 +19,8 @@ async function buildAll() {
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/lambda.ts"),
       path.resolve(artifactDir, "src/app.ts"),
+      path.resolve(artifactDir, "src/lib/perfEngine.ts"),
+      path.resolve(artifactDir, "src/middlewares/security.ts"),
     ],
     platform: "node",
     bundle: true,

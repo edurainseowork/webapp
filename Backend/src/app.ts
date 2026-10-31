@@ -14,6 +14,7 @@ import {
 import { adaptiveCompression } from "./middlewares/compression";
 import { errorHandler } from "./middlewares/error-handler";
 import { razorpayWebhookRouter } from "./routes/razorpay.js";
+import syncRouter, { getSyncHash } from "./routes/sync";
 
 const app: Express = express();
 
@@ -81,6 +82,18 @@ app.use(
 // Razorpay's webhook comes from a few Razorpay addresses in big bursts: it gets no per-IP limit and no load shedding
 // (a refused delivery is only retried later, so the student's course would unlock late)
 app.use("/api/razorpay/webhook", razorpayWebhookRouter);
+
+// Sync versions endpoint: high-throughput version polling, no DB, rate limited per client-id, bypassed by global rate limit
+app.use("/api/sync", syncRouter);
+
+// Piggyback X-Sync version hash on all /api GET requests for active clients
+app.use("/api", (req, res, next) => {
+  if (req.method === "GET") {
+    res.setHeader("X-Sync", getSyncHash());
+  }
+  next();
+});
+
 // Per-process caps, tunable without a code change: requests in flight (503 above it) and requests per minute per IP
 const MAX_CONCURRENT_REQUESTS = Number(process.env.MAX_CONCURRENT_REQUESTS) || 400;
 const API_RATE_LIMIT = Number(process.env.API_RATE_LIMIT) || 300;

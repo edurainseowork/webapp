@@ -1,43 +1,75 @@
 /**
- * Production Performance Engine (Ponytail Multi-Tier Edition)
+ * Production Performance Engine (Ponytail Multi-Tier Edition - v3)
  *
  * Implements:
- * 1. L1 (In-Memory LRU) + L2 (Redis when REDIS_URL is set) Cache-Aside Engine
- * 2. Singleflight Request Coalescing (20 Lakh concurrent misses -> 1 DB query)
- * 3. Stale-While-Revalidate (0ms stale serving + silent background refresh)
- * 4. Staggered TTL Jitter (prevents synchronized cache expiration stampedes)
- * 5. Circuit Breaker for L2 Redis (25 LPA Failover: instant L1 fallback if Redis dies)
- * 6. Bounded Background Job Queue (BullMQ semantics: Pull concurrency, Exponential Backoff,
- *    Non-retryable 4xx filter, Dead Letter Queue [DLQ], and strict Job Idempotency)
+ * 1. L1 (In-Memory Monotonic LRU) + L2 (Redis when REDIS_URL is set) Cache-Aside Engine
+ * 2. Versioned Scope Invalidation (INCR scope version; zero KEYS * scans)
+ * 3. Redis Singleflight Coalescing & Distributed SET NX Locks
+ * 4. Stale-While-Revalidate with Redis Clock (PTTL) early refresh
+ * 5. Bounded Wait + Stale-Prev Version Fallback (public catalog)
+ * 6. Global DB Concurrency Gate (INCR {EP}:dbslots) with 503 Shedding
+ * 7. Half-Open Exponential Cooldown Circuit Breaker with Slack Alerts
+ * 8. Bounded Background Job Queue (BullMQ semantics)
  */
 
-import { logger } from "./logger.ts";
+import { logger } from "./logger";
+import { sendSlackAlert } from "./slackAlert";
 
-// ponytail: L1 memory cap at 2,000 keys; scale via REDIS_URL across multi-node clusters
 const MAX_L1_KEYS = 2_000;
+const CACHE_EPOCH = process.env.CACHE_EPOCH?.trim() || "1";
+const EP = `edurain:e${CACHE_EPOCH}`;
+const DB_FETCH_GLOBAL_CAP = Number(process.env.DB_FETCH_GLOBAL_CAP || 25);
+const isLambda = () => !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
-interface CacheEntry<T = unknown> {
-  data: T;
-  softExpiry: number;
-  hardExpiry: number;
+export class ShedError extends Error {
+  readonly status = 503;
+  readonly retryAfter = 1;
+  constructor(message = "Service busy, please retry shortly") {
+    super(message);
+    this.name = "ShedError";
+  }
 }
 
 export interface RedisLikeClient {
   get(key: string): Promise<string | null>;
   setEx(key: string, ttlSeconds: number, value: string): Promise<unknown>;
+  set?(key: string, value: string, opts?: { PX?: number; NX?: boolean }): Promise<unknown>;
+  getWithPttl?(key: string): Promise<[string | null, number]>;
   del(key: string | string[]): Promise<unknown>;
-  keys?(pattern: string): Promise<string[]>;
+  incr?(key: string): Promise<number>;
+  pexpire?(key: string, ms: number): Promise<unknown>;
+  mget?(keys: string[]): Promise<(string | null)[]>;
+  setNx?(key: string, value: string, px: number): Promise<boolean>;
+  eval?(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown>;
+  ping?(): Promise<string>;
 }
 
-const l1Cache = new Map<string, CacheEntry>();
-const inFlightCoalescer = new Map<string, Promise<unknown>>();
+interface L1Entry<T = unknown> {
+  d: T;
+  until: number; // monotonic performance.now() ms
+  hardUntil: number; // monotonic performance.now() ms (stale window)
+}
 
-// Circuit Breaker state for external Redis (25 LPA Redis-Down scenario)
+type Entry<T> = { d: T; t: number }; // d=data, t=fresh window ms
+
+const l1Cache = new Map<string, L1Entry>();
+const inFlightCoalescer = new Map<string, Promise<unknown>>();
+const versionMemo = new Map<string, { ver: number | string; until: number }>();
+let localVersionSeq = 0;
+const pendingBumps = new Set<string>();
+let lastRecoveredBumpTime = 0;
+let lastSlackAlertTime = 0;
+
+// Circuit Breaker state
 let redisClient: RedisLikeClient | null = null;
+let circuitState: "CLOSED" | "OPEN" | "HALF_OPEN" = "CLOSED";
+let circuitCooldownMs = 10_000;
 let circuitOpenUntil = 0;
-let consecutiveRedisFailures = 0;
-const CIRCUIT_FAILURE_THRESHOLD = 3;
-const CIRCUIT_COOLDOWN_MS = 10_000;
+let consecutiveFailures = 0;
+let consecutiveSuccesses = 0;
+const CIRCUIT_FAILURE_THRESHOLD = 5;
+const CIRCUIT_SUCCESS_THRESHOLD = 2;
+const REDIS_CMD_TIMEOUT_MS = 1500;
 
 export const perfMetrics = {
   cacheHitsL1: 0,
@@ -50,6 +82,16 @@ export const perfMetrics = {
   redisCircuitTrips: 0,
   rateLimitBlocks: 0,
   backpressureSheds: 0,
+  lockAcquired: 0,
+  lockWaited: 0,
+  lockFallbackToDb: 0,
+  earlyRefreshes: 0,
+  negativeHits: 0,
+  dbSlotWaits: 0,
+  dbShed: 0,
+  stalePrevServed: 0,
+  versionBumps: 0,
+  pendingBumps: 0,
   jobsEnqueued: 0,
   jobsCompleted: 0,
   jobsRetried: 0,
@@ -57,202 +99,623 @@ export const perfMetrics = {
   jobsIdempotentSkipped: 0,
 };
 
-/** Attach an optional Redis client (or mock client in Chaos/Break tests). */
+function mono(): number {
+  return performance.now();
+}
+
+export function scopeOf(key: string): string {
+  const parts = key.split(":");
+  const scope = parts.length >= 2 ? `${parts[0]}:${parts[1]}` : (parts[0] || "edurain:global");
+  if (!/^edurain:[a-z0-9-]+$/.test(scope)) {
+    throw new Error(`Invalid cache scope format: "${scope}" derived from key "${key}"`);
+  }
+  return scope;
+}
+
+function verKey(scope: string): string {
+  return `${EP}:ver:${scope}`;
+}
+
+function dataKey(scope: string, ver: number | string, logicalKey: string): string {
+  const vTag = typeof ver === "string" && ver.startsWith("vL") ? ver : `v${ver}`;
+  return `${EP}:d:${scope}:${vTag}:${logicalKey}`;
+}
+
+let lastKnownGen: string | null = null;
+let lastGenCheckTime = 0;
+
+export async function checkRedisGeneration(client: RedisLikeClient): Promise<void> {
+  const now = mono();
+  if (now - lastGenCheckTime < 2000) return;
+  lastGenCheckTime = now;
+  try {
+    const gen = await client.get(`${EP}:gen`);
+    if (!gen) {
+      const newGen = String(Date.now());
+      if (client.set) {
+        await client.set(`${EP}:gen`, newGen);
+      } else {
+        await client.setEx(`${EP}:gen`, 86400 * 365, newGen);
+      }
+      if (lastKnownGen && lastKnownGen !== newGen) {
+        versionMemo.clear();
+        l1Cache.clear();
+      }
+      lastKnownGen = newGen;
+    } else {
+      if (lastKnownGen && lastKnownGen !== gen) {
+        versionMemo.clear();
+        l1Cache.clear();
+      }
+      lastKnownGen = gen;
+    }
+  } catch {
+    // Non-blocking
+  }
+}
+
+export async function sendIfChanged(req: any, res: any, scopes: string[]): Promise<boolean> {
+  const vs = await Promise.all(scopes.map(getVersion));
+  const etag = `W/"${vs.join("-")}"`;
+  res.setHeader("ETag", etag);
+  res.setHeader("Cache-Control", "no-cache");
+  if (req.headers && req.headers["if-none-match"] === etag) {
+    res.status(304).end();
+    return true;
+  }
+  return false;
+}
+
+function lockKeyOf(dk: string): string {
+  return `${EP}:lock:${dk}`;
+}
+
 export function setRedisClient(client: RedisLikeClient | null): void {
   redisClient = client;
-  consecutiveRedisFailures = 0;
+  consecutiveFailures = 0;
+  consecutiveSuccesses = 0;
+  circuitState = "CLOSED";
+  circuitCooldownMs = 10_000;
   circuitOpenUntil = 0;
 }
 
 export function getRedisClient(): RedisLikeClient | null {
-  return Date.now() < circuitOpenUntil ? null : redisClient;
-}
-
-export function getCircuitState(): "CLOSED" | "OPEN" {
-  return Date.now() < circuitOpenUntil ? "OPEN" : "CLOSED";
-}
-
-async function safeRedisGet(key: string): Promise<string | null> {
-  if (!redisClient || Date.now() < circuitOpenUntil) return null;
-  try {
-    const val = await Promise.race([
-      redisClient.get(key),
-      new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 150)),
-    ]);
-    consecutiveRedisFailures = 0;
-    return val;
-  } catch {
-    consecutiveRedisFailures += 1;
-    if (consecutiveRedisFailures >= CIRCUIT_FAILURE_THRESHOLD) {
-      circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
-      perfMetrics.redisCircuitTrips += 1;
-      logger.warn({ key, cooldownMs: CIRCUIT_COOLDOWN_MS }, "Redis circuit breaker OPEN — falling back to L1 RAM cache");
+  const now = Date.now();
+  if (circuitState === "OPEN") {
+    if (now >= circuitOpenUntil) {
+      circuitState = "HALF_OPEN";
+      consecutiveSuccesses = 0;
+      return redisClient;
     }
     return null;
   }
+  return redisClient;
 }
 
-async function safeRedisSet(key: string, ttlSeconds: number, value: string): Promise<void> {
-  if (!redisClient || Date.now() < circuitOpenUntil) return;
-  try {
-    await Promise.race([
-      redisClient.setEx(key, ttlSeconds, value),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Redis timeout")), 150)),
-    ]);
-    consecutiveRedisFailures = 0;
-  } catch {
-    consecutiveRedisFailures += 1;
-    if (consecutiveRedisFailures >= CIRCUIT_FAILURE_THRESHOLD) {
-      circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
-      perfMetrics.redisCircuitTrips += 1;
+export function getCircuitState(): "CLOSED" | "OPEN" | "HALF_OPEN" {
+  if (circuitState === "OPEN" && Date.now() >= circuitOpenUntil) {
+    return "HALF_OPEN";
+  }
+  return circuitState;
+}
+
+function recordRedisSuccess(): void {
+  if (circuitState === "HALF_OPEN") {
+    consecutiveSuccesses += 1;
+    if (consecutiveSuccesses >= CIRCUIT_SUCCESS_THRESHOLD) {
+      circuitState = "CLOSED";
+      consecutiveFailures = 0;
+      circuitCooldownMs = 10_000;
+      logger.info("Redis circuit breaker recovered to CLOSED");
+      onRedisRecovered();
     }
+  } else if (circuitState === "CLOSED") {
+    consecutiveFailures = 0;
   }
 }
 
-function setL1(key: string, entry: CacheEntry): void {
+function recordRedisFailure(err?: unknown): void {
+  consecutiveFailures += 1;
+  consecutiveSuccesses = 0;
+  if (consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD || circuitState === "HALF_OPEN") {
+    circuitState = "OPEN";
+    perfMetrics.redisCircuitTrips += 1;
+    circuitOpenUntil = Date.now() + circuitCooldownMs;
+    logger.warn({ cooldownMs: circuitCooldownMs, err }, "Redis circuit breaker OPEN — fallback to L1");
+
+    const now = Date.now();
+    if (now - lastSlackAlertTime > 10 * 60_000) {
+      lastSlackAlertTime = now;
+      void sendSlackAlert("Redis Circuit Breaker OPEN", err, {
+        message: `Redis failover tripped. Operating in L1 local mode for ${circuitCooldownMs}ms.`,
+      }).catch(() => {});
+    }
+
+    circuitCooldownMs = Math.min(circuitCooldownMs * 2, 60_000);
+  }
+}
+
+function onRedisRecovered(): void {
+  const now = Date.now();
+  if (now - lastRecoveredBumpTime < 5 * 60_000) return;
+  lastRecoveredBumpTime = now;
+
+  void (async () => {
+    try {
+      await sendSlackAlert("Redis Circuit Breaker CLOSED", null, {
+        message: "Redis connection recovered to CLOSED state.",
+      }).catch(() => {});
+
+      if (pendingBumps.size > 0 && redisClient?.incr) {
+        for (const scope of Array.from(pendingBumps)) {
+          try {
+            await redisClient.incr(verKey(scope));
+            pendingBumps.delete(scope);
+          } catch {
+            break;
+          }
+        }
+      }
+    } catch {
+      // non-blocking recovery hook
+    }
+  })();
+}
+
+export async function getVersion(scope: string): Promise<number | string> {
+  const now = mono();
+  const memo = versionMemo.get(scope);
+  if (memo && now < memo.until) return memo.ver;
+
+  const client = getRedisClient();
+  if (client) {
+    void checkRedisGeneration(client);
+    try {
+      const raw = await Promise.race([
+        client.get(verKey(scope)),
+        new Promise<null>((_, rej) => setTimeout(() => rej(new Error("Timeout")), REDIS_CMD_TIMEOUT_MS)),
+      ]);
+      recordRedisSuccess();
+      const ver = raw ? Number(raw) || 0 : 0;
+      versionMemo.set(scope, { ver, until: now + 1000 });
+      return ver;
+    } catch (e) {
+      recordRedisFailure(e);
+    }
+  }
+
+  // Local fallback version
+  const localVer = memo?.ver || `vL${++localVersionSeq}`;
+  versionMemo.set(scope, { ver: localVer, until: now + 1000 });
+  return localVer;
+}
+
+export async function bumpVersion(scope: string): Promise<number | string> {
+  perfMetrics.versionBumps += 1;
+  const client = getRedisClient();
+  if (client?.incr) {
+    try {
+      const n = await Promise.race([
+        client.incr(verKey(scope)),
+        new Promise<number>((_, rej) => setTimeout(() => rej(new Error("Timeout")), REDIS_CMD_TIMEOUT_MS)),
+      ]);
+      recordRedisSuccess();
+      const current = typeof versionMemo.get(scope)?.ver === "number" ? (versionMemo.get(scope)!.ver as number) : 0;
+      const nextVer = Math.max(current, n);
+      versionMemo.set(scope, { ver: nextVer, until: mono() + 1000 });
+      return nextVer;
+    } catch (e) {
+      recordRedisFailure(e);
+      pendingBumps.add(scope);
+      perfMetrics.pendingBumps = pendingBumps.size;
+    }
+  } else {
+    pendingBumps.add(scope);
+    perfMetrics.pendingBumps = pendingBumps.size;
+  }
+
+  const nextLocal = `vL${++localVersionSeq}`;
+  versionMemo.set(scope, { ver: nextLocal, until: mono() + 1000 });
+  return nextLocal;
+}
+
+function l1Get(key: string): L1Entry | null {
+  const entry = l1Cache.get(key);
+  if (!entry) return null;
+  // Hit: Move to end for true LRU
+  l1Cache.delete(key);
+  l1Cache.set(key, entry);
+  return entry;
+}
+
+function l1Set(key: string, data: unknown, ttlMs: number): void {
   if (l1Cache.size >= MAX_L1_KEYS && !l1Cache.has(key)) {
     const oldestKey = l1Cache.keys().next().value;
     if (oldestKey !== undefined) l1Cache.delete(oldestKey);
   }
-  l1Cache.set(key, entry);
+  const now = mono();
+  l1Cache.set(key, { d: data, until: now + ttlMs, hardUntil: now + ttlMs * 3 });
 }
 
-/**
- * Multi-Tier Cache-Aside with Singleflight Coalescing, Staggered TTL Jitter,
- * Stale-While-Revalidate, and Redis Circuit-Breaker Fallback.
- */
+async function safeRedisGetWithPttl(key: string): Promise<{ raw: string | null; pttl: number }> {
+  const client = getRedisClient();
+  if (!client) return { raw: null, pttl: -1 };
+  try {
+    let raw: string | null = null;
+    let pttl = -1;
+    if (client.getWithPttl) {
+      [raw, pttl] = await Promise.race([
+        client.getWithPttl(key),
+        new Promise<[null, number]>((_, rej) => setTimeout(() => rej(new Error("Timeout")), REDIS_CMD_TIMEOUT_MS)),
+      ]);
+    } else {
+      raw = await Promise.race([
+        client.get(key),
+        new Promise<null>((_, rej) => setTimeout(() => rej(new Error("Timeout")), REDIS_CMD_TIMEOUT_MS)),
+      ]);
+      pttl = raw ? 30_000 : -1;
+    }
+    recordRedisSuccess();
+    return { raw, pttl };
+  } catch (e) {
+    recordRedisFailure(e);
+    return { raw: null, pttl: -1 };
+  }
+}
+
+async function safeRedisGet(key: string): Promise<string | null> {
+  const client = getRedisClient();
+  if (!client) return null;
+  try {
+    const val = await Promise.race([
+      client.get(key),
+      new Promise<null>((_, rej) => setTimeout(() => rej(new Error("Timeout")), REDIS_CMD_TIMEOUT_MS)),
+    ]);
+    recordRedisSuccess();
+    return val;
+  } catch (e) {
+    recordRedisFailure(e);
+    return null;
+  }
+}
+
+async function tryLock(dk: string): Promise<string | null> {
+  const client = getRedisClient();
+  if (!client?.setNx) return "local-token";
+  try {
+    const token = Math.random().toString(36).slice(2);
+    const ok = await Promise.race([
+      client.setNx(lockKeyOf(dk), token, 8000),
+      new Promise<boolean>((_, rej) => setTimeout(() => rej(new Error("Timeout")), REDIS_CMD_TIMEOUT_MS)),
+    ]);
+    recordRedisSuccess();
+    if (ok) {
+      perfMetrics.lockAcquired += 1;
+      return token;
+    }
+    return null;
+  } catch (e) {
+    recordRedisFailure(e);
+    return "local-token"; // Fail open to singleflight
+  }
+}
+
+async function unlock(dk: string): Promise<void> {
+  const client = getRedisClient();
+  if (!client) return;
+  try {
+    await client.del(lockKeyOf(dk));
+  } catch {
+    // Non-critical, 8000ms PX expiry protects lock
+  }
+}
+
+async function pollRedis(dk: string, maxWaitMs = 1500, intervalMs = 50): Promise<string | null> {
+  perfMetrics.lockWaited += 1;
+  const start = mono();
+  while (mono() - start < maxWaitMs) {
+    await new Promise((r) => setTimeout(r, intervalMs));
+    const val = await safeRedisGet(dk);
+    if (val) return val;
+  }
+  return null;
+}
+
+// Global DB Concurrency Gate (Redis INCR + local fallback)
+let localDbSlotsActive = 0;
+const LOCAL_DB_SLOT_MAX = 5;
+
+async function acquireDbSlot(timeoutMs = 300): Promise<string | null> {
+  const start = mono();
+  while (mono() - start <= timeoutMs) {
+    const client = getRedisClient();
+    if (client?.incr) {
+      try {
+        const slotKey = `${EP}:dbslots`;
+        const val = await client.incr(slotKey);
+        if (client.pexpire && val === 1) await client.pexpire(slotKey, 10000);
+        if (val <= DB_FETCH_GLOBAL_CAP) {
+          return "redis";
+        }
+        if (client.eval) {
+          await client.eval("redis.call('DECR', KEYS[1])", 1, slotKey);
+        } else {
+          await client.del(slotKey); // fallback release
+        }
+      } catch {
+        // Fall back to local slot
+      }
+    }
+
+    if (localDbSlotsActive < LOCAL_DB_SLOT_MAX) {
+      localDbSlotsActive += 1;
+      return "local";
+    }
+
+    perfMetrics.dbSlotWaits += 1;
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  perfMetrics.dbShed += 1;
+  return null;
+}
+
+async function releaseDbSlot(slot: string | null): Promise<void> {
+  if (!slot) return;
+  if (slot === "local") {
+    localDbSlotsActive = Math.max(0, localDbSlotsActive - 1);
+    return;
+  }
+  const client = getRedisClient();
+  if (client?.eval) {
+    try {
+      await client.eval("redis.call('DECR', KEYS[1])", 1, `${EP}:dbslots`);
+    } catch {
+      // safe fallback
+    }
+  }
+}
+
+function withJitter(baseSec: number): number {
+  const jitterSec = Math.floor(Math.random() * Math.max(2, Math.floor(baseSec * 0.15)));
+  return Math.max(1, baseSec + jitterSec);
+}
+
+export interface CacheOptions {
+  perUser?: boolean;
+  negativeTtlSec?: number;
+  allowStalePrev?: boolean;
+  disableJitter?: boolean;
+}
+
+export async function invalidateSafe(fn: () => Promise<unknown> | unknown): Promise<void> {
+  try {
+    await fn();
+  } catch (err: any) {
+    logger.warn({ err: err?.message || String(err) }, "Cache invalidation failed safely without throwing");
+  }
+}
+
 export async function getOrSetCache<T>(
   key: string,
   baseTtlSeconds: number,
   fetcher: () => Promise<T>,
-  options?: { disableJitter?: boolean }
+  opts: CacheOptions = {}
 ): Promise<T> {
-  const now = Date.now();
-  const jitterSec = options?.disableJitter
-    ? 0
-    : Math.floor(Math.random() * Math.max(5, Math.floor(baseTtlSeconds * 0.15)));
-  const effectiveTtlSec = Math.max(1, baseTtlSeconds + jitterSec);
-  const softTtlMs = effectiveTtlSec * 1000;
-  const hardTtlMs = softTtlMs * 3; // Stale window = 3x soft TTL
+  if (process.env.CACHE_BYPASS === "true") return fetcher();
 
-  // 1. Check L1 In-Memory Cache
-  const l1 = l1Cache.get(key);
-  if (l1 && now < l1.softExpiry) {
-    perfMetrics.cacheHitsL1 += 1;
-    return l1.data as T;
-  }
+  const scope = scopeOf(key);
+  const ver = await getVersion(scope);
+  const dk = dataKey(scope, ver, key);
+  const t = withJitter(baseTtlSeconds) * 1000;
 
-  // 2. Stale-While-Revalidate (if within hardExpiry, serve stale in 0ms & refresh in background)
-  if (l1 && now < l1.hardExpiry) {
-    perfMetrics.staleServed += 1;
-    if (!inFlightCoalescer.has(key)) {
-      const bgPromise = (async () => {
-        try {
-          perfMetrics.dbQueriesExecuted += 1;
-          const fresh = await fetcher();
-          const updatedNow = Date.now();
-          setL1(key, {
-            data: fresh,
-            softExpiry: updatedNow + softTtlMs,
-            hardExpiry: updatedNow + hardTtlMs,
-          });
-          await safeRedisSet(key, effectiveTtlSec, JSON.stringify(fresh));
-          return fresh;
-        } finally {
-          inFlightCoalescer.delete(key);
+  // 1) L1 Check (monotonic performance.now)
+  if (!opts.perUser) {
+    const l1 = l1Get(dk);
+    if (l1) {
+      const nowMono = mono();
+      if (nowMono < l1.until) {
+        perfMetrics.cacheHitsL1 += 1;
+        return l1.d as T;
+      }
+      // Stale-While-Revalidate in L1 (within hardUntil)
+      if (nowMono < l1.hardUntil) {
+        perfMetrics.staleServed += 1;
+        if (!inFlightCoalescer.has(dk)) {
+          const bgRefresh = (async () => {
+            try {
+              perfMetrics.dbQueriesExecuted += 1;
+              const fresh = await fetcher();
+              l1Set(dk, fresh, Math.min(30_000, t));
+              const payload = JSON.stringify({ d: fresh, t });
+              if (payload.length <= 512 * 1024) {
+                const client = getRedisClient();
+                if (client?.set) await client.set(dk, payload, { PX: 3 * t });
+              }
+            } catch {
+              // ignore
+            } finally {
+              inFlightCoalescer.delete(dk);
+            }
+          })();
+          inFlightCoalescer.set(dk, bgRefresh);
+          if (isLambda()) await bgRefresh;
+          else void bgRefresh.catch(() => {});
         }
-      })();
-      // Prevent unhandled rejection on background refresh
-      bgPromise.catch(() => {});
-      inFlightCoalescer.set(key, bgPromise);
+        return l1.d as T;
+      }
     }
-    return l1.data as T;
   }
 
-  // 3. Singleflight Coalescer (Wait for existing in-flight request for this key)
-  const existingFlight = inFlightCoalescer.get(key);
-  if (existingFlight) {
+  // 2) In-process Singleflight Coalescing
+  if (inFlightCoalescer.has(dk)) {
     perfMetrics.coalescedRequests += 1;
-    return existingFlight as Promise<T>;
+    return inFlightCoalescer.get(dk) as Promise<T>;
   }
 
-  // 4. Coalesced L2 Redis Check + DB Fallback
-  const flightPromise = (async (): Promise<T> => {
+  const run = (async (): Promise<T> => {
     try {
-      const l2Raw = await safeRedisGet(key);
-      if (l2Raw !== null) {
+      // 3) Redis: GET + PTTL in single round-trip
+      const hit = await safeRedisGetWithPttl(dk);
+      if (hit.raw) {
         perfMetrics.cacheHitsL2 += 1;
-        const parsed = JSON.parse(l2Raw) as T;
-        const hitNow = Date.now();
-        setL1(key, {
-          data: parsed,
-          softExpiry: hitNow + softTtlMs,
-          hardExpiry: hitNow + hardTtlMs,
-        });
-        return parsed;
+        const e = JSON.parse(hit.raw) as Entry<T>;
+        const remaining = hit.pttl - 2 * e.t;
+        if (!opts.perUser) l1Set(dk, e.d, Math.min(30_000, e.t));
+
+        if (remaining > 0.2 * e.t) return e.d; // Fresh
+
+        // Early refresh zone
+        const lock = await tryLock(dk);
+        if (lock) {
+          perfMetrics.earlyRefreshes += 1;
+          const bgRefresh = (async () => {
+            try {
+              perfMetrics.dbQueriesExecuted += 1;
+              const fresh = await fetcher();
+              const payload = JSON.stringify({ d: fresh, t });
+              if (payload.length <= 512 * 1024) {
+                const client = getRedisClient();
+                if (client?.set) await client.set(dk, payload, { PX: 3 * t });
+              }
+              if (!opts.perUser) l1Set(dk, fresh, Math.min(30_000, t));
+            } finally {
+              await unlock(dk);
+            }
+          })();
+
+          if (isLambda()) await bgRefresh;
+          else void bgRefresh.catch(() => {});
+        }
+        return e.d;
       }
 
-      perfMetrics.cacheMisses += 1;
-      perfMetrics.dbQueriesExecuted += 1;
-      const fresh = await fetcher();
-      const fetchedNow = Date.now();
-      setL1(key, {
-        data: fresh,
-        softExpiry: fetchedNow + softTtlMs,
-        hardExpiry: fetchedNow + hardTtlMs,
-      });
-      await safeRedisSet(key, effectiveTtlSec, JSON.stringify(fresh));
-      return fresh;
+      // 4) Cache Miss: Distributed Lock & Double Check
+      const lock = await tryLock(dk);
+      if (lock) {
+        try {
+          const again = await safeRedisGetWithPttl(dk);
+          if (again.raw) {
+            return (JSON.parse(again.raw) as Entry<T>).d;
+          }
+          return await executeDbFetch(dk, t, fetcher, opts);
+        } finally {
+          await unlock(dk);
+        }
+      }
+
+      // 5) Bounded Wait
+      const waited = await pollRedis(dk, 1500, 50);
+      if (waited) return (JSON.parse(waited) as Entry<T>).d;
+
+      // 6) Stale-Prev Version Fallback (public catalog only)
+      if (opts.allowStalePrev && typeof ver === "number" && ver > 0) {
+        const prev = await safeRedisGet(dataKey(scope, ver - 1, key));
+        if (prev) {
+          perfMetrics.stalePrevServed += 1;
+          return (JSON.parse(prev) as Entry<T>).d;
+        }
+      }
+
+      // 7) Global DB Concurrency Gate & Shedding
+      perfMetrics.lockFallbackToDb += 1;
+      const slot = await acquireDbSlot(300);
+      if (!slot) throw new ShedError();
+
+      try {
+        const late = await safeRedisGet(dk);
+        if (late) return (JSON.parse(late) as Entry<T>).d;
+        return await executeDbFetch(dk, t, fetcher, opts);
+      } finally {
+        await releaseDbSlot(slot);
+      }
     } finally {
-      inFlightCoalescer.delete(key);
+      inFlightCoalescer.delete(dk);
     }
   })();
 
-  inFlightCoalescer.set(key, flightPromise);
-  return flightPromise;
+  inFlightCoalescer.set(dk, run);
+  return run;
 }
 
-/** Pre-warm a cache key ahead of a known traffic spike (e.g. Batch Launch / Live Test). */
+async function executeDbFetch<T>(
+  dk: string,
+  t: number,
+  fetcher: () => Promise<T>,
+  opts: CacheOptions
+): Promise<T> {
+  perfMetrics.cacheMisses += 1;
+  perfMetrics.dbQueriesExecuted += 1;
+  const val = await fetcher();
+
+  const px = val === null || val === undefined ? (opts.negativeTtlSec || 30) * 1000 : 3 * t;
+  const payload = JSON.stringify({ d: val, t });
+
+  if (payload.length <= 512 * 1024) {
+    const client = getRedisClient();
+    if (client?.set) {
+      try {
+        await client.set(dk, payload, { PX: px });
+      } catch (e) {
+        recordRedisFailure(e);
+      }
+    } else if (client) {
+      try {
+        await client.setEx(dk, Math.max(1, Math.floor(px / 1000)), payload);
+      } catch (e) {
+        recordRedisFailure(e);
+      }
+    }
+  } else {
+    logger.warn({ dk, size: payload.length }, "Payload exceeds 512KB limit, skipping Redis cache");
+  }
+
+  if (!opts.perUser) l1Set(dk, val, Math.min(30_000, t));
+  return val;
+}
+
 export async function preWarmCache<T>(key: string, baseTtlSeconds: number, fetcher: () => Promise<T>): Promise<T> {
   await invalidateCacheKey(key);
   return getOrSetCache(key, baseTtlSeconds, fetcher);
 }
 
-/** Explicitly invalidate a single cache key across L1 and L2. */
-export async function invalidateCacheKey(key: string): Promise<void> {
+export async function invalidateCacheKey(logicalKey: string): Promise<void> {
   perfMetrics.cacheInvalidations += 1;
-  l1Cache.delete(key);
-  if (redisClient && Date.now() >= circuitOpenUntil) {
+  const scope = scopeOf(logicalKey);
+  const ver = await getVersion(scope);
+  const dk = dataKey(scope, ver, logicalKey);
+
+  l1Cache.delete(dk);
+  const client = getRedisClient();
+  if (client) {
     try {
-      await redisClient.del(key);
+      await client.del(dk);
     } catch {
-      // Ignore L2 delete error; L1 is already cleared
+      // non-blocking
     }
   }
 }
 
-/** Explicitly invalidate all keys matching a prefix (e.g. "edurain:courses"). */
 export async function invalidateCachePrefix(prefix: string): Promise<void> {
   perfMetrics.cacheInvalidations += 1;
-  for (const key of l1Cache.keys()) {
-    if (key.startsWith(prefix)) l1Cache.delete(key);
-  }
-  if (redisClient?.keys && Date.now() >= circuitOpenUntil) {
-    try {
-      const matching = await redisClient.keys(`${prefix}*`);
-      if (matching.length > 0) await redisClient.del(matching);
-    } catch {
-      // Ignore L2 error
-    }
+  const scope = scopeOf(prefix);
+  await bumpVersion(scope);
+
+  // Clear L1 keys matching prefix
+  for (const k of l1Cache.keys()) {
+    if (k.includes(scope)) l1Cache.delete(k);
   }
 }
 
-/** Force-expire soft TTL of a key (used in Break Tests to simulate 12:00 AM expiry). */
 export function expireCacheKeyNow(key: string, hardExpire = true): void {
-  const entry = l1Cache.get(key);
-  if (entry) {
-    entry.softExpiry = 0;
-    if (hardExpire) entry.hardExpiry = 0;
+  const scope = scopeOf(key);
+  for (const [k, entry] of l1Cache.entries()) {
+    if (k.includes(scope)) {
+      if (hardExpire) {
+        l1Cache.delete(k);
+      } else {
+        entry.until = 0; // soft expired, hardUntil preserved for SWR
+      }
+    }
   }
 }
 
@@ -269,11 +732,8 @@ export class NonRetryableJobError extends Error {
 }
 
 export interface JobOptions {
-  /** Deterministic ID for idempotency / deduplication */
   jobId?: string;
-  /** Max attempts (default: 3) */
   attempts?: number;
-  /** Base delay in ms for exponential backoff (default: 1000ms) */
   backoffDelayMs?: number;
 }
 
@@ -310,23 +770,19 @@ export class BoundedJobQueue<T = any> {
     this.concurrency = options?.concurrency ?? 5;
   }
 
-  /** Register pull-based worker processor */
   process(handler: (job: JobRecord<T>) => Promise<void>): void {
     this.processor = handler;
     this.drain();
   }
 
-  /** Enqueue job with Bounded Buffer Backpressure and Idempotency check */
   async add(name: string, data: T, opts?: JobOptions): Promise<{ status: "enqueued" | "duplicate_skipped"; jobId: string }> {
     const jobId = opts?.jobId ?? `${this.queueName}:${name}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 
-    // 1. Idempotency Guard: Never execute an already-completed or currently queued jobId twice
     if (this.completedIdempotencyKeys.has(jobId) || this.inFlightJobIds.has(jobId)) {
       perfMetrics.jobsIdempotentSkipped += 1;
       return { status: "duplicate_skipped", jobId };
     }
 
-    // 2. Bounded Buffer Backpressure Guard: Prevent Out-Of-Memory (OOM) crash
     if (this.waitingQueue.length >= this.maxBufferSize) {
       perfMetrics.backpressureSheds += 1;
       const err: any = new Error(`Backpressure: Queue "${this.queueName}" bounded buffer (${this.maxBufferSize}) is full`);
@@ -353,7 +809,6 @@ export class BoundedJobQueue<T = any> {
     return { status: "enqueued", jobId };
   }
 
-  /** Pull-model worker loop: processes up to `this.concurrency` jobs at a time */
   private drain(): void {
     if (!this.processor) return;
     while (this.activeWorkers < this.concurrency && this.waitingQueue.length > 0) {
@@ -383,7 +838,6 @@ export class BoundedJobQueue<T = any> {
         (typeof err?.status === "number" && err.status >= 400 && err.status < 500);
 
       if (!isNonRetryable && job.attemptsMade < job.maxAttempts) {
-        // Exponential Backoff: delay * 2^(attemptsMade - 1)
         const delayMs = job.backoffDelayMs * Math.pow(2, job.attemptsMade - 1);
         perfMetrics.jobsRetried += 1;
         job.status = "waiting";
@@ -392,7 +846,6 @@ export class BoundedJobQueue<T = any> {
           this.drain();
         }, delayMs);
       } else {
-        // Exhausted retries or non-retryable 4xx -> Move to Dead Letter Queue (DLQ)
         job.status = "failed";
         job.failedReason = err instanceof Error ? err.message : String(err);
         job.finishedAt = Date.now();
@@ -424,7 +877,6 @@ export class BoundedJobQueue<T = any> {
   }
 }
 
-// Shared production background queues for EduRain
 export const notificationBroadcastQueue = new BoundedJobQueue<{
   type: "all" | "category" | "direct";
   notificationId: number;

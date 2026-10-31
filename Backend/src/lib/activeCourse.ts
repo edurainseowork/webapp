@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { ensureMentorshipSchema } from "./mentorshipSchema";
 import { HttpError } from "./http-error";
-import { getOrSetCache, invalidateCachePrefix } from "./perfEngine";
+import { getOrSetCache, invalidateCacheKey, invalidateSafe } from "./perfEngine";
 
 // The student's ONE active course among the courses they own (Your Enrolled Courses → Set as Active).
 // Making a course active also moves the student's goal (cohort) to that course's category, and a
@@ -13,14 +13,15 @@ const cacheKey = (userId: number) => `edurain:active-course:${userId}`;
 
 /** Active course id, or null (none chosen / no longer owned). Cached per student. */
 export async function readActiveCourse(userId: number): Promise<number | null> {
-  return getOrSetCache(cacheKey(userId), 300, async () => {
+  // ponytail: per-user cache, TTL 60s is bounded; upgrade to per-user version counter if needed
+  return getOrSetCache(cacheKey(userId), 60, async () => {
     await ensureMentorshipSchema();
     const { rows } = await db.execute<{ course_id: number }>(sql`
       SELECT ac.course_id FROM active_courses ac
       WHERE ac.user_id = ${userId}
         AND EXISTS (SELECT 1 FROM user_courses uc WHERE uc.user_id = ac.user_id AND uc.course_id = ac.course_id)`);
     return rows[0] ? Number(rows[0].course_id) : null;
-  });
+  }, { perUser: true });
 }
 
 /** Makes an owned course active and moves the goal to its category. Returns the new goal category id (or null). */
@@ -42,7 +43,7 @@ export async function setActiveCourse(userId: number, courseId: number): Promise
         ON CONFLICT (user_id) DO UPDATE SET category_id = EXCLUDED.category_id, updated_at = now()`);
     }
   });
-  await invalidateCachePrefix(cacheKey(userId));
+  await invalidateSafe(() => invalidateCacheKey(cacheKey(userId)));
   return categoryId;
 }
 
@@ -69,6 +70,6 @@ export async function syncActiveCourseToGoal(userId: number, categoryId: number)
   } else {
     await db.execute(sql`DELETE FROM active_courses WHERE user_id = ${userId}`);
   }
-  await invalidateCachePrefix(cacheKey(userId));
+  await invalidateSafe(() => invalidateCacheKey(cacheKey(userId)));
   return next;
 }

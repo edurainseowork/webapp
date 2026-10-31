@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { onCatalogUpdated } from './catalogSync';
 import { apiFetch, ApiError } from './api';
 
 
@@ -109,17 +110,24 @@ async function fetchOwnedIds(): Promise<number[]> {
 }
 
 /** Reloads courses, categories and the student's courses. Background refreshes keep the current data on screen. */
-export function refreshCourses(): Promise<void> {
-  if (inFlight) return inFlight;
+let dirty = false;
+/** Reloads courses, categories and the student's courses. Background refreshes keep the current data on screen. */
+export function refreshCourses(opts?: { force?: boolean }): Promise<void> {
+  if (inFlight) {
+    if (opts?.force) dirty = true;
+    return inFlight;
+  }
   const firstLoad = state.courses.length === 0;
   if (firstLoad && state.status !== 'loading') setState({ status: 'loading', error: null });
 
   inFlight = (async () => {
     try {
+      do {
+        dirty = false;
         let categoriesError: string | null = null;
         const [courses, categories, ownedIds] = await Promise.all([
-          apiFetch<CmsCourse[]>('/courses'),
-          apiFetch<CmsCategory[]>('/categories').catch((err) => {
+          apiFetch<CmsCourse[]>('/courses', { fresh: opts?.force }),
+          apiFetch<CmsCategory[]>('/categories', { fresh: opts?.force }).catch((err) => {
             // Keep the last good list on a background refresh; only report when there is nothing to show
             if (state.categories.length === 0) categoriesError = errorMessage(err, 'Could not load categories.');
             return state.categories;
@@ -135,6 +143,7 @@ export function refreshCourses(): Promise<void> {
           categoriesError,
           ownedIds,
         });
+      } while (dirty);
     } catch (err) {
       // Keep showing what we already have if a background refresh fails
       if (firstLoad) setState({ status: 'error', error: errorMessage(err, 'Could not load courses.') });
@@ -333,24 +342,29 @@ export function useCourses(): CoursesState & { reload: () => Promise<void> } {
 
   useEffect(() => {
     if (Date.now() - lastLoadedAt > STALE_MS) void refreshCourses();
+    const unsub = onCatalogUpdated(() => {
+      void refreshCourses({ force: true });
+    }, ['courses', 'categories']);
+
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible' && Date.now() - lastLoadedAt > STALE_MS) {
         void refreshCourses();
       }
     }, STALE_MS);
     const onFocus = () => {
-      if (Date.now() - lastLoadedAt > 60_000) void refreshCourses(); // the browser keeps /courses for 60s anyway
+      if (Date.now() - lastLoadedAt > 60_000) void refreshCourses();
     };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
     return () => {
+      unsub();
       clearInterval(timer);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
     };
   }, []);
 
-  return { ...snapshot, reload: refreshCourses };
+  return { ...snapshot, reload: () => refreshCourses({ force: true }) };
 }
 
 /* ------------------------------------------------------------------ */

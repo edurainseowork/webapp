@@ -37,22 +37,10 @@ export function BannerCarousel({ placement, onOpenBatch, className = '' }: Banne
       .catch(() => {});
   }, [placement]);
 
-  // Initial load + silent auto-refresh every 30s + on tab focus (Zero page reload needed)
+  // Initial load + real-time sync when banners are updated in CMS
   useEffect(() => {
     fetchBanners();
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchBanners();
-    }, 30_000);
-    const onFocus = () => fetchBanners();
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    const offCms = onCatalogUpdated(fetchBanners);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-      offCms();
-    };
+    return onCatalogUpdated(fetchBanners, ['banners']);
   }, [fetchBanners]);
 
   // Auto-rotate when multiple banners are uploaded

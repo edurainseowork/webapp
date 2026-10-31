@@ -2,12 +2,13 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { categoriesTable } from "@workspace/db/schema";
 import { asc } from "drizzle-orm";
-import { getOrSetCache } from "../lib/perfEngine";
+import { getOrSetCache, sendIfChanged } from "../lib/perfEngine";
 
 // Public category list for the mobile & web app's filter pills.
 const router = Router();
 
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
+  if (await sendIfChanged(req, res, ["edurain:categories"])) return;
   const categories = await getOrSetCache("edurain:categories:all", 900, async () => {
     return db
       .select({
@@ -20,7 +21,7 @@ router.get("/", async (_req, res) => {
       .orderBy(asc(categoriesTable.sortOrder), asc(categoriesTable.name));
   });
 
-  res.setHeader("Cache-Control", "public, max-age=120, s-maxage=600, stale-while-revalidate=1200");
+  res.setHeader("Cache-Control", "no-cache");
   res.json(categories);
 });
 

@@ -45,9 +45,13 @@ async function runStage(baseUrl, stageName, concurrency, requestsPerVu) {
         if (res.status === 200) status200++;
         else if (res.status === 429) status429++;
         else if (res.status === 503) status503++;
-        else unexpectedErrors++;
-      } catch {
+        else {
+          unexpectedErrors++;
+          if (unexpectedErrors <= 3) console.log(`Unexpected status: ${res.status}`);
+        }
+      } catch (err) {
         unexpectedErrors++;
+        if (unexpectedErrors <= 3) console.log(`Fetch error: ${err.message || err}`);
       }
     }
   });

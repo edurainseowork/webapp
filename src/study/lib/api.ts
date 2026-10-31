@@ -9,13 +9,15 @@ export class ApiError extends Error {
   }
 }
 
+let lastSyncHash = '';
+
 /**
  * Calls /api/<path>. Sends the signed-in user's Firebase ID token when there is one.
- * Implements Exponential Backoff with Jitter on HTTP 429 Too Many Requests (PRD Sections 17 & 18).
+ * Implements Exponential Backoff with Jitter on HTTP 429 Too Many Requests & HTTP 503 (ShedError / backpressure).
  */
 export async function apiFetch<T = any>(
   path: string,
-  init: { method?: string; body?: unknown; retries?: number; fresh?: boolean } = {}
+  init: { method?: string; body?: unknown; retries?: number; fresh?: boolean; signal?: AbortSignal } = {}
 ): Promise<T> {
   const headers: Record<string, string> = {};
   const token = await auth.currentUser?.getIdToken();
@@ -33,12 +35,21 @@ export async function apiFetch<T = any>(
         headers,
         body: init.body !== undefined ? (typeof init.body === 'string' ? init.body : JSON.stringify(init.body)) : undefined,
         cache: init.fresh ? 'reload' : undefined, // skip the browser cache once, then store the new answer
+        signal: init.signal,
       });
-    } catch {
+
+      // Piggybacked real-time sync notification
+      const xSync = res.headers.get('X-Sync');
+      if (xSync && xSync !== lastSyncHash) {
+        lastSyncHash = xSync;
+        void import('./catalogSync').then((m) => m.syncNow()).catch(() => {});
+      }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') throw e;
       throw new ApiError(0, 'Could not reach the server. Check your internet connection and try again.');
     }
 
-    if (res.status !== 429 || attempt === maxRetries) break;
+    if ((res.status !== 429 && res.status !== 503) || attempt === maxRetries) break;
 
     const retryHeaderSec = Number(res.headers.get('Retry-After'));
     const waitMs =
@@ -60,6 +71,7 @@ export async function apiFetch<T = any>(
           method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
           headers,
           body: init.body !== undefined ? (typeof init.body === 'string' ? init.body : JSON.stringify(init.body)) : undefined,
+          signal: init.signal,
         });
       }
     } catch {}

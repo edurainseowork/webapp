@@ -7,6 +7,7 @@ import { CreateTestBody, QUESTION_CSV_MAX_BYTES, QUESTION_TYPES, SUBMISSION_REAS
 import { requireAdminOrFaculty } from "../middlewares/auth";
 import { HttpError, parseId } from "../lib/http-error";
 import { logger } from "../lib/logger";
+import { invalidateCachePrefix, invalidateSafe } from "../lib/perfEngine";
 import { firebaseAuth } from "../lib/firebase-admin";
 import { buildQuestion } from "../lib/testEvaluation";
 import { parseQuestionCsv, questionTemplateCsv, type ParsedUpload } from "../lib/testCsv";
@@ -171,6 +172,7 @@ router.post("/", parseMultipart, async (req, res) => {
   });
 
   logger.info({ testId: test.id, courseId: test.courseId, questions: parsed?.questions.length ?? 0 }, "Test created");
+  invalidateSafe(() => invalidateCachePrefix("edurain:tests"));
   // Enrolled students hear about a test once it is scheduled (drafts stay private)
   const notified = test.status === "SCHEDULED" ? await notifyTestScheduled(test) : 0;
   res.status(201).json({ success: true, message: scheduledMessage("Test created", notified, test.status), data: await findTest(test.id), notified });
@@ -206,6 +208,7 @@ router.put("/:id", async (req, res) => {
     updatedAt: new Date(),
   }).where(eq(testsTable.id, id)).returning();
   // A draft that is now scheduled is announced to students (each student is told only once per test)
+  invalidateSafe(() => invalidateCachePrefix("edurain:tests"));
   const notified = current.storedStatus !== "SCHEDULED" && updated.status === "SCHEDULED" ? await notifyTestScheduled(updated) : 0;
   res.json({ success: true, message: scheduledMessage("Test updated", notified, updated.status), data: await findTest(id), notified });
 });
@@ -257,6 +260,7 @@ router.post("/:id/questions", async (req, res) => {
   await assertQuestionsEditable(id);
   await assertOrderFree(id, question.questionOrder);
   const [created] = await db.insert(testQuestionsTable).values({ ...question, testId: id }).returning();
+  invalidateSafe(() => invalidateCachePrefix("edurain:tests"));
   res.status(201).json({ success: true, message: "Question added", data: created });
 });
 
@@ -273,6 +277,7 @@ router.put("/questions/:questionId", async (req, res) => {
   await assertQuestionsEditable(existing.testId);
   await assertOrderFree(existing.testId, question.questionOrder, existing.id);
   const [updated] = await db.update(testQuestionsTable).set({ ...question, updatedAt: new Date() }).where(eq(testQuestionsTable.id, existing.id)).returning();
+  invalidateSafe(() => invalidateCachePrefix("edurain:tests"));
   res.json({ success: true, message: "Question updated", data: updated });
 });
 
@@ -280,6 +285,7 @@ router.delete("/questions/:questionId", async (req, res) => {
   const existing = await findQuestion(parseId(req.params.questionId));
   await assertQuestionsEditable(existing.testId);
   await db.delete(testQuestionsTable).where(eq(testQuestionsTable.id, existing.id));
+  invalidateSafe(() => invalidateCachePrefix("edurain:tests"));
   res.json({ success: true, message: "Question deleted" });
 });
 

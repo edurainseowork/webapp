@@ -1,74 +1,186 @@
 import { useEffect } from 'react';
-import { io, type Socket } from 'socket.io-client';
 import { API_BASE_URL } from './api';
 
-// One shared socket for the whole app. The server emits 'catalog_updated' whenever the CMS saves a
-// course, category, banner or FAQ; listeners refetch. Pollers slow down while the socket is live and
-// carry the load alone when it is not (e.g. a Lambda backend has no sockets).
-let socket: Socket | null = null;
-let timer: ReturnType<typeof setTimeout> | undefined;
-const listeners = new Set<(version: number) => void>();
+// Shared real-time sync across Web and Expo Mobile App
+// Polling /api/sync/versions every ~15s (foreground only, idle pause after 3m). Zero database load.
 
-// One refetch for a burst of saves (and after a reconnect, which may have missed some).
-// The server sends jitterMs (grows with the number of connected students) to spread the refetches.
-const notify = (version: number, jitterMs = 0) => {
-  clearTimeout(timer);
-  timer = setTimeout(() => listeners.forEach((listener) => listener(version)), 300 + Math.random() * jitterMs);
-};
+let syncActive = false;
+let syncTimer: any = null;
+let currentIntervalSec = 15;
+let failureCount = 0;
+let lastActiveTime = Date.now();
+const localVersions: Record<string, number | string> = {};
+const domainListeners = new Map<string, Set<(ver: number | string) => void>>();
 
-/** True while the push channel is connected. */
-export const catalogLive = () => !!socket?.connected;
+// Track user activity for idle pause
+if (typeof window !== 'undefined') {
+  const markActive = () => {
+    const wasIdle = Date.now() - lastActiveTime > 3 * 60_000;
+    lastActiveTime = Date.now();
+    if (wasIdle && syncActive) {
+      void fetchSyncVersions();
+    }
+  };
+  window.addEventListener('mousemove', markActive, { passive: true });
+  window.addEventListener('keydown', markActive, { passive: true });
+  window.addEventListener('touchstart', markActive, { passive: true });
+}
+
+// Client-ID for canary rollouts (persisted in localStorage)
+export function getClientId(): string {
+  try {
+    let cid = localStorage.getItem('edurain:client_id');
+    if (!cid) {
+      cid = 'c_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('edurain:client_id', cid);
+    }
+    return cid;
+  } catch {
+    return 'anon';
+  }
+}
+
+export async function fetchSyncVersions(): Promise<void> {
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+    return; // Tab hidden -> sleep
+  }
+
+  // 3-minute idle pause
+  if (Date.now() - lastActiveTime > 3 * 60_000) {
+    scheduleNextPoll();
+    return;
+  }
+
+  try {
+    const cid = getClientId();
+    // Simple fetch without custom request headers to prevent preflight OPTIONS
+    const res = await fetch(`${API_BASE_URL}/api/sync/versions?c=${encodeURIComponent(cid)}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      failureCount += 1;
+      currentIntervalSec = Math.min(60, 15 * Math.pow(2, failureCount));
+      return;
+    }
+
+    failureCount = 0;
+    const data = await res.json();
+    if (!data.enabled) {
+      currentIntervalSec = data.next || 300;
+      return;
+    }
+
+    currentIntervalSec = data.next || 15;
+    const v = data.v || {};
+
+    for (const [domain, newVer] of Object.entries(v)) {
+      const prevVer = localVersions[domain];
+      if (prevVer !== undefined && prevVer !== newVer) {
+        // Version changed! Jittered notify (0 to 3000ms; wide spread for notif)
+        const spread = domain === 'notif' ? 10_000 : 3_000;
+        const jitter = Math.random() * spread;
+        setTimeout(() => {
+          const listeners = domainListeners.get(domain);
+          if (listeners) {
+            listeners.forEach((fn) => fn(newVer as number | string));
+          }
+        }, jitter);
+      }
+      localVersions[domain] = newVer as number | string;
+    }
+  } catch {
+    failureCount += 1;
+    currentIntervalSec = Math.min(60, 15 * Math.pow(2, failureCount));
+  } finally {
+    scheduleNextPoll();
+  }
+}
+
+/** Immediately poll sync endpoint (e.g. when X-Sync header changes) */
+export function syncNow(): void {
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+  lastActiveTime = Date.now();
+  void fetchSyncVersions();
+}
+
+function scheduleNextPoll(): void {
+  if (syncTimer) clearTimeout(syncTimer);
+  const jitterMs = Math.floor(Math.random() * 2000);
+  syncTimer = setTimeout(fetchSyncVersions, currentIntervalSec * 1000 + jitterMs);
+}
+
+function startSyncLoopIfNeeded(): void {
+  if (syncActive) return;
+  syncActive = true;
+  void fetchSyncVersions();
+
+  if (typeof window !== 'undefined') {
+    const onForeground = () => {
+      if (document.visibilityState === 'visible') {
+        lastActiveTime = Date.now();
+        void fetchSyncVersions();
+      }
+    };
+    window.addEventListener('focus', onForeground);
+    document.addEventListener('visibilitychange', onForeground);
+  }
+}
 
 /**
- * Calls `listener` whenever the CMS changes something. `version` is the same number for every student
- * (the save time), so a URL like /courses?v=<version> is fetched once by a CDN and shared by everyone.
- * Returns the unsubscribe function.
+ * Helper to ensure late/out-of-order responses do not overwrite newer state.
  */
-export function onCatalogUpdated(listener: (version: number) => void): () => void {
-  listeners.add(listener);
-  if (!socket) {
-    // websocket only and a few retries: a backend without sockets must not be hammered with handshakes
-    socket = io(API_BASE_URL, { transports: ['websocket'], reconnectionAttempts: 5 });
-    socket.on('catalog_updated', (payload?: { at?: number; jitterMs?: number }) => notify(payload?.at ?? Date.now(), payload?.jitterMs));
-    // A reconnect may have missed saves; the per-minute number keeps the URL shared between students
-    socket.io.on('reconnect', () => notify(Math.floor(Date.now() / 60_000), 5_000));
-  }
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) {
-      socket?.disconnect();
-      socket = null;
+export function latestOnly<T>(load: (signal: AbortSignal) => Promise<T>, apply: (t: T) => void) {
+  let seq = 0;
+  let ctl: AbortController | null = null;
+  return async () => {
+    const my = ++seq;
+    ctl?.abort();
+    ctl = new AbortController();
+    try {
+      const r = await load(ctl.signal);
+      if (my === seq) apply(r);
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') throw e;
     }
   };
 }
 
 /**
- * Keeps `load` fresh: runs it now, whenever the CMS pushes a change, when the tab comes back into view,
- * and on a safety-net timer (every 5 min while push is live, every 30s when it is not).
+ * Subscribe to changes for a given sync domain (e.g. 'courses', 'banners', 'categories', 'faqs').
+ * Returns unsubscribe callback.
  */
-export function useCatalogRefresh(load: () => void) {
+export function onDomainUpdated(domain: string, callback: (ver: number | string) => void): () => void {
+  startSyncLoopIfNeeded();
+  let set = domainListeners.get(domain);
+  if (!set) {
+    set = new Set();
+    domainListeners.set(domain, set);
+  }
+  set.add(callback);
+
+  return () => {
+    set?.delete(callback);
+  };
+}
+
+/** Legacy socket/catalog compatibility hook: points to sync loop with optional domain filter */
+export function onCatalogUpdated(listener: (version: number) => void, domains?: string[]): () => void {
+  const targetDomains = domains && domains.length > 0 ? domains : ['courses', 'categories'];
+  const unsubs = targetDomains.map((d) =>
+    onDomainUpdated(d, (v) => listener(typeof v === 'number' ? v : Date.now()))
+  );
+  return () => unsubs.forEach((u) => u());
+}
+
+/**
+ * Hook to auto-refresh state when domain data changes in CMS (without manual reload).
+ */
+export function useCatalogRefresh(load: () => void, domain = 'courses') {
   useEffect(() => {
-    let last = 0;
-    const run = () => {
-      last = Date.now();
+    load();
+    const unsub = onDomainUpdated(domain, () => {
       load();
-    };
-    const due = (waitMs: number) => document.visibilityState === 'visible' && Date.now() - last >= waitMs;
-    run();
-    const tick = setInterval(() => {
-      if (due(catalogLive() ? 300_000 : 30_000)) run();
-    }, 30_000);
-    const onView = () => {
-      if (due(10_000)) run();
-    };
-    window.addEventListener('focus', onView);
-    document.addEventListener('visibilitychange', onView);
-    const off = onCatalogUpdated(run);
-    return () => {
-      clearInterval(tick);
-      window.removeEventListener('focus', onView);
-      document.removeEventListener('visibilitychange', onView);
-      off();
-    };
-  }, [load]);
+    });
+    return unsub;
+  }, [load, domain]);
 }

@@ -6,9 +6,10 @@ import { HealthCheckResponse } from "@workspace/api-zod";
 import {
   emailDispatchQueue,
   getCircuitState,
+  getRedisClient,
   notificationBroadcastQueue,
   perfMetrics,
-} from "../lib/perfEngine.ts";
+} from "../lib/perfEngine";
 
 const router: IRouter = Router();
 
@@ -37,9 +38,37 @@ router.get("/perf", async (req, res) => {
     }
   }
 
+  const client = getRedisClient();
+  let redisPingMs: number | null = null;
+  let redisConnected = false;
+  let redisError: string | null = null;
+
+  if (client?.ping) {
+    const start = performance.now();
+    try {
+      await Promise.race([
+        client.ping(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("Timeout (4s)")), 4000)),
+      ]);
+      redisPingMs = Number((performance.now() - start).toFixed(2));
+      redisConnected = true;
+    } catch (e: any) {
+      redisConnected = false;
+      redisError = e?.message || String(e);
+    }
+  }
+
   res.json({
     status: "ok",
     redisCircuitBreaker: getCircuitState(),
+    redis: {
+      configured: !!process.env.REDIS_URL,
+      connected: redisConnected,
+      pingMs: redisPingMs,
+      error: redisError,
+      breaker: getCircuitState(),
+      epoch: process.env.CACHE_EPOCH?.trim() || "1",
+    },
     eventLoopLagMs: {
       p50: Number((loopHistogram.percentile(50) / 1e6).toFixed(2)),
       p95: Number((loopHistogram.percentile(95) / 1e6).toFixed(2)),

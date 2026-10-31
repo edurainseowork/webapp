@@ -24,13 +24,13 @@ import {
   perfMetrics,
   preWarmCache,
   setRedisClient,
-} from "../lib/perfEngine.ts";
+} from "../../dist/lib/perfEngine.mjs";
 import {
   LUA_TOKEN_BUCKET_SCRIPT,
   backpressureGuard,
   paymentRateLimiter,
   rateLimit,
-} from "../middlewares/security.ts";
+} from "../../dist/middlewares/security.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
