@@ -5,6 +5,7 @@ import couponsRouter from "./coupons.js";
 import razorpayRouter from "./razorpay.js";
 import internalRouter from "./internal.js";
 import googlePlayRouter from "./google-play.js";
+import appleIapRouter from "./apple-iap.js";
 import contentRouter from "./content.js";
 import uploadRouter from "./upload.js";
 import bannersRouter from "./banners.js";
@@ -90,6 +91,7 @@ router.use("/coupons", identifyStudent, paymentRateLimiter, couponsRouter);
 router.use("/razorpay", identifyStudent, paymentRateLimiter, razorpayRouter);
 router.use("/internal", internalRouter);
 router.use("/google-play", identifyStudent, paymentRateLimiter, googlePlayRouter);
+router.use("/apple-iap", identifyStudent, paymentRateLimiter, appleIapRouter);
 router.use("/enrollments", identifyStudent, paymentRateLimiter, enrollmentsRouter);
 
 // 3. Heavy Media & Video Upload Endpoints (20 req / 60s Leaky Bucket per User)
