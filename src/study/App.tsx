@@ -502,8 +502,8 @@ export function App() {
     },
     {
       id: 'vault-math',
-      title: 'All India Test Series',
-      second_text: 'Real NTA Exam Pattern',
+      title: 'Test Series',
+      second_text: 'On Real Exam Pattern',
       subject: 'Mock Tests',
       countLabel: 'Active CBT Tests',
       actionLabel: 'Start Practice Test',
