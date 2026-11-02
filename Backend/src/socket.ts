@@ -7,10 +7,12 @@ import {
   saveTicketToDb,
   syncTicketsFromDb,
   findTicket,
+  blobStore,
   type DoubtTicket,
   type ChatMessage,
   getRelativeTime,
 } from './routes/tickets.js';
+import { hasBlobs, inflate } from './lib/ticketBlobs.js';
 import { corsOptions } from './middlewares/security.js';
 import { verifyToken } from './middleware/auth.js';
 
@@ -399,12 +401,15 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
   });
 
   // Background 1-hour Auto-Close Cron Check (every 60 seconds)
-  setInterval(() => {
+  setInterval(async () => {
+    try {
     const now = Date.now();
-    for (const ticket of ticketsStore) {
-      if (ticket.status === 'resolution_requested' && ticket.resolutionRequestedAt) {
-        const diff = now - new Date(ticket.resolutionRequestedAt).getTime();
+    for (const light of [...ticketsStore]) {
+      if (light.status === 'resolution_requested' && light.resolutionRequestedAt) {
+        const diff = now - new Date(light.resolutionRequestedAt).getTime();
         if (diff >= AUTO_CLOSE_MS) {
+          // memory holds the light copy; clients get the attachments back in what is emitted
+          const ticket = hasBlobs(light) ? await inflate(light, blobStore) : light;
           ticket.status = 'resolved';
           ticket.resolvedAt = new Date().toISOString();
           ticket.resolvedBy = ticket.resolutionRequestedBy || ticket.assignedTo?.name || 'Auto-Closed';
@@ -440,21 +445,44 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
         }
       }
     }
+    } catch (err) {
+      logger.warn({ err }, 'Auto-close check failed');
+    }
   }, 60000);
 
   // Real-time Database Synchronizer (polls every 3 seconds)
   // Ensures any ticket or message created via AWS Lambda or another instance is pushed via Socket.io instantly
+  // `data` can hold base64 attachments (tens of MB for 60 tickets). Downloading all of it every 3 s kept pool
+  // connections busy sending to slow links, and a slow run was never waited for, so queries piled up and the
+  // pool ran dry ("timeout exceeded when trying to connect"). So: compare small fields first, download the
+  // full JSON only for tickets that are new or changed, and never overlap two runs.
+  let syncing = false;
   setInterval(async () => {
+    if (syncing) return;
+    syncing = true;
     try {
-      const res = await pool.query('SELECT data FROM doubt_tickets ORDER BY submitted_at DESC LIMIT 60');
-      if (res.rows.length === 0) return;
+      const head = await pool.query(
+        `SELECT id, data->>'status' AS status, data->'assignedTo'->>'email' AS assigned,
+                CASE WHEN jsonb_typeof(data->'messages') = 'array' THEN jsonb_array_length(data->'messages') ELSE 0 END AS msgs
+           FROM doubt_tickets ORDER BY submitted_at DESC LIMIT 60`,
+      );
+      const changed = head.rows
+        .filter((r) => {
+          const mem = ticketsStore.find((m) => m.id === r.id);
+          return !mem || r.msgs > (mem.messages?.length || 0) || r.status !== mem.status || (r.assigned || null) !== (mem.assignedTo?.email || null);
+        })
+        .map((r) => r.id);
+      if (changed.length === 0) return;
+      const res = await pool.query('SELECT data FROM doubt_tickets WHERE id = ANY($1) ORDER BY submitted_at DESC', [changed]);
       const dbTickets = res.rows.map((r) => r.data as DoubtTicket);
 
-      for (const dbt of dbTickets) {
+      for (const light of dbTickets) {
+        // memory keeps the light copy, the sockets get the attachments back
+        const dbt = hasBlobs(light) ? await inflate(light, blobStore) : light;
         const memIdx = ticketsStore.findIndex((m) => m.id === dbt.id);
         if (memIdx === -1) {
           // New ticket from DB!
-          ticketsStore.unshift(dbt);
+          ticketsStore.unshift(light);
           logger.info({ ticketNumber: dbt.ticketNumber }, 'DB Synchronizer: Discovered new ticket, broadcasting to TA desk');
           const createdPayload = {
             ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
@@ -466,7 +494,7 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
           const dbMsgCount = dbt.messages?.length || 0;
           const memMsgCount = mem.messages?.length || 0;
           if (dbMsgCount > memMsgCount) {
-            ticketsStore[memIdx] = dbt;
+            ticketsStore[memIdx] = light;
             const latestMsg = dbt.messages![dbMsgCount - 1];
             const msgPayload = {
               ticketId: dbt.id,
@@ -483,7 +511,7 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
               ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
             });
           } else if (dbt.status !== mem.status || dbt.assignedTo?.email !== mem.assignedTo?.email) {
-            ticketsStore[memIdx] = dbt;
+            ticketsStore[memIdx] = light;
             const statusPayload = {
               ticketId: dbt.id,
               ticketNumber: dbt.ticketNumber,
@@ -502,7 +530,10 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
           }
         }
       }
-    } catch {}
+    } catch {
+    } finally {
+      syncing = false;
+    }
   }, 3000);
 
   return io;
