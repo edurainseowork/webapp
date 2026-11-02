@@ -7,6 +7,9 @@
 !.env.example
 *.local
 
+# Markdown Documentation & Notes
+*.md
+
 # Firebase & Cloud Credentials
 *firebase*.json
 *serviceAccount*.json
