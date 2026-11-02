@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { ensureMentorshipSchema } from "./mentorshipSchema";
 import { logger } from "./logger";
+import { isDbUnavailable } from "./dbErrors";
 
 // Tables and indexes the payment flow needs. Created the first time they are used (same idea as
 // mentorshipSchema.ts), and every statement is safe to run again. Also in shared/db/migrations/0013_payments_hardening.sql.
@@ -56,7 +57,9 @@ export function ensurePaymentsSchema(): Promise<void> {
     try {
       const { rows } = await db.execute<{ exists: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payment_events') AS exists`);
       if (rows[0]?.exists) return;
-    } catch {}
+    } catch (err) {
+      if (isDbUnavailable(err)) throw err; // see mentorshipSchema.ts
+    }
     for (const statement of STATEMENTS) {
       try {
         await db.execute(statement);

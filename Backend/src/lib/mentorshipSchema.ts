@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
+import { isDbUnavailable } from "./dbErrors";
 
 // Creates / extends the mentorship tables the first time they are needed, so a deploy works
 // without a manual migration step. Same SQL as shared/db/migrations/0006_mentorship.sql; every
@@ -129,7 +130,10 @@ async function apply() {
   try {
     const { rows } = await db.execute<{ exists: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'course_plans') AS exists`);
     if (rows[0]?.exists) return;
-  } catch {}
+  } catch (err) {
+    // Can't even ask: don't fall through to ~40 DDL statements against an unreachable DB. Retried on the next call.
+    if (isDbUnavailable(err)) throw err;
+  }
   for (const statement of STATEMENTS) {
     try {
       await db.execute(statement);
