@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from "express";
 import { pool } from "../db/index.js";
 import { logger } from "../lib/logger.js";
 import { getIO } from "../socket.js";
+import { externalize, inflate, hasBlobs, stripBlobs, type BlobStore } from "../lib/ticketBlobs.js";
+import { isDbUnavailable } from "../lib/dbErrors.js";
 
 export interface ChatMessage {
   id: string;
@@ -224,6 +226,24 @@ let isTableInitialized = false;
 let lastDbSyncTime = 0;
 const DB_SYNC_COOLDOWN_MS = 15000;
 
+// Newest tickets kept in memory. An older ticket is read from the database, one row, when somebody opens it.
+const TICKETS_MEMORY_LIMIT = Number(process.env.TICKETS_MEMORY_LIMIT) || 300;
+
+// How a ticket's student is matched in SQL (the indexes in initDbTable use these exact expressions)
+const EMAIL_SQL = `lower(data->'studentInfo'->>'email')`;
+const PHONE10_SQL = `right(regexp_replace(coalesce(data->'studentInfo'->>'phone', ''), '[^0-9]', '', 'g'), 10)`;
+
+// Big attachments live in ticket_blobs (lib/ticketBlobs.ts); the ticket JSON only keeps a short marker.
+export const blobStore: BlobStore = {
+  put: async (id, content) => {
+    await pool.query('INSERT INTO ticket_blobs (id, content) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [id, content]);
+  },
+  get: async (ids) => {
+    const { rows } = await pool.query('SELECT id, content FROM ticket_blobs WHERE id = ANY($1)', [ids]);
+    return new Map<string, string>(rows.map((r): [string, string] => [r.id, r.content]));
+  },
+};
+
 export async function syncTicketsFromDb(force: boolean = false): Promise<DoubtTicket[]> {
   const now = Date.now();
   if (!force && now - lastDbSyncTime < DB_SYNC_COOLDOWN_MS) {
@@ -231,7 +251,7 @@ export async function syncTicketsFromDb(force: boolean = false): Promise<DoubtTi
   }
   lastDbSyncTime = now;
   try {
-    const res = await pool.query('SELECT data FROM doubt_tickets ORDER BY submitted_at DESC');
+    const res = await pool.query('SELECT data FROM doubt_tickets ORDER BY submitted_at DESC LIMIT $1', [TICKETS_MEMORY_LIMIT]);
     if (res.rows.length > 0) {
       const seen = new Set<string>();
       const list: DoubtTicket[] = [];
@@ -250,7 +270,8 @@ export async function syncTicketsFromDb(force: boolean = false): Promise<DoubtTi
   return ticketsStore;
 }
 
-export async function findTicket(idOrNumber: string): Promise<DoubtTicket | null> {
+/** The ticket as kept in memory (attachments are markers). Falls back to one database row for tickets outside the memory window. */
+export async function findTicketLight(idOrNumber: string): Promise<DoubtTicket | null> {
   if (!idOrNumber) return null;
   const clean = String(idOrNumber).trim();
   const lower = clean.toLowerCase();
@@ -263,21 +284,38 @@ export async function findTicket(idOrNumber: string): Promise<DoubtTicket | null
     t.ticketNumber.toLowerCase() === lower ||
     t.ticketNumber.toLowerCase().replace(/^tkt-?/i, '') === stripped;
 
-  let ticket = ticketsStore.find(match);
-  if (ticket) return ticket;
-  await syncTicketsFromDb(true);
-  return ticketsStore.find(match) || null;
+  const inMemory = ticketsStore.find(match);
+  if (inMemory) return inMemory;
+  // Older than the memory window, or created on another server: read just that one row
+  try {
+    const { rows } = await pool.query(
+      'SELECT data FROM doubt_tickets WHERE id = $1 OR lower(ticket_number) IN ($2, $3) LIMIT 1',
+      [clean, lower, `tkt-${stripped}`],
+    );
+    return (rows[0]?.data as DoubtTicket | undefined) ?? null;
+  } catch (err) {
+    if (isDbUnavailable(err)) throw err; // answered as 503, not as "ticket not found"
+    logger.warn({ err }, 'Ticket lookup failed');
+    return null;
+  }
 }
 
-export async function saveTicketToDb(ticket: DoubtTicket) {
-  try {
-    const idx = ticketsStore.findIndex((t) => t.id === ticket.id || t.ticketNumber === ticket.ticketNumber);
-    if (idx !== -1) {
-      ticketsStore[idx] = ticket;
-    } else {
-      ticketsStore.unshift(ticket);
-    }
-    await pool.query(
+/** The ticket with its attachments back in place: what a reply, claim or detail view needs. */
+export async function findTicket(idOrNumber: string): Promise<DoubtTicket | null> {
+  const ticket = await findTicketLight(idOrNumber);
+  return ticket && hasBlobs(ticket) ? inflate(ticket, blobStore) : ticket;
+}
+
+/** Saves a ticket (attachments go to ticket_blobs, memory keeps the light copy). Throws if the database write fails. */
+export async function persistTicket(full: DoubtTicket) {
+  const ticket = await externalize(full, blobStore);
+  const idx = ticketsStore.findIndex((t) => t.id === ticket.id || t.ticketNumber === ticket.ticketNumber);
+  if (idx !== -1) {
+    ticketsStore[idx] = ticket;
+  } else {
+    ticketsStore.unshift(ticket);
+  }
+  await pool.query(
       `INSERT INTO doubt_tickets (id, ticket_number, status, data, submitted_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, now())
        ON CONFLICT (id) DO UPDATE SET
@@ -287,15 +325,36 @@ export async function saveTicketToDb(ticket: DoubtTicket) {
          updated_at = now()`,
       [ticket.id, ticket.ticketNumber, ticket.status, JSON.stringify(ticket), ticket.submittedAt || new Date().toISOString()]
     );
+}
+
+export async function saveTicketToDb(ticket: DoubtTicket) {
+  try {
+    await persistTicket(ticket);
   } catch (err) {
     logger.warn({ err, ticketId: ticket.id }, 'Failed to persist ticket to DB');
   }
 }
 
 // Auto-create database table if Postgres is connected
-async function initDbTable() {
+// Requests that arrive together on a fresh server share one setup run instead of each repeating it
+let initInFlight: Promise<void> | null = null;
+function initDbTable(): Promise<void> {
+  if (isTableInitialized) return Promise.resolve();
+  return (initInFlight ??= initDbTableOnce().finally(() => {
+    initInFlight = null;
+  }));
+}
+
+async function initDbTableOnce() {
   if (isTableInitialized) return;
   try {
+    // Set up already (every start after the first): one catalog read instead of DDL on every cold start
+    const {
+      rows: [have],
+    } = await pool.query(
+      "SELECT to_regclass('doubt_tickets') IS NOT NULL AS t, to_regclass('ticket_blobs') IS NOT NULL AS b, to_regclass('doubt_tickets_phone_idx') IS NOT NULL AS i",
+    );
+    if (!(have.t && have.b && have.i)) {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS doubt_tickets (
         id VARCHAR(64) PRIMARY KEY,
@@ -307,10 +366,16 @@ async function initDbTable() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
+    await pool.query(`CREATE TABLE IF NOT EXISTS ticket_blobs (id TEXT PRIMARY KEY, content TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS doubt_tickets_email_idx ON doubt_tickets ((${EMAIL_SQL}))`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS doubt_tickets_phone_idx ON doubt_tickets ((${PHONE10_SQL}))`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS doubt_tickets_submitted_idx ON doubt_tickets (submitted_at DESC)`);
+    }
 
-    const res = await pool.query('SELECT data FROM doubt_tickets ORDER BY submitted_at DESC');
+    const res = await pool.query('SELECT 1 FROM doubt_tickets LIMIT 1');
     if (res.rows.length > 0) {
-      ticketsStore = res.rows.map((r) => r.data as DoubtTicket);
+      lastDbSyncTime = 0;
+      await syncTicketsFromDb(true); // newest TICKETS_MEMORY_LIMIT only
     } else {
       for (const t of INITIAL_TICKETS) {
         await pool.query(
@@ -330,7 +395,8 @@ async function initDbTable() {
   }
 }
 
-initDbTable().catch(() => {});
+// A long-lived server warms its list at start. A Lambda container must not: every cold start of every route would pay for it.
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME) initDbTable().catch(() => {});
 
 async function getNextTicketNumber(): Promise<string> {
   let maxNum = 1088;
@@ -353,8 +419,12 @@ async function getNextTicketNumber(): Promise<string> {
 }
 
 function sanitizeTicketForList(t: DoubtTicket): any {
+  t = stripBlobs(t);
+  const small = (u?: string) => !!u && u !== '[attachment]' && u.length <= 50000;
   return {
     ...t,
+    diagramUrl: small(t.diagramUrl) ? t.diagramUrl : undefined,
+    diagramUrls: (t.diagramUrls || []).filter(small),
     submittedAtRelative: getRelativeTime(t.submittedAt),
     messages: (t.messages || []).map((m) => ({
       id: m.id,
@@ -370,11 +440,47 @@ function sanitizeTicketForList(t: DoubtTicket): any {
   };
 }
 
+// Who is calling comes from the verified token and the user row only, never from anything in the request body.
+const STAFF = new Set(['admin', 'faculty', 'teacher_assistant']);
+const callerRole = (req: Request): string =>
+  req.user?.role || (req.auth?.role as string) || (req.auth?.admin ? 'admin' : req.auth?.faculty ? 'faculty' : 'student');
+const phone10 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-10);
+const callerIdentity = (req: Request) => ({
+  email: String(req.user?.email || req.auth?.email || '').toLowerCase().trim(),
+  phone: phone10(req.user?.phone || (req.auth as any)?.phone_number || (req.auth as any)?.phone),
+});
+function isOwner(req: Request, t: DoubtTicket): boolean {
+  const me = callerIdentity(req);
+  const email = t.studentInfo?.email?.toLowerCase().trim();
+  return (!!me.email && email === me.email) || (me.phone.length === 10 && phone10(t.studentInfo?.phone) === me.phone);
+}
+
 const router = Router();
 
+// Every route with :id: staff, or the student who raised that ticket. Anyone else gets 403.
+router.param('id', async (req, res, next, id) => {
+  try {
+    if (STAFF.has(callerRole(req))) return next();
+    const ticket = await findTicketLight(String(id));
+    if (ticket && !isOwner(req, ticket)) {
+      res.status(403).json({ error: 'This is not your ticket' });
+      return;
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 // 1. GET /api/tickets — fetch all tickets
-router.get('/', async (_req: Request, res: Response) => {
-  syncTicketsFromDb(false).catch(() => {});
+router.get('/', async (req: Request, res: Response) => {
+  // The whole desk list: staff only (students use /my)
+  if (!STAFF.has(callerRole(req))) {
+    res.status(403).json({ error: 'Only staff can list all tickets' });
+    return;
+  }
+  await initDbTable().catch(() => {});
+  await syncTicketsFromDb(false);
   const now = Date.now();
   const ONE_HOUR = 60 * 60 * 1000;
   for (const t of ticketsStore) {
@@ -384,7 +490,7 @@ router.get('/', async (_req: Request, res: Response) => {
         t.status = 'resolved';
         t.resolvedAt = new Date().toISOString();
         t.resolvedBy = t.resolutionRequestedBy || t.assignedTo?.name || 'Auto-Closed';
-        saveTicketToDb(t);
+        await saveTicketToDb(t);
       }
     }
   }
@@ -395,40 +501,28 @@ router.get('/', async (_req: Request, res: Response) => {
 
 // 2. GET /api/tickets/my — fetch student tickets
 router.get('/my', async (req: Request, res: Response) => {
-  syncTicketsFromDb(false).catch(() => {});
-  const email = (
-    req.user?.email ||
-    (req.auth?.email as string | undefined) ||
-    (req.query.email as string | undefined)
-  )?.toLowerCase()?.trim();
-  const phone = (
-    req.user?.phone ||
-    (req.auth?.phone as string | undefined) ||
-    (req.query.phone as string | undefined)
-  )?.trim();
-  const idsQuery = ((req.query.ids as string | undefined) || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const userTickets = ticketsStore
-    .filter((t) => {
-      // 1. If explicit ticket IDs passed by client (e.g. from local storage), always include them
-      if (idsQuery.length > 0 && (idsQuery.includes(t.id) || idsQuery.includes(t.ticketNumber))) {
-        return true;
-      }
-      const tEmail = t.studentInfo?.email?.toLowerCase()?.trim();
-      const tPhone = t.studentInfo?.phone?.trim();
-      if (email && tEmail && (tEmail === email || tEmail.includes(email) || email.includes(tEmail))) return true;
-      if (phone && tPhone && (tPhone === phone || tPhone.includes(phone) || phone.includes(tPhone))) return true;
-      // Allow fallback if student was created with default fallback email
-      if (email && (email === 'student@edurain.in' || tEmail === 'student@edurain.in')) return true;
-      if (!email && !phone) return true;
-      return false;
-    })
-    .map(sanitizeTicketForList);
-
-  res.json({ success: true, data: userTickets });
+  await initDbTable().catch(() => {});
+  // Only the caller's own tickets, matched on the verified account's email or mobile number (last 10 digits).
+  // Nothing from the query string or a "no email, show everything" fallback: that leaked other students' tickets.
+  const me = callerIdentity(req);
+  const params: string[] = [];
+  const where: string[] = [];
+  if (me.email) {
+    params.push(me.email);
+    where.push(`${EMAIL_SQL} = $${params.length}`);
+  }
+  if (me.phone.length === 10) {
+    params.push(me.phone);
+    where.push(`${PHONE10_SQL} = $${params.length}`);
+  }
+  if (!where.length) {
+    res.json({ success: true, data: [] });
+    return;
+  }
+  const { rows } = await pool.query(`SELECT data FROM doubt_tickets WHERE ${where.join(' OR ')} ORDER BY submitted_at DESC LIMIT 200`, params);
+  const tickets = rows.map((r) => r.data as DoubtTicket);
+  const photos = await inflate(tickets.map((t) => ({ one: t.diagramUrl, many: t.diagramUrls })), blobStore);
+  res.json({ success: true, data: tickets.map((t, i) => ({ ...sanitizeTicketForList(t), diagramUrl: photos[i].one, diagramUrls: photos[i].many })) });
 });
 
 // 3. GET /api/tickets/analytics — Super Admin Performance tracking
@@ -483,7 +577,7 @@ router.get('/analytics', async (req: Request, res: Response) => {
 // 4. GET /api/tickets/:id — fetch single ticket
 router.get('/:id', async (req: Request, res: Response) => {
   await initDbTable().catch(() => {});
-  const { id } = req.params;
+  const id = String(req.params.id);
   const ticket = await findTicket(id);
   if (!ticket) {
     res.status(404).json({ error: 'Ticket not found' });
@@ -568,8 +662,8 @@ router.post('/', async (req: Request, res: Response) => {
         },
       ],
       studentInfo: {
-        email: studentEmail?.trim() || 'student@edurain.in',
-        phone: studentPhone?.trim() || '+91 98765 00000',
+        email: req.user?.email || studentEmail?.trim() || 'student@edurain.in',
+        phone: req.user?.phone || studentPhone?.trim() || '+91 98765 00000',
         targetExam: examTag?.trim() || 'JEE Mains',
         doubtsSolved: 12,
         attendance: '95%',
@@ -579,13 +673,7 @@ router.post('/', async (req: Request, res: Response) => {
       previousChats: [],
     };
 
-    ticketsStore.unshift(newTicket);
-
-    pool.query(
-      'INSERT INTO doubt_tickets (id, ticket_number, status, data, submitted_at) VALUES ($1, $2, $3, $4, $5)',
-      [newTicket.id, newTicket.ticketNumber, newTicket.status, JSON.stringify(newTicket), newTicket.submittedAt]
-    ).catch((err) => logger.warn({ err }, 'Failed to persist ticket to Postgres'));
-
+    await persistTicket(newTicket); // awaited: nothing runs after the response on Lambda, and a lost ticket must be an error
     // Emit live to CMS TA Pool and all connected clients
     const io = getIO();
     io?.emit('ticket_created', {
@@ -604,13 +692,13 @@ router.post('/', async (req: Request, res: Response) => {
 
 // 6. POST /api/tickets/:id/claim — TA claims/picks a ticket from Central Pool
 router.post('/:id/claim', async (req: Request, res: Response) => {
-  const role = req.user?.role || (req.auth?.role as string) || (req.auth?.admin ? 'admin' : (req.auth?.faculty ? 'faculty' : (req.body?.resolvedBy || req.body?.taEmail || req.body?.taName ? 'teacher_assistant' : 'student')));
+  const role = callerRole(req);
   if (role !== 'teacher_assistant' && role !== 'faculty' && role !== 'admin') {
     res.status(403).json({ error: 'Only teacher assistants, faculty, or admins can claim a ticket' });
     return;
   }
   await initDbTable().catch(() => {});
-  const { id } = req.params;
+  const id = String(req.params.id);
   const { taId, taName, taEmail } = req.body;
 
   const ticket = await findTicket(id);
@@ -646,7 +734,7 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
     ticket.status = 'in_progress';
   }
 
-  saveTicketToDb(ticket);
+  await saveTicketToDb(ticket);
 
   const io = getIO();
   const statusPayload = {
@@ -666,13 +754,13 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
 
 // 7. POST /api/tickets/:id/release — TA releases ticket back to Central Pool
 router.post('/:id/release', async (req: Request, res: Response) => {
-  const role = req.user?.role || (req.auth?.role as string) || (req.auth?.admin ? 'admin' : (req.auth?.faculty ? 'faculty' : (req.body?.resolvedBy || req.body?.taEmail || req.body?.taName ? 'teacher_assistant' : 'student')));
+  const role = callerRole(req);
   if (role !== 'teacher_assistant' && role !== 'faculty' && role !== 'admin') {
     res.status(403).json({ error: 'Only teacher assistants, faculty, or admins can release a ticket' });
     return;
   }
   await initDbTable().catch(() => {});
-  const { id } = req.params;
+  const id = String(req.params.id);
 
   const ticket = await findTicket(id);
   if (!ticket) {
@@ -683,7 +771,7 @@ router.post('/:id/release', async (req: Request, res: Response) => {
   ticket.assignedTo = null;
   ticket.status = 'queue';
 
-  saveTicketToDb(ticket);
+  await saveTicketToDb(ticket);
 
   const io = getIO();
   const statusPayload = {
@@ -703,13 +791,13 @@ router.post('/:id/release', async (req: Request, res: Response) => {
 
 // 8. POST /api/tickets/:id/request-resolution — Teacher requests resolution
 router.post('/:id/request-resolution', async (req: Request, res: Response) => {
-  const role = req.user?.role || (req.auth?.role as string) || (req.auth?.admin ? 'admin' : (req.auth?.faculty ? 'faculty' : (req.body?.resolvedBy || req.body?.taEmail || req.body?.taName ? 'teacher_assistant' : 'student')));
+  const role = callerRole(req);
   if (role !== 'teacher_assistant' && role !== 'faculty' && role !== 'admin') {
     res.status(403).json({ error: 'Only teacher assistants, faculty, or admins can request resolution' });
     return;
   }
   await initDbTable().catch(() => {});
-  const { id } = req.params;
+  const id = String(req.params.id);
   const { resolvedBy } = req.body;
 
   const ticket = await findTicket(id);
@@ -722,7 +810,7 @@ router.post('/:id/request-resolution', async (req: Request, res: Response) => {
   ticket.resolutionRequestedAt = new Date().toISOString();
   ticket.resolutionRequestedBy = req.user?.name || (req.auth?.name as string | undefined) || resolvedBy || ticket.assignedTo?.name || 'Teacher Assistant';
 
-  saveTicketToDb(ticket);
+  await saveTicketToDb(ticket);
 
   const io = getIO();
   const resPayload = {
@@ -745,7 +833,7 @@ router.post('/:id/request-resolution', async (req: Request, res: Response) => {
 // 9. POST /api/tickets/:id/action & /api/tickets/:id/resolution-action — Student action: 'solved' or 'followup'
 const handleTicketAction = async (req: Request, res: Response) => {
   await initDbTable().catch(() => {});
-  const { id } = req.params;
+  const id = String(req.params.id);
   const { action, message, messageId, attachments } = req.body;
 
   const ticket = await findTicket(id);
@@ -761,7 +849,7 @@ const handleTicketAction = async (req: Request, res: Response) => {
     ticket.resolvedAt = new Date().toISOString();
     ticket.resolvedBy = ticket.resolutionRequestedBy || ticket.assignedTo?.name || 'Teacher Assistant';
 
-    saveTicketToDb(ticket);
+    await saveTicketToDb(ticket);
 
     const statusPayload = {
       ticketId: ticket.id,
@@ -786,7 +874,7 @@ const handleTicketAction = async (req: Request, res: Response) => {
 
     // Idempotency: skip adding if messageId already exists
     if (messageId && ticket.messages.some((m) => m.id === messageId)) {
-      saveTicketToDb(ticket);
+      await saveTicketToDb(ticket);
       res.json({ success: true, data: ticket });
       return;
     }
@@ -813,7 +901,7 @@ const handleTicketAction = async (req: Request, res: Response) => {
       io?.emit('new_message', msgPayload);
     }
 
-    saveTicketToDb(ticket);
+    await saveTicketToDb(ticket);
 
     const statusPayload = {
       ticketId: ticket.id,
@@ -838,8 +926,9 @@ router.post('/:id/resolution-action', handleTicketAction);
 // 10. POST /api/tickets/:id/reply — Sends message in conversation thread
 router.post('/:id/reply', async (req: Request, res: Response) => {
   await initDbTable().catch(() => {});
-  const { id } = req.params;
-  const { text, senderName, sender = 'ta', attachments, attachmentUrl, id: clientMsgId } = req.body;
+  const id = String(req.params.id);
+  const { text, senderName, attachments, attachmentUrl, id: clientMsgId } = req.body;
+  const sender = STAFF.has(callerRole(req)) ? 'ta' : 'student';
 
   if (!text && (!attachments || attachments.length === 0) && !attachmentUrl) {
     res.status(400).json({ error: 'Message text or attachment is required' });
@@ -869,7 +958,7 @@ router.post('/:id/reply', async (req: Request, res: Response) => {
   const replyMsg: ChatMessage = {
     id: clientMsgId || `m-${sender}-${Date.now()}`,
     sender: sender === 'student' ? 'student' : 'ta',
-    senderName: senderName || (sender === 'student' ? ticket.studentName : 'Teacher Assistant'),
+    senderName: req.user?.name || senderName || (sender === 'student' ? ticket.studentName : 'Teacher Assistant'),
     text: text || '',
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     attachmentUrl: allAttachments[0] || undefined,
@@ -881,7 +970,7 @@ router.post('/:id/reply', async (req: Request, res: Response) => {
     ticket.status = 'in_progress';
   }
 
-  saveTicketToDb(ticket);
+  await saveTicketToDb(ticket);
 
   const io = getIO();
   const msgPayload = {
@@ -903,7 +992,7 @@ router.post('/:id/reply', async (req: Request, res: Response) => {
 // 11. POST /api/tickets/:id/resolve — fallback direct resolve
 router.post('/:id/resolve', async (req: Request, res: Response) => {
   await initDbTable().catch(() => {});
-  const { id } = req.params;
+  const id = String(req.params.id);
   const { resolvedBy } = req.body || {};
 
   const ticket = await findTicket(id);
@@ -916,7 +1005,7 @@ router.post('/:id/resolve', async (req: Request, res: Response) => {
   ticket.resolvedAt = new Date().toISOString();
   ticket.resolvedBy = resolvedBy || ticket.assignedTo?.name || 'Teacher Assistant';
 
-  saveTicketToDb(ticket);
+  await saveTicketToDb(ticket);
 
   const io = getIO();
   const statusPayload = {
