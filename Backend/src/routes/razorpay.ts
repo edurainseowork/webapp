@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { userCoursesTable, coursesTable, paymentsTable, usersTable } from "@workspace/db/schema";
 import { CreatePaymentOrderBody, PaymentFailedBody, VerifyPaymentBody } from "@workspace/api-zod";
 import { eq, and, sql } from "drizzle-orm";
@@ -290,20 +290,54 @@ router.post("/failed", requireAuth, async (req, res) => {
   }
 });
 
+const userCoursesCache = new Map<number, { courseIds: number[]; cachedAt: number }>();
+const COURSES_CACHE_TTL_MS = 60 * 1000;
+
+export function invalidateUserCoursesCache(userId?: number) {
+  if (userId) userCoursesCache.delete(userId);
+  else userCoursesCache.clear();
+}
+
 // Course ids the signed-in student has bought, so the app can unlock them on any device
 router.get("/my-courses", requireAuth, async (req, res) => {
+  let userId: number | undefined;
   try {
     const user = await studentOf(req);
     if (!user) {
       res.json({ success: true, data: [] });
       return;
     }
-    const rows = await db.selectDistinct({ courseId: userCoursesTable.courseId })
-      .from(userCoursesTable)
-      .where(eq(userCoursesTable.userId, user.id));
-    res.json({ success: true, data: rows.map((row) => row.courseId) });
+    userId = user.id;
+
+    // 1. Fast cache check (< 1ms)
+    const cached = userCoursesCache.get(user.id);
+    if (cached && Date.now() - cached.cachedAt < COURSES_CACHE_TTL_MS) {
+      res.json({ success: true, data: cached.courseIds });
+      return;
+    }
+
+    // 2. Query from database with direct pool fallback on network jitter
+    let courseIds: number[] = [];
+    try {
+      const rows = await db.selectDistinct({ courseId: userCoursesTable.courseId })
+        .from(userCoursesTable)
+        .where(eq(userCoursesTable.userId, user.id));
+      courseIds = rows.map((row) => row.courseId);
+    } catch (drizzleErr) {
+      logger.warn({ err: drizzleErr, userId: user.id }, "Drizzle selectDistinct failed, trying raw pool query fallback");
+      const direct = await pool.query('SELECT DISTINCT course_id FROM user_courses WHERE user_id = $1', [user.id]);
+      courseIds = direct.rows.map((r: any) => Number(r.course_id)).filter((id: number) => Number.isInteger(id));
+    }
+
+    userCoursesCache.set(user.id, { courseIds, cachedAt: Date.now() });
+    res.json({ success: true, data: courseIds });
   } catch (error) {
     logger.error({ err: error }, "Failed to fetch purchased courses");
+    // Resilient fallback: return stale cache if available instead of sending 500 and wiping student screen
+    if (userId && userCoursesCache.has(userId)) {
+      res.json({ success: true, data: userCoursesCache.get(userId)!.courseIds });
+      return;
+    }
     res.status(500).json({ error: "Failed to fetch purchased courses" });
   }
 });

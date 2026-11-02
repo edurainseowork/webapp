@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { and, asc, count, eq, gt, lt, ne } from "drizzle-orm";
+import { and, asc, count, eq, gt, lt, ne, sql } from "drizzle-orm";
 import {
   db,
   categoriesTable,
@@ -289,6 +289,7 @@ router.get("/bookings", async (req, res) => {
       startsAt: mentorSlotsTable.startsAt,
       durationMinutes: mentorSlotsTable.durationMinutes,
       courseTitle: coursesTable.title,
+      meetLink: sql<string | null>`mentor_bookings.meet_link`,
     })
     .from(mentorBookingsTable)
     .innerJoin(mentorSlotsTable, eq(mentorBookingsTable.slotId, mentorSlotsTable.id))

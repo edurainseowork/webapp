@@ -245,6 +245,94 @@ router.post("/category", rateLimit({ windowMs: 60_000, max: 15 }), async (req, r
   });
 });
 
+// Send targeted notification to all students enrolled in a specific batch / course
+router.post("/batch", rateLimit({ windowMs: 60_000, max: 15 }), async (req, res) => {
+  const { courseId, title, description, link } = req.body ?? {};
+  const numCourseId = Number(courseId);
+  if (!numCourseId || Number.isNaN(numCourseId) || numCourseId <= 0) {
+    throw new HttpError(400, "Valid course/batch ID is required");
+  }
+  if (!title || typeof title !== "string" || !title.trim()) {
+    throw new HttpError(400, "Notification title is required");
+  }
+  if (!description || typeof description !== "string" || !description.trim()) {
+    throw new HttpError(400, "Notification message is required");
+  }
+
+  const [course] = await db.select().from(coursesTable).where(eq(coursesTable.id, numCourseId)).limit(1);
+  if (!course) {
+    throw new HttpError(404, "Batch not found");
+  }
+
+  const enrolledRows = await db.selectDistinct({ userId: userCoursesTable.userId })
+    .from(userCoursesTable)
+    .where(eq(userCoursesTable.courseId, numCourseId));
+
+  const userIds = enrolledRows.map((r) => r.userId);
+  if (userIds.length === 0) {
+    res.json({
+      success: true,
+      recipientCount: 0,
+      pushSentCount: 0,
+      message: `No active students found in batch "${course.title}".`,
+    });
+    return;
+  }
+
+  const CHUNK_SIZE = 1000;
+  for (let i = 0; i < userIds.length; i += CHUNK_SIZE) {
+    const chunk = userIds.slice(i, i + CHUNK_SIZE);
+    await db.insert(notificationsTable).values(
+      chunk.map((uid) => ({
+        userId: uid,
+        type: "admin",
+        title: title.trim(),
+        body: description.trim(),
+        isRead: false,
+      }))
+    );
+  }
+
+  const tokens: string[] = [];
+  for (let i = 0; i < userIds.length; i += CHUNK_SIZE) {
+    const chunk = userIds.slice(i, i + CHUNK_SIZE);
+    const rows = await db.select({ token: pushTokensTable.token })
+      .from(pushTokensTable)
+      .where(inArray(pushTokensTable.userId, chunk));
+    for (const r of rows) tokens.push(r.token);
+  }
+  let push = { sent: 0, failed: 0 };
+  if (tokens.length > 0) {
+    push = await sendExpoPush(tokens, {
+      title: title.trim(),
+      body: description.trim(),
+      data: {
+        type: "batch_admin_notification",
+        courseId: numCourseId,
+        link: link || undefined,
+      },
+    });
+  }
+
+  const [notification] = await db.insert(adminNotificationsTable).values({
+    title: `[Batch: ${course.title}] ${title.trim()}`,
+    body: description.trim(),
+    link: link || null,
+    sentBy: req.auth?.email ?? null,
+    recipientCount: userIds.length,
+    pushSentCount: push.sent,
+    pushFailedCount: push.failed,
+  }).returning();
+
+  logger.info({ courseId: numCourseId, batch: course.title, recipientCount: userIds.length, ...push }, "Batch notification sent");
+  res.status(201).json({
+    success: true,
+    data: notification,
+    recipientCount: userIds.length,
+    pushSentCount: push.sent,
+  });
+});
+
 // Delete an admin notification (CMS): removes it so it disappears from students' in-app notifications
 router.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);

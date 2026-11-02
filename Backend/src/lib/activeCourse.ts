@@ -25,13 +25,34 @@ export async function readActiveCourse(userId: number): Promise<number | null> {
 }
 
 /** Makes an owned course active and moves the goal to its category. Returns the new goal category id (or null). */
-export async function setActiveCourse(userId: number, courseId: number): Promise<number | null> {
+export type GoalCategoryResult = { id: number; name: string; slug: string } | null;
+
+/** Makes an owned course active and moves the goal to its category. Returns the new goal category id and goal object. */
+export async function setActiveCourse(
+  userId: number,
+  courseId: number,
+): Promise<{ goalCategoryId: number | null; goal: GoalCategoryResult }> {
   await ensureMentorshipSchema();
-  const { rows } = await db.execute<{ category_id: number | null }>(sql`
-    SELECT c.category_id FROM user_courses uc JOIN courses c ON c.id = uc.course_id
+  const { rows } = await db.execute<{
+    category_id: number | null;
+    cat_name: string | null;
+    cat_slug: string | null;
+  }>(sql`
+    SELECT c.category_id, cat.name as cat_name, cat.slug as cat_slug
+    FROM user_courses uc
+    JOIN courses c ON c.id = uc.course_id
+    LEFT JOIN categories cat ON cat.id = c.category_id
     WHERE uc.user_id = ${userId} AND uc.course_id = ${courseId} LIMIT 1`);
   if (!rows[0]) throw new HttpError(403, "You can only make a course you are enrolled in active");
   const categoryId = rows[0].category_id == null ? null : Number(rows[0].category_id);
+  const goal: GoalCategoryResult =
+    categoryId && rows[0].cat_name
+      ? {
+          id: categoryId,
+          name: rows[0].cat_name,
+          slug: rows[0].cat_slug || rows[0].cat_name.toLowerCase(),
+        }
+      : null;
 
   await db.transaction(async (tx) => {
     await tx.execute(sql`
@@ -44,7 +65,7 @@ export async function setActiveCourse(userId: number, courseId: number): Promise
     }
   });
   await invalidateSafe(() => invalidateCacheKey(cacheKey(userId)));
-  return categoryId;
+  return { goalCategoryId: categoryId, goal };
 }
 
 /**

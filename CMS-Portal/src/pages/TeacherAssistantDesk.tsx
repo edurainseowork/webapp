@@ -109,6 +109,8 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isStudentTyping, setIsStudentTyping] = useState(false);
+  const typingTimerRef = useRef<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const taChatFileInputRef = useRef<HTMLInputElement>(null);
@@ -126,8 +128,14 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
     try {
       const res = await apiFetch<{ success: boolean; data: DoubtTicket[] }>('/tickets');
       if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-        setTickets(res.data);
-        saveStoredTickets(res.data);
+        const seen = new Set<string>();
+        const unique = res.data.filter((t) => {
+          if (!t || !t.id || seen.has(t.id)) return false;
+          seen.add(t.id);
+          return true;
+        });
+        setTickets(unique);
+        saveStoredTickets(unique);
       }
     } catch {
       // Keep using stored tickets if network fails
@@ -159,7 +167,12 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
       const ticket: DoubtTicket = data?.ticket || data;
       if (!ticket || (!ticket.id && !ticket.ticketNumber)) return;
       setTickets((prev) => {
-        if (prev.some((t) => t.id === ticket.id || t.ticketNumber === ticket.ticketNumber)) return prev;
+        const matches = (t: DoubtTicket) =>
+          (ticket.id && t.id === ticket.id) ||
+          (ticket.ticketNumber && t.ticketNumber === ticket.ticketNumber) ||
+          (ticket.id && t.ticketNumber === ticket.id) ||
+          (ticket.ticketNumber && t.id === ticket.ticketNumber);
+        if (prev.some(matches)) return prev;
         return [ticket, ...prev];
       });
       showToast(`New doubt added to pool: #${ticket.ticketNumber || ticket.id}`);
@@ -169,7 +182,12 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
       const ticket: DoubtTicket = data?.ticket || data;
       if (!ticket || (!ticket.id && !ticket.ticketNumber)) return;
       setTickets((prev) => {
-        const idx = prev.findIndex((t) => t.id === ticket.id || t.ticketNumber === ticket.ticketNumber);
+        const matches = (t: DoubtTicket) =>
+          (ticket.id && t.id === ticket.id) ||
+          (ticket.ticketNumber && t.ticketNumber === ticket.ticketNumber) ||
+          (ticket.id && t.ticketNumber === ticket.id) ||
+          (ticket.ticketNumber && t.id === ticket.ticketNumber);
+        const idx = prev.findIndex(matches);
         if (idx >= 0) {
           const updated = [...prev];
           updated[idx] = { ...updated[idx], ...ticket };
@@ -247,6 +265,13 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
       showToast(`Ticket #${payload.ticketNumber || payload.ticketId} marked as Doubt Solved by student.`);
     });
 
+    socket.on('typing', (payload: { ticketId: string; sender: string; isTyping: boolean }) => {
+      if (!payload) return;
+      if (payload.sender === 'student') {
+        setIsStudentTyping(payload.isTyping);
+      }
+    });
+
     const handleFocus = () => {
       fetchTickets();
     };
@@ -294,25 +319,48 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
     }
   }, [activeTicket?.messages.length, activeDetailTab]);
 
+  // Check if ticket is claimed by current TA (matches email, profile email, user email, or display name)
+  const isClaimedByMe = (t?: DoubtTicket | null): boolean => {
+    if (!t || !t.assignedTo) return false;
+    const assignedEmail = (t.assignedTo.email || '').trim().toLowerCase();
+    const assignedName = (t.assignedTo.name || '').trim().toLowerCase();
+    const currentEmail = effectiveEmail.trim().toLowerCase();
+    const currentName = (effectiveName || '').trim().toLowerCase();
+    const profEmail = (profile.email || '').trim().toLowerCase();
+    const profName = (profile.name || '').trim().toLowerCase();
+    const userEmail = (user?.email || '').trim().toLowerCase();
+
+    if (assignedEmail && (assignedEmail === currentEmail || assignedEmail === profEmail || assignedEmail === userEmail)) {
+      return true;
+    }
+    if (assignedName && (assignedName === currentName || assignedName === profName || currentName.includes(assignedName) || assignedName.includes(currentName))) {
+      return true;
+    }
+    return false;
+  };
+
   // Counts based on Central Pool and Claims
   const poolCount = useMemo(
     () => tickets.filter((t) => (!t.assignedTo || !t.assignedTo.email) && t.status !== 'resolved').length,
     [tickets]
   );
   const myClaimedCount = useMemo(
-    () =>
-      tickets.filter(
-        (t) => t.assignedTo && t.assignedTo.email?.toLowerCase() === effectiveEmail && t.status !== 'resolved'
-      ).length,
-    [tickets, effectiveEmail]
+    () => tickets.filter((t) => isClaimedByMe(t) && t.status !== 'resolved').length,
+    [tickets, effectiveEmail, profile.email, profile.name, user?.email]
   );
   const resolvedCount = useMemo(() => tickets.filter((t) => t.status === 'resolved').length, [tickets]);
 
   // Filtered & Sorted Tickets
   const displayedTickets = useMemo(() => {
+    const seenKeys = new Set<string>();
     let list = tickets.filter((t) => {
+      if (!t) return false;
+      const key = (t.ticketNumber || t.id || '').trim().toLowerCase();
+      if (key && seenKeys.has(key)) return false;
+      if (key) seenKeys.add(key);
+
       if (activeNav === 'pool') return (!t.assignedTo || !t.assignedTo.email) && t.status !== 'resolved';
-      if (activeNav === 'my_claimed') return t.assignedTo && t.assignedTo.email?.toLowerCase() === effectiveEmail && t.status !== 'resolved';
+      if (activeNav === 'my_claimed') return isClaimedByMe(t) && t.status !== 'resolved';
       if (activeNav === 'resolved') return t.status === 'resolved';
       return true;
     });
@@ -333,12 +381,18 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
     }
 
     return list;
-  }, [tickets, activeNav, searchQuery, sortOrder, effectiveEmail]);
+  }, [tickets, activeNav, searchQuery, sortOrder, effectiveEmail, profile.email, profile.name, user?.email]);
 
   // Handlers
-  const handleSelectTicket = (id: string) => {
+  const handleSelectTicket = async (id: string) => {
     setSelectedTicketId(id);
     setActiveDetailTab('question');
+    try {
+      const res = await apiFetch<{ success: boolean; data: DoubtTicket }>(`/tickets/${id}`);
+      if (res && res.data) {
+        setTickets((prev) => prev.map((t) => (t.id === id ? { ...t, ...res.data } : t)));
+      }
+    } catch {}
   };
 
   const handleCloseSplit = () => {
@@ -359,6 +413,7 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
     setTickets((prev) =>
       prev.map((t) => (t.id === ticketId ? { ...t, assignedTo: taData, status: 'in_progress' } : t))
     );
+    setActiveNav('my_claimed');
     showToast('Ticket claimed! It is now locked to your workspace.');
 
     try {
@@ -423,6 +478,27 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
     }
   };
 
+  const handleChatInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setChatInput(e.target.value);
+    if (activeTicket && socketRef.current) {
+      socketRef.current.emit('typing', {
+        ticketId: activeTicket.id,
+        sender: 'ta',
+        isTyping: true,
+        senderName: effectiveName,
+      });
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = setTimeout(() => {
+        socketRef.current?.emit('typing', {
+          ticketId: activeTicket.id,
+          sender: 'ta',
+          isTyping: false,
+          senderName: effectiveName,
+        });
+      }, 2000);
+    }
+  };
+
   const handleSendMessage = async (e?: FormEvent) => {
     if (e) e.preventDefault();
     if (!activeTicket) return;
@@ -436,7 +512,7 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
       showToast('Please pick this doubt first before sending a message!');
       return;
     }
-    if (activeTicket.assignedTo.email?.toLowerCase() !== effectiveEmail) {
+    if (!isClaimedByMe(activeTicket)) {
       showToast(`This doubt is assigned to ${activeTicket.assignedTo.name}. Only the assigned teacher can reply.`);
       return;
     }
@@ -501,7 +577,7 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
       showToast('Please pick this doubt first before requesting resolution!');
       return;
     }
-    if (activeTicket.assignedTo.email?.toLowerCase() !== effectiveEmail) {
+    if (!isClaimedByMe(activeTicket)) {
       showToast(`This doubt is assigned to ${activeTicket.assignedTo.name}. Only the assigned teacher can request resolution.`);
       return;
     }
@@ -963,7 +1039,7 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
                       >
                         Pick Doubt
                       </button>
-                    ) : activeTicket.assignedTo?.email === profile.email && activeTicket.status !== 'resolved' ? (
+                    ) : isClaimedByMe(activeTicket) && activeTicket.status !== 'resolved' ? (
                       <button
                         onClick={() => handleReleaseTicket(activeTicket.id)}
                         style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
@@ -1238,7 +1314,7 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
                     👉 Pick Doubt to Start Solving
                   </button>
                 </div>
-              ) : activeTicket.assignedTo?.email?.toLowerCase() !== effectiveEmail ? (
+              ) : !isClaimedByMe(activeTicket) ? (
                 <div className="ta-chat-bottom-bar ta-claimed-other-bar">
                   <div className="ta-lock-info">
                     <span className="ta-lock-icon">👤</span>
@@ -1269,11 +1345,16 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
 
                   {/* Chat Input form */}
                   <form onSubmit={handleSendMessage} className="ta-chat-input-wrap">
+                    {isStudentTyping && (
+                      <div style={{ position: 'absolute', top: '-22px', left: '12px', fontSize: '11px', color: '#38bdf8', fontWeight: 600 }}>
+                        ✍️ Student is typing...
+                      </div>
+                    )}
                     <input
                       type="text"
                       placeholder={isTaCompressing ? "Compressing image..." : "Type your message here..."}
                       value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
+                      onChange={handleChatInputChange}
                       className="ta-chat-input"
                     />
                     <button type="submit" className="ta-send-btn" title="Send message">

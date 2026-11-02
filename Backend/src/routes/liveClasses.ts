@@ -2,10 +2,12 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { coursesTable, liveClassesTable, notificationsTable, userCoursesTable, type LiveClass } from "@workspace/db/schema";
 import { CreateLiveClassBody, getLiveClassStatus } from "@workspace/api-zod";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { findDbUserId, requireAdmin, requireAuth } from "../middlewares/auth.js";
 import { rateLimit } from "../middlewares/security";
 import { logger } from "../lib/logger";
+import { pushTokensTable } from "@workspace/db/schema";
+import { sendExpoPush } from "../lib/expoPush";
 import {
   MAX_NOTIFICATIONS_PER_USER,
   canSeeLiveClasses,
@@ -84,6 +86,22 @@ router.post("/courses/:courseId/live-classes", requireAdmin, async (req, res) =>
       return { liveClass, notifiedCount };
     });
     await invalidateLiveClasses(courseId);
+    try {
+      const enrolledStudents = await db.selectDistinct({ userId: userCoursesTable.userId })
+        .from(userCoursesTable)
+        .where(eq(userCoursesTable.courseId, courseId));
+      if (enrolledStudents.length > 0) {
+        const uids = enrolledStudents.map((s) => s.userId);
+        const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(inArray(pushTokensTable.userId, uids))).map((r) => r.token);
+        if (tokens.length > 0) {
+          sendExpoPush(tokens, {
+            title: `🔴 Live Class: ${result.liveClass.title}`,
+            body: `${course.title} · Live Class is starting / scheduled!`,
+            data: { type: "live_class", liveClassId: result.liveClass.id, courseId },
+          }).catch(() => {});
+        }
+      }
+    } catch {}
     logger.info({ adminUid: req.auth?.uid, courseId, liveClassId: result.liveClass.id, notified: result.notifiedCount }, "Live class scheduled");
 
     res.status(201).json({ success: true, data: serializeLiveClass(result.liveClass), notifiedCount: result.notifiedCount });
@@ -170,6 +188,22 @@ router.post("/live-classes/:id/notify", requireAdmin, async (req, res) => {
     }
 
     const notifiedCount = await db.transaction((tx) => notifyEnrolledStudents(tx, row.liveClass, row.courseTitle));
+    try {
+      const enrolledStudents = await db.selectDistinct({ userId: userCoursesTable.userId })
+        .from(userCoursesTable)
+        .where(eq(userCoursesTable.courseId, row.liveClass.courseId));
+      if (enrolledStudents.length > 0) {
+        const uids = enrolledStudents.map((s) => s.userId);
+        const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(inArray(pushTokensTable.userId, uids))).map((r) => r.token);
+        if (tokens.length > 0) {
+          sendExpoPush(tokens, {
+            title: `🔴 Live Class: ${row.liveClass.title}`,
+            body: `${row.courseTitle} · Live Class announcement!`,
+            data: { type: "live_class", liveClassId: row.liveClass.id, courseId: row.liveClass.courseId },
+          }).catch(() => {});
+        }
+      }
+    } catch {}
     res.json({ success: true, notifiedCount });
   } catch (error) {
     logger.error({ err: error, id }, "Failed to send live class notifications");

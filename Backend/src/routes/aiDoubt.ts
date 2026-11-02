@@ -236,9 +236,10 @@ const aiStreamLimiter = rateLimit({
 router.post("/stream", aiStreamLimiter, async (req: Request, res: Response) => {
   await ensureAiTables();
   const userId = resolveUserIdentifier(req);
-  const { prompt, sessionId, cohort } = req.body || {};
+  const { sessionId, cohort } = req.body || {};
+  const prompt = String(req.body?.prompt || req.body?.message || "").trim();
 
-  if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+  if (!prompt) {
     res.status(400).json({ error: "Prompt is required." });
     return;
   }

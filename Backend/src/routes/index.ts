@@ -102,7 +102,7 @@ router.use("/auth", authRouter);
 
 // 5. Student Write & Interactive Endpoints (60 req / 60s Token Bucket per User)
 router.use("/profile", studentActionLimiter, profileRouter);
-router.use("/tickets", authenticateToken, studentActionLimiter, ticketsRouter);
+router.use("/tickets", identifyStudent, studentActionLimiter, ticketsRouter);
 router.use("/me/goal", studentActionLimiter, studentGoalRouter);
 // The one active course among the student's courses
 router.use("/me/active-course", activeCourseRouter); // PUT has its own token-bucket limit

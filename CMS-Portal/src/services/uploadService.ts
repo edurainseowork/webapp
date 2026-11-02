@@ -283,10 +283,20 @@ export async function uploadTeacherVideo(
 
   const resData = await backendRes.json().catch(() => ({}));
   if (!backendRes.ok || !resData.uploadLink) {
-    throw new Error(resData?.error || `Could not obtain Vimeo upload link (${backendRes.status})`);
+    throw new Error(resData?.error || `Could not obtain video upload link (${backendRes.status})`);
   }
 
-  const { uploadLink, vimeoVideoId } = resData;
+  const { uploadLink, vimeoVideoId, videoId, libraryId, signature, expire, playerUrl } = resData;
+  const targetVideoId = videoId || vimeoVideoId;
+
+  // Step B: Direct resumable upload via tus protocol (supports Bunny Stream & Vimeo)
+  const tusHeaders: Record<string, string> = {};
+  if (signature && expire && targetVideoId && libraryId) {
+    tusHeaders['AuthorizationSignature'] = signature;
+    tusHeaders['AuthorizationExpire'] = String(expire);
+    tusHeaders['VideoId'] = targetVideoId;
+    tusHeaders['LibraryId'] = String(libraryId);
+  }
 
   // Step B: Direct resumable upload to Vimeo via tus
   return new Promise((resolve, reject) => {
@@ -295,12 +305,17 @@ export async function uploadTeacherVideo(
     }
 
     const upload = new tus.Upload(file, {
-      uploadUrl: uploadLink,
+      // Omit uploadUrl for Bunny Stream so tus sends POST creation request first
       endpoint: uploadLink,
+      headers: tusHeaders,
+      metadata: {
+        filetype: file.type || 'video/mp4',
+        title: metadata.title || file.name,
+      },
       retryDelays: [0, 3000, 5000, 10000],
       chunkSize: 5 * 1024 * 1024, // 5MB chunks (optimal for browser uploads)
       onError: (error) => {
-        console.error('Vimeo Tus Upload failed:', error);
+        console.error('Bunny Stream Tus Upload failed:', error);
         reject(error);
       },
       onProgress: (bytesUploaded, bytesTotal) => {
@@ -310,10 +325,10 @@ export async function uploadTeacherVideo(
         }
       },
       onSuccess: () => {
-        console.log('Upload complete. Vimeo Video ID:', vimeoVideoId);
+        console.log('[uploadService] Upload complete. Video ID:', targetVideoId);
         resolve({
-          vimeoVideoId,
-          playerUrl: `https://player.vimeo.com/video/${vimeoVideoId}`,
+          vimeoVideoId: targetVideoId,
+          playerUrl: playerUrl || (libraryId ? `https://iframe.mediadelivery.net/embed/${libraryId}/${targetVideoId}` : `https://player.vimeo.com/video/${targetVideoId}`),
         });
       },
     });

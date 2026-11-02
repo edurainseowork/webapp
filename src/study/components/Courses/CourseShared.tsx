@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronRight, CheckCircle2, SearchX, AlertTriangle, RefreshCw, BookOpen, Star } from 'lucide-react';
+import { ChevronRight, CheckCircle2, SearchX, AlertTriangle, RefreshCw, BookOpen, Star, Video, Users, Clock3 } from 'lucide-react';
 import { Batch, CatalogFilter, HeaderTone, StatusTone } from './courseData';
 
 /* ------------------------------------------------------------------ */
@@ -133,7 +133,26 @@ export function BatchCard({ batch, onOpen, onBuy, owned = false }: { batch: Batc
             <span className="truncate">{meta.text}</span>
           </p>
         )}
-        <p className="flex items-center gap-2 text-[12px] text-slate-600 mt-1.5">
+
+        {/* Dynamic Course Metrics: Lessons & Students Enrolled */}
+        {(batch.totalLessons || batch.studentsEnrolled) ? (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            {batch.totalLessons ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#175A67] bg-[#EAF3F1] px-2 py-0.5 rounded-md">
+                <Video className="w-3 h-3 text-[#175A67]" />
+                {batch.totalLessons} {batch.totalLessons === 1 ? 'lesson' : 'lessons'}
+              </span>
+            ) : null}
+            {batch.studentsEnrolled ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#175A67] bg-[#EAF3F1] px-2 py-0.5 rounded-md">
+                <Users className="w-3 h-3 text-[#175A67]" />
+                {batch.studentsEnrolled.toLocaleString('en-IN')}+ enrolled
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
+        <p className="flex items-center gap-2 text-[12px] text-slate-600 mt-2">
           <span className={`w-2.5 h-2.5 rounded-full shrink-0 ring-4 ring-slate-100 ${STATUS_DOTS[batch.status.tone]}`} />
           {batch.status.text}
         </p>

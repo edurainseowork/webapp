@@ -40,6 +40,7 @@ const STATEMENTS = [
         created_at timestamp NOT NULL DEFAULT now())`,
   sql`CREATE INDEX IF NOT EXISTS mentor_bookings_user_id_idx ON mentor_bookings (user_id)`,
   sql`CREATE INDEX IF NOT EXISTS mentor_bookings_mentor_uid_idx ON mentor_bookings (mentor_uid)`,
+  sql`ALTER TABLE mentor_bookings ADD COLUMN IF NOT EXISTS meet_link text`,
   sql`CREATE TABLE IF NOT EXISTS mentor_favorites (
         user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         mentor_uid text NOT NULL,
@@ -143,3 +144,5 @@ export function ensureMentorshipSchema(): Promise<void> {
     throw err;
   }));
 }
+
+

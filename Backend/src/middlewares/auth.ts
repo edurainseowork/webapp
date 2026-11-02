@@ -5,10 +5,10 @@ import { eq } from "drizzle-orm";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { verifyCourseEntitlement, isAdminOrFaculty, syncOrLookupUser } from "../middleware/auth.js";
 
-export const findDbUserId = async (firebaseUid: string): Promise<number | null> => {
+export const findDbUserId = async (firebaseUid: string, decoded?: DecodedIdToken): Promise<number | null> => {
   const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.firebaseUid, firebaseUid)).limit(1);
   if (user) return user.id;
-  const created = await syncOrLookupUser({ uid: firebaseUid } as any);
+  const created = await syncOrLookupUser(decoded || ({ uid: firebaseUid } as any));
   return created?.id ?? null;
 };
 

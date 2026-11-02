@@ -382,9 +382,9 @@ function App() {
     web_home: { title: 'Web Home Page', platform: 'Web', ratioName: '~5.1:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1276×250 px' },
     courses: { title: 'Web Courses Page', platform: 'Web', ratioName: '~5.1:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1276×250 px' },
     purchases: { title: 'Web Purchases (Your Enrolled Courses)', platform: 'Web', ratioName: '~5.1:1', minRatio: 2.2, maxRatio: 6.5, idealSize: '1276×250 px' },
-    home: { title: 'Mobile Home Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
-    mobile_courses: { title: 'Mobile Courses Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
-    mobile_purchases: { title: 'Mobile Purchases Page', platform: 'Mobile', ratioName: '~1.8:1', minRatio: 1.55, maxRatio: 2.05, idealSize: '1080×600 px (or 720×400 px)' },
+    home: { title: 'Mobile Home Page', platform: 'Mobile', ratioName: '~2.25:1', minRatio: 1.75, maxRatio: 2.65, idealSize: '720×320 px (or 1080×480 px)' },
+    mobile_courses: { title: 'Mobile Courses Page', platform: 'Mobile', ratioName: '~2.25:1', minRatio: 1.75, maxRatio: 2.65, idealSize: '720×320 px (or 1080×480 px)' },
+    mobile_purchases: { title: 'Mobile Purchases Page', platform: 'Mobile', ratioName: '~2.25:1', minRatio: 1.75, maxRatio: 2.65, idealSize: '720×320 px (or 1080×480 px)' },
   };
 
   const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1031,7 +1031,7 @@ function App() {
                         transition: 'all 0.2s ease',
                       }}
                     >
-                      📱 Mobile App Banners (1.8:1 Ratio)
+                      📱 Mobile App Banners (720×320 Ratio)
                     </button>
                   </div>
 
@@ -1219,7 +1219,7 @@ function App() {
                                 Delete
                               </button>
 
-                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', aspectRatio: currentCfg.platform === 'Web' ? '1276 / 250' : '1080 / 600', objectFit: 'cover', display: 'block' }} />
+                              <img src={banner.imageUrl} alt="Banner" style={{ width: '100%', aspectRatio: currentCfg.platform === 'Web' ? '1276 / 250' : '720 / 320', objectFit: 'cover', display: 'block' }} />
                               
                               <div style={{ padding: '10px 12px', fontSize: '0.8rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '8px' }}>
                                 <div>

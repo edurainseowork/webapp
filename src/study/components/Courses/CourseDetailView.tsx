@@ -827,10 +827,10 @@ export function CourseDetailView({
 
               <ul className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
                 {[
-                  { icon: ShieldCheck, text: '100% Refund Guarantee within 7 days' },
-                  { icon: Headphones, text: '24x7 Live Doubt Solving Engine on Mobile App' },
-                  { icon: BarChart3, text: 'All-India Rank Prediction Engine included' },
-                  { icon: MonitorSmartphone, text: 'Access on Web, Android, iOS & Smart TV' },
+                  { icon: ShieldCheck, text: 'Interactive classes' },
+                  { icon: Headphones, text: 'Live Doubt Solving' },
+                  { icon: BarChart3, text: 'AI Powered' },
+                  { icon: MonitorSmartphone, text: 'Access on Web, Android, iOS' },
                 ].map((item) => (
                   <li key={item.text} className="flex items-center gap-2 text-[11px] text-slate-600">
                     <item.icon className="w-4 h-4 text-[#175A67] shrink-0" />

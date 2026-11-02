@@ -146,9 +146,9 @@ router.post("/:id/read", async (req, res) => {
 // Register or update device push notification token
 router.post("/push-token", async (req, res) => {
   try {
-    const userId = await findDbUserId(req.auth!.uid);
+    const userId = req.user?.id ?? (await findDbUserId(req.auth!.uid, req.auth));
     if (!userId) {
-      res.status(404).json({ error: "User not found" });
+      res.json({ success: true, pending: true });
       return;
     }
     const { token, platform } = req.body;

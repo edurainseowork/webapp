@@ -64,7 +64,14 @@ async function rankInTest(userId: number, testId: number) {
   return rows[0] ?? null;
 }
 
+const statsCache = new Map<number, { stats: StudentStats; cachedAt: number }>();
+const STATS_CACHE_TTL_MS = 60 * 1000;
+
 export async function loadStudentStats(userId: number): Promise<StudentStats> {
+  const cached = statsCache.get(userId);
+  if (cached && Date.now() - cached.cachedAt < STATS_CACHE_TTL_MS) {
+    return cached.stats;
+  }
   // Time, questions and answers across the student's submitted tests, and the platform accuracy
   const { rows: totalsRows } = await db.execute<{
     tests: number;
@@ -169,5 +176,7 @@ export async function loadStudentStats(userId: number): Promise<StudentStats> {
     .sort((a, b) => b.remaining - a.remaining)[0];
   const syllabus = total ? { percent: round1((done / total) * 100), done, total, focus: focus ?? null } : null;
 
-  return { pace, accuracy, standing, latestTest, syllabus };
+  const result = { pace, accuracy, standing, latestTest, syllabus };
+  statsCache.set(userId, { stats: result, cachedAt: Date.now() });
+  return result;
 }

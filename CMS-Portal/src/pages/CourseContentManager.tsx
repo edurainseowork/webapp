@@ -1097,7 +1097,7 @@ export default function CourseContentManager({
             </div>
 
             <p style={styles.modalSubtitle}>
-              Uploading directly to {uploadType === 'video' ? 'Vimeo Video Hosting (tus resumable upload)' : 'Amazon S3 storage'} under{' '}
+              Uploading directly to {uploadType === 'video' ? 'Bunny Stream Video Hosting (tus resumable upload)' : 'Amazon S3 storage'} under{' '}
               <strong>{currentFolder ? currentFolder.title : 'Root'}</strong>.
             </p>
 
@@ -1173,7 +1173,9 @@ export default function CourseContentManager({
             {isUploading && (
               <div style={styles.progressContainer}>
                 <div style={styles.progressHeader}>
-                  <span style={{ color: '#ffffff', fontSize: '0.88rem' }}>Uploading to S3...</span>
+                  <span style={{ color: '#ffffff', fontSize: '0.88rem' }}>
+                    {uploadType === 'video' ? 'Uploading to Bunny Stream...' : 'Uploading to S3...'}
+                  </span>
                   <span style={{ color: 'var(--accent-primary)', fontWeight: 700, fontSize: '0.88rem' }}>
                     {uploadProgress}%
                   </span>

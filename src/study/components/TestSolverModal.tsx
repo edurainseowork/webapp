@@ -117,7 +117,10 @@ export const TestSolverModal: React.FC<TestSolverModalProps> = ({
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
 
-    // Do not auto-enter fullscreen on mount; preserve manual toggleFullscreen button only
+    // Auto-enter fullscreen on test start
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
 
     return () => {
       document.body.style.overflow = originalOverflow;
@@ -185,7 +188,16 @@ export const TestSolverModal: React.FC<TestSolverModalProps> = ({
       } catch (err: any) {
         console.error('Failed to init test:', err);
         if (isMounted) {
-          setError(err?.message || 'Failed to start or load test questions.');
+          if (err?.status === 409 || err?.message?.toLowerCase().includes('already submitted')) {
+            try {
+              const resData = await apiFetch<{ success: boolean; data: any }>(`/tests/${test.id}/result`);
+              if (resData.data && isMounted) {
+                setResult(resData.data);
+                return;
+              }
+            } catch {}
+          }
+          setError(err?.message || 'You have already submitted this test. Retakes are not allowed.');
         }
       } finally {
         if (isMounted) setLoading(false);

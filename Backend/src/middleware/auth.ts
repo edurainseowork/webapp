@@ -587,7 +587,8 @@ export async function restrictDeskRoles(req: Request, res: Response, next: NextF
     (deskRole === "mentor" && path === "/auth/cms-handoff" && req.method === "POST") ||
     path === "/health" ||
     path === prefix ||
-    path.startsWith(`${prefix}/`);
+    path.startsWith(`${prefix}/`) ||
+    (deskRole === "teacher_assistant" && (path === "/tickets" || path.startsWith("/tickets/")));
   if (allowed) return next();
 
   logger.warn({ uid: decoded?.uid, role: deskRole, path: req.originalUrl, method: req.method }, "Desk role blocked from API");

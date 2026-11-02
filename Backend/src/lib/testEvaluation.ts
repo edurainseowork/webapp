@@ -236,7 +236,13 @@ export function gradeAnswer(
   if (normalized === null) return { status: "SKIPPED", marks: 0 };
   const isTextAnswer = question.type === "fill_ups" || (question.type === "comprehension" && !hasChoices(question));
   const correct = isTextAnswer
-    ? question.correctAnswer.split("|").some((accepted) => normalizeText(accepted) === normalizeText(normalized))
+    ? question.correctAnswer.split("|").some((accepted) => {
+        const acc = normalizeText(accepted);
+        const stu = normalizeText(normalized);
+        if (acc === stu) return true;
+        const esc = acc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`(^|[\\s,.:;!?"'\\-])${esc}([\\s,.:;!?"'\\-]|$)`, "i").test(stu) || stu.includes(acc);
+      })
     : normalized === question.correctAnswer;
   return correct
     ? { status: "CORRECT", marks: question.marksPositive ?? defaults.marksPositive }

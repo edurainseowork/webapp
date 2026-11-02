@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { categoryKey, useCatalog } from './courseData';
+import { categoryKey, courseUrlSlug, useCatalog } from './courseData';
 import { CourseStoreView } from './CourseStoreView';
 import { EnrolledCoursesView } from './EnrolledCoursesView';
 import { CourseDetailView } from './CourseDetailView';
@@ -23,43 +23,79 @@ interface CoursesHubProps {
  * Shared course screens (all data from the admin CMS):
  *  - catalog  → all published courses
  *  - enrolled → "Your Enrolled Courses"
- *  - clicking any course from either one → course detail page
+ *  - clicking any course from either one → course detail page with shareable dynamic URL
  */
 export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, initialOpenBatchId, onExit }: CoursesHubProps) {
   const [view, setView] = useState<HubView>(mode);
   const [openBatchId, setOpenBatchId] = useState<string | null>(initialOpenBatchId ?? null);
+
   useEffect(() => {
-    if (initialOpenBatchId) setOpenBatchId(initialOpenBatchId);
+    setOpenBatchId(initialOpenBatchId ?? null);
   }, [initialOpenBatchId]);
+
   const [jumpToPlans, setJumpToPlans] = useState(false);
   const goalKey = goalCategoryId ? categoryKey(goalCategoryId) : null;
-  // Category tab: starts on the student's goal and follows it when the goal changes;
-  // the student can still switch tabs (e.g. "All Courses") while browsing
   const [catalogFilter, setCatalogFilter] = useState(goalKey ?? 'all');
   useEffect(() => setCatalogFilter(goalKey ?? 'all'), [goalKey]);
   const catalog = useCatalog(goalKey);
   const tabProps = { goalKey, catalogFilter, onCatalogFilterChange: setCatalogFilter };
 
+  // Keep browser URL synchronized with open course slug
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (openBatchId) {
+      const batch = catalog.getBatch(openBatchId);
+      if (batch) {
+        const slug = courseUrlSlug(batch);
+        const targetUrl = `/study/courses/${slug}`;
+        if (window.location.pathname !== targetUrl) {
+          window.history.replaceState(null, '', targetUrl);
+        }
+      }
+    }
+  }, [openBatchId, catalog]);
+
   const openBatch = (batchId: string, toPlans = false) => {
     setJumpToPlans(toPlans);
     setOpenBatchId(batchId);
+    if (typeof window !== 'undefined') {
+      const batch = catalog.getBatch(batchId);
+      const slug = batch ? courseUrlSlug(batch) : batchId;
+      window.history.pushState(null, '', `/study/courses/${slug}`);
+    }
+  };
+
+  const closeBatch = () => {
+    setOpenBatchId(null);
+    if (typeof window !== 'undefined') {
+      window.history.pushState(null, '', '/study/courses');
+    }
   };
 
   if (openBatchId) {
     const batch = catalog.getBatch(openBatchId);
-    if (!batch) return <MissingCourse status={catalog.status} error={catalog.error} onRetry={catalog.reload} onBack={() => setOpenBatchId(null)} />;
+    if (!batch) return <MissingCourse status={catalog.status} error={catalog.error} onRetry={catalog.reload} onBack={closeBatch} />;
     return (
       <CourseDetailView
-        key={openBatchId}
+        key={batch.id}
         batch={batch}
-        isEnrolled={catalog.isOwned(openBatchId)}
+        isEnrolled={catalog.isOwned(batch.id)}
         selectedBatch={selectedBatch}
         scrollToPlans={jumpToPlans}
-        onBack={() => setOpenBatchId(null)}
-        onExit={onExit}
+        onBack={closeBatch}
+        onExit={() => {
+          setOpenBatchId(null);
+          if (typeof window !== 'undefined') {
+            window.history.pushState(null, '', '/study');
+          }
+          onExit();
+        }}
         onGoToMyCourses={() => {
           setOpenBatchId(null);
           setView('enrolled');
+          if (typeof window !== 'undefined') {
+            window.history.pushState(null, '', '/study/my-courses');
+          }
         }}
       />
     );
@@ -69,7 +105,6 @@ export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, i
     return (
       <EnrolledCoursesView
         selectedBatch={selectedBatch}
-        // Opened from the courses page → back returns there; opened from home → back to home
         onBack={mode === 'catalog' ? () => setView('catalog') : onExit}
         onOpenBatch={(id) => openBatch(id)}
         onBuyBatch={(id) => openBatch(id, true)}

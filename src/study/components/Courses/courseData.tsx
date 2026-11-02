@@ -332,6 +332,57 @@ export function buildSyllabus(items: CmsContentItem[]): Subject[] {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Slug & URL utilities for shareable course links                     */
+/* ------------------------------------------------------------------ */
+
+export function toSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export function courseUrlSlug(batch: { id: string | number; title?: string; name?: string }): string {
+  const base = toSlug(batch.title || batch.name || 'course');
+  return `${base}-${batch.id}`;
+}
+
+export function matchBatchBySlug(batches: Batch[], slugOrId: string | null | undefined): Batch | null {
+  if (!slugOrId) return null;
+  const decoded = decodeURIComponent(String(slugOrId)).trim().toLowerCase();
+
+  // 1. Direct ID match
+  const byId = batches.find((b) => String(b.id) === decoded || String(b.courseId) === decoded);
+  if (byId) return byId;
+
+  // 2. Exact slug match (e.g. iit-mechanical-15)
+  const byFullSlug = batches.find((b) => courseUrlSlug(b) === decoded);
+  if (byFullSlug) return byFullSlug;
+
+  // 3. Trailing ID match (e.g. iitmechanical-15 or iit-mechanical-15)
+  const trailingIdMatch = decoded.match(/-?(\d+)$/);
+  if (trailingIdMatch) {
+    const extractedId = trailingIdMatch[1];
+    const byExtractedId = batches.find((b) => String(b.id) === extractedId || String(b.courseId) === extractedId);
+    if (byExtractedId) return byExtractedId;
+  }
+
+  // 4. Clean alphanumeric name match (e.g. "iitmechanical" matching "IIT Mechanical")
+  const cleanSearch = decoded.replace(/[^a-z0-9]/g, '');
+  if (cleanSearch) {
+    const byCleanName = batches.find((b) => {
+      const cleanTitle = (b.title || b.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return cleanTitle === cleanSearch || cleanTitle.includes(cleanSearch) || cleanSearch.includes(cleanTitle);
+    });
+    if (byCleanName) return byCleanName;
+  }
+
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Hook used by every course screen                                    */
 /* ------------------------------------------------------------------ */
 
@@ -358,7 +409,6 @@ export function useCatalog(goalKey?: string | null) {
       };
     });
     const owned = new Set(ownedIds.map(String));
-    const byId = new Map(batches.map((b) => [b.id, b]));
     return {
       status,
       error,
@@ -366,8 +416,11 @@ export function useCatalog(goalKey?: string | null) {
       batches,
       filters: catalogFilters(batches, categories, goalKey),
       ownedBatches: batches.filter((b) => owned.has(b.id)),
-      getBatch: (id: string) => byId.get(id) ?? null,
-      isOwned: (id: string) => owned.has(id),
+      getBatch: (idOrSlug: string) => matchBatchBySlug(batches, idOrSlug),
+      isOwned: (idOrSlug: string) => {
+        const b = matchBatchBySlug(batches, idOrSlug);
+        return b ? owned.has(b.id) : false;
+      },
     };
   }, [status, error, courses, categories, ownedIds, reload, goalKey]);
 }

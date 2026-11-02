@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, categoriesTable, studentGoalsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth.js";
 import { rateLimit } from "../middlewares/security";
@@ -26,7 +26,46 @@ async function readGoal(userId: number) {
     .innerJoin(categoriesTable, eq(studentGoalsTable.categoryId, categoriesTable.id))
     .where(eq(studentGoalsTable.userId, userId))
     .limit(1);
-  return row ?? null;
+  if (row) return row;
+
+  // Fallback 1: Derive goal from active course if already chosen
+  const { rows: activeRows } = await db.execute<{ id: number; name: string; slug: string }>(sql`
+    SELECT cat.id, cat.name, cat.slug
+    FROM active_courses ac
+    JOIN courses c ON c.id = ac.course_id
+    JOIN categories cat ON cat.id = c.category_id
+    WHERE ac.user_id = ${userId}
+    LIMIT 1`);
+  if (activeRows[0]) {
+    await db.execute(sql`
+      INSERT INTO student_goals (user_id, category_id, updated_at)
+      VALUES (${userId}, ${activeRows[0].id}, now())
+      ON CONFLICT (user_id) DO UPDATE SET category_id = EXCLUDED.category_id, updated_at = now()`);
+    return { id: Number(activeRows[0].id), name: activeRows[0].name, slug: activeRows[0].slug };
+  }
+
+  // Fallback 2: Derive goal from student's enrolled courses (auto-sync enrolled course target)
+  const { rows: enrolledRows } = await db.execute<{ id: number; name: string; slug: string; course_id: number }>(sql`
+    SELECT cat.id, cat.name, cat.slug, uc.course_id
+    FROM user_courses uc
+    JOIN courses c ON c.id = uc.course_id
+    JOIN categories cat ON cat.id = c.category_id
+    WHERE uc.user_id = ${userId}
+    ORDER BY uc.purchased_at DESC NULLS LAST, uc.id DESC
+    LIMIT 1`);
+  if (enrolledRows[0]) {
+    await db.execute(sql`
+      INSERT INTO student_goals (user_id, category_id, updated_at)
+      VALUES (${userId}, ${enrolledRows[0].id}, now())
+      ON CONFLICT (user_id) DO UPDATE SET category_id = EXCLUDED.category_id, updated_at = now()`);
+    await db.execute(sql`
+      INSERT INTO active_courses (user_id, course_id, updated_at)
+      VALUES (${userId}, ${enrolledRows[0].course_id}, now())
+      ON CONFLICT (user_id) DO UPDATE SET course_id = EXCLUDED.course_id, updated_at = now()`);
+    return { id: Number(enrolledRows[0].id), name: enrolledRows[0].name, slug: enrolledRows[0].slug };
+  }
+
+  return null;
 }
 
 // GET /api/me/goal → { goal: { id, name, slug } | null }

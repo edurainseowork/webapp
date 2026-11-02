@@ -11,6 +11,25 @@ import { findDbUserId, requireAuth } from "../middlewares/auth.js";
 // Turn that off (or delete this file) once purchases go through /razorpay/verify.
 const router = Router();
 
+router.get("/enrolled-ids", requireAuth, async (req, res) => {
+  try {
+    const userId = await findDbUserId(req.auth!.uid);
+    if (userId === null) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+    const rows = await db
+      .selectDistinct({ courseId: userCoursesTable.courseId })
+      .from(userCoursesTable)
+      .where(eq(userCoursesTable.userId, userId));
+    const data = rows.map((r) => r.courseId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Failed to fetch enrolled course IDs", error);
+    res.status(500).json({ error: "Failed to fetch enrolled course IDs" });
+  }
+});
+
 router.post("/", requireAuth, async (req, res) => {
   if (process.env.ALLOW_FREE_ENROLLMENT !== "true") {
     res.status(403).json({ error: "Enrollment requires payment" });

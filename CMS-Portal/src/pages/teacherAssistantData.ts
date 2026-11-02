@@ -186,7 +186,19 @@ const STORAGE_KEY_PROFILE = 'edurain_ta_profile_v1';
 export function getStoredTickets(): DoubtTicket[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_TICKETS);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const seen = new Set<string>();
+        return parsed.filter((t: any) => {
+          if (!t) return false;
+          const key = (t.ticketNumber || t.id || '').trim();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+    }
   } catch (err) {
     console.error('Failed to parse stored tickets', err);
   }

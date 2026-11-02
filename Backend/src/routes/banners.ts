@@ -5,6 +5,7 @@ import { eq, desc, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
 import { getOrSetCache, invalidateCachePrefix, invalidateSafe } from "../lib/perfEngine";
 import { broadcastCatalogChange } from "../lib/catalogSync";
+import { getIO } from "../socket.js";
 
 const router = Router();
 router.use(broadcastCatalogChange); // banner create / reorder / delete reach students at once
@@ -44,15 +45,32 @@ router.get("/", async (req, res) => {
     const targetKey = rawPlacement || "home";
     const cacheKey = `edurain:banners:${targetKey}`;
 
-    const banners = await getOrSetCache(cacheKey, 600, async () => {
-      return db
+    const bypassCache = Boolean(
+      req.query._t ||
+      req.query.nocache === "1" ||
+      req.headers["cache-control"]?.includes("no-cache") ||
+      req.headers["pragma"]?.includes("no-cache")
+    );
+
+    let banners;
+    if (bypassCache) {
+      banners = await db
         .select()
         .from(bannersTable)
         .where(eq(bannersTable.placement, targetKey))
         .orderBy(asc(bannersTable.sortOrder), desc(bannersTable.createdAt));
-    });
+    } else {
+      banners = await getOrSetCache(cacheKey, 30, async () => {
+        return db
+          .select()
+          .from(bannersTable)
+          .where(eq(bannersTable.placement, targetKey))
+          .orderBy(asc(bannersTable.sortOrder), desc(bannersTable.createdAt));
+      });
+    }
 
-    res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
     return res.json({ success: true, data: banners });
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch banners" });
@@ -92,6 +110,9 @@ router.post("/", requireAdmin, async (req, res) => {
       .returning();
 
     invalidateSafe(() => invalidateCachePrefix("edurain:banners"));
+    const io = getIO();
+    io?.emit("banners_updated", { placement: normalizedPlacement, at: Date.now() });
+    io?.emit("catalog_updated", { at: Date.now() });
     return res.json({ success: true, data: newBanner[0] });
   } catch (error: any) {
     return res.status(500).json({ error: "Failed to create banner: " + error.message });
@@ -115,6 +136,9 @@ router.put("/reorder", requireAdmin, async (req, res) => {
       }
     }
     invalidateSafe(() => invalidateCachePrefix("edurain:banners"));
+    const io = getIO();
+    io?.emit("banners_updated", { at: Date.now() });
+    io?.emit("catalog_updated", { at: Date.now() });
     return res.json({ success: true, message: "Banner order updated successfully" });
   } catch (error: any) {
     return res.status(500).json({ error: "Failed to reorder banners: " + error.message });
@@ -127,6 +151,9 @@ router.delete("/:id", requireAdmin, async (req, res) => {
   try {
     await db.delete(bannersTable).where(eq(bannersTable.id, parseInt(String(id))));
     invalidateSafe(() => invalidateCachePrefix("edurain:banners"));
+    const io = getIO();
+    io?.emit("banners_updated", { at: Date.now() });
+    io?.emit("catalog_updated", { at: Date.now() });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to delete banner" });

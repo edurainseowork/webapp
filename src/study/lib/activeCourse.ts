@@ -33,16 +33,25 @@ export function resetActiveCourse(): void {
  * Makes a course active. Optimistic: the UI switches at once and rolls back if the server refuses.
  * Resolves with the new goal category id (the cohort follows the course).
  */
-export async function makeCourseActive(courseId: number): Promise<number | null> {
+export type ActiveCourseResult = {
+  goalCategoryId: number | null;
+  goal?: { id: number; name: string; slug: string } | null;
+};
+
+export async function makeCourseActive(courseId: number): Promise<ActiveCourseResult> {
   const previous = state.activeCourseId;
   emit({ activeCourseId: courseId });
   try {
-    const res = await apiFetch<{ activeCourseId: number; goalCategoryId: number | null }>('/me/active-course', {
+    const res = await apiFetch<{
+      activeCourseId: number;
+      goalCategoryId: number | null;
+      goal?: { id: number; name: string; slug: string } | null;
+    }>('/me/active-course', {
       method: 'PUT',
       body: { courseId },
     });
     emit({ activeCourseId: res.activeCourseId, goalVersion: state.goalVersion + 1 });
-    return res.goalCategoryId;
+    return { goalCategoryId: res.goalCategoryId, goal: res.goal };
   } catch (err) {
     emit({ activeCourseId: previous });
     throw err;

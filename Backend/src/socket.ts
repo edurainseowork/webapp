@@ -1,9 +1,12 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import type { Server as HttpServer } from 'node:http';
+import { pool } from '@workspace/db';
 import { logger } from './lib/logger.js';
 import {
   ticketsStore,
   saveTicketToDb,
+  syncTicketsFromDb,
+  findTicket,
   type DoubtTicket,
   type ChatMessage,
   getRelativeTime,
@@ -86,10 +89,16 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
 
   io.on('connection', (socket: Socket) => {
     // Join room: ticket_${ticketId}
-    socket.on('join_ticket', (payload: { ticketId: string; userId?: string; role?: 'student' | 'teacher' }) => {
+    socket.on('join_ticket', async (payload: { ticketId: string; userId?: string; role?: 'student' | 'teacher' }) => {
       if (!payload || typeof payload.ticketId !== 'string' || !payload.ticketId) return;
       const room = `ticket_${payload.ticketId}`;
       socket.join(room);
+
+      const ticket = await findTicket(payload.ticketId);
+      if (ticket) {
+        socket.join(`ticket_${ticket.id}`);
+        socket.join(`ticket_${ticket.ticketNumber}`);
+      }
 
       const isElevated =
         socket.data?.role === 'teacher_assistant' ||
@@ -103,8 +112,18 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
       logger.info({ socketId: socket.id, room, role: payload.role }, 'User joined ticket room');
     });
 
+    // Real-time WhatsApp-style live typing sync
+    socket.on('typing', (payload: { ticketId: string; sender: 'student' | 'ta'; isTyping: boolean; senderName?: string }) => {
+      if (!payload || !payload.ticketId) return;
+      const room = `ticket_${payload.ticketId}`;
+      socket.to(room).emit('typing', payload);
+      if (payload.sender === 'student') {
+        socket.to('ta_pool').emit('typing', payload);
+      }
+    });
+
     // Send message event (synchronous handler)
-    socket.on('send_message', (payload: {
+    socket.on('send_message', async (payload: {
       ticketId: string;
       messageId?: string;
       senderId?: string;
@@ -117,7 +136,7 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
       const { ticketId, message, attachments = [] } = payload;
       if (!message && attachments.length === 0) return;
 
-      const ticket = ticketsStore.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
+      const ticket = await findTicket(ticketId);
       if (!ticket) return;
 
       if (ticket.status === 'resolved') {
@@ -187,10 +206,10 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     // Request Resolution (synchronous handler)
-    socket.on('request_resolution', (payload: { ticketId: string; resolvedBy?: string }) => {
+    socket.on('request_resolution', async (payload: { ticketId: string; resolvedBy?: string }) => {
       if (!payload || typeof payload.ticketId !== 'string' || !payload.ticketId) return;
       const { ticketId, resolvedBy } = payload;
-      const ticket = ticketsStore.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
+      const ticket = await findTicket(ticketId);
       if (!ticket) return;
 
       if (socket.data?.role === 'student') {
@@ -223,10 +242,10 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     // Ticket Action: 'solved' | 'followup' (synchronous handler)
-    socket.on('ticket_action', (payload: { ticketId: string; action: 'solved' | 'followup'; message?: string; messageId?: string; attachments?: string[] }) => {
+    socket.on('ticket_action', async (payload: { ticketId: string; action: 'solved' | 'followup'; message?: string; messageId?: string; attachments?: string[] }) => {
       if (!payload || typeof payload.ticketId !== 'string' || !payload.ticketId) return;
       const { ticketId, action, message, messageId, attachments } = payload;
-      const ticket = ticketsStore.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
+      const ticket = await findTicket(ticketId);
       if (!ticket) return;
 
       if (action === 'solved') {
@@ -305,10 +324,10 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     // Claim Ticket (synchronous handler)
-    socket.on('claim_ticket', (payload: { ticketId: string; taId?: string; taName?: string; taEmail?: string; ta?: any }) => {
+    socket.on('claim_ticket', async (payload: { ticketId: string; taId?: string; taName?: string; taEmail?: string; ta?: any }) => {
       if (!payload || typeof payload.ticketId !== 'string' || !payload.ticketId) return;
       const { ticketId } = payload;
-      const ticket = ticketsStore.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
+      const ticket = await findTicket(ticketId);
       if (!ticket) return;
 
       const effectiveEmail = (socket.data?.email || payload.taEmail || payload.ta?.email || 'ta@edurain.in').toLowerCase();
@@ -349,10 +368,10 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     // Release Ticket (synchronous handler)
-    socket.on('release_ticket', (payload: { ticketId: string }) => {
+    socket.on('release_ticket', async (payload: { ticketId: string }) => {
       if (!payload || typeof payload.ticketId !== 'string' || !payload.ticketId) return;
       const { ticketId } = payload;
-      const ticket = ticketsStore.find((t) => t.id === ticketId || t.ticketNumber === ticketId);
+      const ticket = await findTicket(ticketId);
       if (!ticket) return;
 
       ticket.assignedTo = null;
@@ -422,6 +441,69 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
       }
     }
   }, 60000);
+
+  // Real-time Database Synchronizer (polls every 3 seconds)
+  // Ensures any ticket or message created via AWS Lambda or another instance is pushed via Socket.io instantly
+  setInterval(async () => {
+    try {
+      const res = await pool.query('SELECT data FROM doubt_tickets ORDER BY submitted_at DESC LIMIT 60');
+      if (res.rows.length === 0) return;
+      const dbTickets = res.rows.map((r) => r.data as DoubtTicket);
+
+      for (const dbt of dbTickets) {
+        const memIdx = ticketsStore.findIndex((m) => m.id === dbt.id);
+        if (memIdx === -1) {
+          // New ticket from DB!
+          ticketsStore.unshift(dbt);
+          logger.info({ ticketNumber: dbt.ticketNumber }, 'DB Synchronizer: Discovered new ticket, broadcasting to TA desk');
+          const createdPayload = {
+            ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
+          };
+          io?.emit('ticket_created', createdPayload);
+          io?.emit('ticket_updated', createdPayload);
+        } else {
+          const mem = ticketsStore[memIdx];
+          const dbMsgCount = dbt.messages?.length || 0;
+          const memMsgCount = mem.messages?.length || 0;
+          if (dbMsgCount > memMsgCount) {
+            ticketsStore[memIdx] = dbt;
+            const latestMsg = dbt.messages![dbMsgCount - 1];
+            const msgPayload = {
+              ticketId: dbt.id,
+              ticketNumber: dbt.ticketNumber,
+              message: latestMsg,
+              ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
+            };
+            io?.to(`ticket_${dbt.id}`).to(`ticket_${dbt.ticketNumber}`).emit('new_message', msgPayload);
+            io?.to('ta_pool').emit('new_message', msgPayload);
+            io?.to(`ticket_${dbt.id}`).to(`ticket_${dbt.ticketNumber}`).emit('ticket_updated', {
+              ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
+            });
+            io?.to('ta_pool').emit('ticket_updated', {
+              ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
+            });
+          } else if (dbt.status !== mem.status || dbt.assignedTo?.email !== mem.assignedTo?.email) {
+            ticketsStore[memIdx] = dbt;
+            const statusPayload = {
+              ticketId: dbt.id,
+              ticketNumber: dbt.ticketNumber,
+              status: dbt.status,
+              assignedTo: dbt.assignedTo,
+              ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
+            };
+            io?.to(`ticket_${dbt.id}`).to(`ticket_${dbt.ticketNumber}`).emit('ticket_status_updated', statusPayload);
+            io?.to('ta_pool').emit('ticket_status_updated', statusPayload);
+            io?.to(`ticket_${dbt.id}`).to(`ticket_${dbt.ticketNumber}`).emit('ticket_updated', {
+              ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
+            });
+            io?.to('ta_pool').emit('ticket_updated', {
+              ticket: { ...dbt, submittedAtRelative: getRelativeTime(dbt.submittedAt) },
+            });
+          }
+        }
+      }
+    } catch {}
+  }, 3000);
 
   return io;
 }

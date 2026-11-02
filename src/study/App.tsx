@@ -277,41 +277,68 @@ export function App() {
     const path = window.location.pathname.replace(/\/$/, '');
     resetSubViews();
     setSearchQuery('');
-    if (path.endsWith('/courses')) {
+
+    // Dynamic shareable course detail URL: /study/courses/:batchSlug
+    const courseDetailMatch = path.match(/^\/study\/courses\/(.+)$/);
+    if (courseDetailMatch) {
+      const slugOrId = decodeURIComponent(courseDetailMatch[1].trim());
       setActiveNav('courses');
+      setDirectOpenCourseId(slugOrId);
+      return;
+    }
+
+    if (path.endsWith('/courses') || path === '/study/courses') {
+      setActiveNav('courses');
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/daily-doubts') || path.endsWith('/daily-drop') || path.endsWith('/pi')) {
       setActiveNav('pi');
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/test-series')) {
       setActiveNav('test-series');
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/arena')) {
       setIsCourseTestsOpen(true);
       setActiveNav('study-central');
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/profile')) {
       setActiveNav('profile');
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/library')) {
       setActiveNav('library');
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/ebooks')) {
       setIsEbookLibraryOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/bookmarks')) {
       setIsBookmarksPageOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/saved-pdfs') || path.endsWith('/saved-pdf') || path.endsWith('/saved_pdfs')) {
       setIsSavedPdfsPageOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/doubts')) {
       setIsBookDoubtSessionOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/ai-mentor') || path.endsWith('/edu-ai')) {
       setIsAiMentorPageOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/my-courses')) {
       setIsMyCoursesOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/purchases')) {
       setIsPurchasesPageOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/live-classes')) {
       setIsLiveClassesOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/mentorship')) {
       setIsMentorshipOpen(true);
+      setDirectOpenCourseId(null);
     } else if (path.endsWith('/batch-tests') || path.endsWith('/course-tests')) {
       setIsCourseTestsOpen(true);
+      setDirectOpenCourseId(null);
     } else {
       setActiveNav('study-central');
+      setDirectOpenCourseId(null);
     }
   };
 
@@ -608,7 +635,7 @@ export function App() {
               onClick={() => setIsGoalModalOpen(true)}
               className="border border-white/80 text-[#175A67] bg-white/60 hover:bg-white/85 backdrop-blur-md rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all shadow-sm flex items-center gap-1.5"
             >
-              <span>{goal?.name ?? selectedBatch} &gt;</span>
+              <span>{goal?.name ?? activeCourse?.category ?? (enrolledCourses[0]?.category) ?? selectedBatch} &gt;</span>
             </button>
           </div>
         </div>
@@ -834,7 +861,7 @@ export function App() {
                 >
                   <div className="flex items-center gap-2">
                     <Target className="w-3.5 h-3.5 text-[#175A67]" />
-                    <span>{goal?.name ?? selectedBatch}</span>
+                    <span>{goal?.name ?? activeCourse?.category ?? (enrolledCourses[0]?.category) ?? selectedBatch}</span>
                   </div>
                   <ChevronRight className="w-3.5 h-3.5 text-[#2A707C]" />
                 </button>

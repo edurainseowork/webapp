@@ -31,6 +31,16 @@ ensureMentorshipSchema().catch((err) => {
   logger.error({ err }, "Schema initialization warning on startup");
 });
 
+server.on("error", (err: any) => {
+  if (err?.code === "EADDRINUSE") {
+    logger.error({ port, err }, `Port ${port} is already in use by another running process.`);
+    console.error(`\n[EduRain Backend] Port ${port} is already busy. Please stop the existing process or use another port.\n`);
+    process.exit(1);
+  }
+  logger.fatal({ err }, "Server listener error");
+  process.exit(1);
+});
+
 server.listen(port, () => {
   logger.info({ port }, "Server listening with Socket.io");
 });

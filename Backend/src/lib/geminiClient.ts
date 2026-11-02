@@ -108,9 +108,11 @@ export async function streamGeminiFlash({
   // 1. If GEMINI_API_KEY is provided, use Google's official Gemini Flash Streaming API with multi-model failover cascade
   if (apiKey && apiKey.trim().length > 5) {
     const candidateModels = [
-      process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-      'gemini-3-flash-preview',
-      'gemini-3.5-flash-lite',
+      process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-flash-latest',
+      'gemini-2.5-flash-lite',
     ];
 
     let lastError: any = null;
