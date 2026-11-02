@@ -52,7 +52,11 @@ let ready: Promise<void> | null = null;
 /** Resolves once the payment tables and rules exist. Retries on the next call if it failed. */
 export function ensurePaymentsSchema(): Promise<void> {
   return (ready ??= (async () => {
-    await ensureMentorshipSchema(); // payment_plans lives there
+    await ensureMentorshipSchema();
+    try {
+      const { rows } = await db.execute<{ exists: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payment_events') AS exists`);
+      if (rows[0]?.exists) return;
+    } catch {}
     for (const statement of STATEMENTS) {
       try {
         await db.execute(statement);

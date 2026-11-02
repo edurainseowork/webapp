@@ -13,9 +13,9 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  max: Number(process.env.DB_POOL_MAX || 30),
+  max: Number(process.env.DB_POOL_MAX || 20),
   idleTimeoutMillis: 300_000,
-  connectionTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 60_000,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10_000,
 } as any);

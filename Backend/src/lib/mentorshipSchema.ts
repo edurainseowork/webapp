@@ -126,6 +126,10 @@ const STATEMENTS = [
 let ready: Promise<void> | null = null;
 
 async function apply() {
+  try {
+    const { rows } = await db.execute<{ exists: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'course_plans') AS exists`);
+    if (rows[0]?.exists) return;
+  } catch {}
   for (const statement of STATEMENTS) {
     try {
       await db.execute(statement);
