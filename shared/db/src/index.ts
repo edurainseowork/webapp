@@ -15,7 +15,12 @@ export const pool = new Pool({
   ssl: { rejectUnauthorized: false },
   max: Number(process.env.DB_POOL_MAX || 20),
   idleTimeoutMillis: 300_000,
-  connectionTimeoutMillis: 60_000,
+  // Fail fast: API Gateway gives up after ~30 s anyway, so a longer wait only stacks requests behind a dead DB.
+  // Slow home internet? Raise it in .env (DB_CONNECT_TIMEOUT_MS=20000), not here.
+  connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS || 10_000),
+  // A stuck query must not hold one of the few connections forever.
+  statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS || 30_000),
+  application_name: process.env.AWS_LAMBDA_FUNCTION_NAME ? "edurain-lambda" : "edurain-local",
   keepAlive: true,
   keepAliveInitialDelayMillis: 10_000,
 } as any);

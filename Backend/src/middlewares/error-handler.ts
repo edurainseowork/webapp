@@ -4,6 +4,9 @@ import multer from "multer";
 import { HttpError } from "../lib/http-error";
 import { logger } from "../lib/logger";
 import { sendSlackAlert } from "../lib/slackAlert";
+import { isDbUnavailable } from "../lib/dbErrors";
+
+let lastDbAlertAt = 0;
 
 // Express 5 forwards rejected promises from async handlers here, so routes can just throw.
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
@@ -26,6 +29,17 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     const retrySec = (err as any).retryAfter || 1;
     res.setHeader("Retry-After", String(retrySec));
     res.status(503).json({ error: (err as any).message || "Service busy, please retry", retryAfter: retrySec, requestId });
+    return;
+  }
+  // Database unreachable: tell the client to retry (503) instead of a 500, and page Slack once a minute, not once per request.
+  if (isDbUnavailable(err)) {
+    res.setHeader("Retry-After", "5");
+    res.status(503).json({ error: "Service temporarily unavailable, please retry", retryAfter: 5, requestId });
+    if (Date.now() - lastDbAlertAt > 60_000) {
+      lastDbAlertAt = Date.now();
+      logger.error({ requestId, path: req.originalUrl, err: err instanceof Error ? err.message : err }, "Database unreachable (clients get 503)");
+      sendSlackAlert("Database unreachable (clients get 503, retrying)", err, { path: req.originalUrl }).catch(() => {});
+    }
     return;
   }
   if (err instanceof multer.MulterError) {

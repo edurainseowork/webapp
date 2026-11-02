@@ -33,6 +33,7 @@ provider:
     SYNC_ROLLOUT_PERCENT: ${env:SYNC_ROLLOUT_PERCENT, '100'}
     DB_FETCH_GLOBAL_CAP: ${env:DB_FETCH_GLOBAL_CAP, '25'}
     DB_POOL_MAX: ${env:DB_POOL_MAX, '2'}
+    DB_CONNECT_TIMEOUT_MS: ${env:DB_CONNECT_TIMEOUT_MS, '5000'}
   vpc:
     securityGroupIds:
       - sg-0c07d868d37903d36

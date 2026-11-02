@@ -6,6 +6,7 @@ import { db } from "../db";
 import { users as usersTable, userCourses as userCoursesTable } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { parseId } from "../lib/http-error";
+import { isDbUnavailable } from "../lib/dbErrors";
 import { hasPrivilegedClaims, isSuperAdminEmail, isSuperAdminToken } from "../lib/superAdmin";
 import { DESK_API_PREFIX, ROLE_LABELS, deskRoleFromClaims, isDeskRole, type DeskRole } from "../lib/deskRoles";
 export type DbUser = typeof usersTable.$inferSelect;
@@ -102,6 +103,8 @@ export async function syncOrLookupUser(decoded: DecodedIdToken): Promise<DbUser 
     logger.info({ firebaseUid, userId: newUser.id, role: initialRole }, "Synchronized new user to database");
     return newUser;
   } catch (err) {
+    // DB unreachable: a second query would only wait out the timeout again. The error handler answers 503.
+    if (isDbUnavailable(err)) throw err;
     logger.error({ err, firebaseUid }, "Error syncing or looking up user in database");
     // Fallback: in case of race conditions on unique firebaseUid
     const [fallback] = await db
