@@ -303,6 +303,10 @@ export function BookDoubtSessionView({
   useEffect(() => {
     fetchAllTickets();
 
+    // API Gateway + Lambda has no socket server: connecting there only retries forever (every browser, every
+    // few seconds). Replies are saved over HTTP either way, and the modal polls while it is open.
+    if (/amazonaws\.com/.test(API_BASE_URL)) return;
+
     // Socket.io connection for real-time synchronization
     const socket = io(API_BASE_URL, {
       transports: ['websocket', 'polling'],

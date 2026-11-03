@@ -7,6 +7,11 @@
 !.env.example
 *.local
 
+# Local-only folders and patch files (never commit)
+venv/
+/uploads/
+*.patch
+
 # Markdown Documentation & Notes
 *.md
 

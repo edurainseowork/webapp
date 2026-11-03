@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npx --yes pnpm@10.28.0 install --frozen-lockfile",
+  "buildCommand": "npx --yes pnpm@10.28.0 run build",
+  "outputDirectory": "dist",
+  "ignoreCommand": "[ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ]",
+  "redirects": [
+    { "source": "/", "destination": "/study/", "permanent": false },
+    { "source": "/study", "destination": "/study/", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/study/:path*", "destination": "/study/index.html" },
+    { "source": "/mentorDesk/:path*", "destination": "/study/index.html" },
+    { "source": "/teacherAssistantDesk/:path*", "destination": "/study/index.html" }
+  ]
+}
