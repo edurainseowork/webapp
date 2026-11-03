@@ -8,6 +8,7 @@ import { rateLimit } from '../middlewares/security';
 import { hasPrivilegedClaims, isSuperAdminEmail, isSuperAdminToken } from '../lib/superAdmin';
 import { deskRoleFromClaims } from '../lib/deskRoles';
 import { emailDispatchQueue } from '../lib/perfEngine';
+import { accountToUpdate, otpNumberMatches, otpReplyHasNumber } from '../lib/signupGuards';
 
 export const authRouter = Router();
 
@@ -25,6 +26,7 @@ const authStrictLimiter = rateLimit({
 const isPrivilegedAccount = (user: UserRecord) =>
   hasPrivilegedClaims(user.customClaims) || !!deskRoleFromClaims(user.customClaims) || isSuperAdminEmail(user.email);
 const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
+const ACCOUNT_EXISTS_CODES = new Set(['auth/email-already-exists', 'auth/email-already-in-use', 'auth/phone-number-already-exists']);
 
 /**
  * GET /api/auth/me — Return authenticated user profile and resolved RBAC role
@@ -89,6 +91,13 @@ authRouter.post('/verify-otp-and-signup', authStrictLimiter, async (req: Request
       if (verifyResponse.data?.type === 'error') {
         return res.status(400).json({ error: verifyResponse.data.message || 'Invalid Access Token' });
       }
+      // The token proves who owns the number MSG91 sent the OTP to, not the number in the form
+      if (!otpNumberMatches(verifyResponse.data?.message, phone)) {
+        return res.status(400).json({ error: 'OTP was verified for a different mobile number. Please verify this number again.' });
+      }
+      if (!otpReplyHasNumber(verifyResponse.data?.message)) {
+        console.warn('MSG91 verifyAccessToken reply has no mobile number; number match skipped');
+      }
     } catch (msg91Error: any) {
       console.error('MSG91 Verify Error:', msg91Error?.response?.data || msg91Error.message);
       return res.status(400).json({ error: 'Failed to verify OTP with MSG91' });
@@ -108,35 +117,23 @@ authRouter.post('/verify-otp-and-signup', authStrictLimiter, async (req: Request
         displayName: name.trim()
       });
     } catch (error: any) {
-      if (error.code === 'auth/email-already-in-use' || error.code === 'auth/phone-number-already-exists') {
-        try {
-          const existingUser = await getAuth().getUserByEmail(email.trim());
-          if (isPrivilegedAccount(existingUser)) {
-            return res.status(409).json({ error: 'An account with this email already exists. Please log in.' });
-          }
-          await getAuth().updateUser(existingUser.uid, {
-            password: password,
-            phoneNumber: phoneWithCode,
-            displayName: name.trim()
-          });
-        } catch (updateErr) {
-          try {
-            const existingUserByPhone = await getAuth().getUserByPhoneNumber(phoneWithCode);
-            if (isPrivilegedAccount(existingUserByPhone)) {
-              return res.status(409).json({ error: 'An account with this phone number already exists. Please log in.' });
-            }
-            await getAuth().updateUser(existingUserByPhone.uid, {
-              email: email.trim(),
-              password: password,
-              displayName: name.trim()
-            });
-          } catch (e) {
-            console.error('Failed to update existing user:', e);
-          }
-        }
-      } else {
+      if (!ACCOUNT_EXISTS_CODES.has(error.code)) {
         return res.status(400).json({ error: error.message || 'Failed to create user in Firebase' });
       }
+      // Already registered: only the account on the verified number may be updated
+      const [byPhone, byEmail] = await Promise.all([
+        getAuth().getUserByPhoneNumber(phoneWithCode).catch(() => null),
+        getAuth().getUserByEmail(email.trim()).catch(() => null),
+      ]);
+      const uid = accountToUpdate(byPhone, byEmail, isPrivilegedAccount);
+      if (!uid) {
+        return res.status(409).json({ error: 'An account with this email or phone number already exists. Please log in.' });
+      }
+      await getAuth().updateUser(uid, {
+        email: email.trim(),
+        password: password,
+        displayName: name.trim()
+      });
     }
 
     res.json({ success: true, message: 'User created successfully' });
