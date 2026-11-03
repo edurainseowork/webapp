@@ -40,16 +40,21 @@ const notifyEnrolledStudents = async (tx: Tx, liveClass: LiveClass, courseTitle:
     .where(eq(userCoursesTable.courseId, liveClass.courseId));
   if (enrolled.length === 0) return 0;
 
-  const inserted = await tx.insert(notificationsTable).values(enrolled.map(({ userId }) => ({
-    userId,
-    type: "live_class",
-    title: "New Live Class Scheduled",
-    body: `${liveClass.title} · ${courseTitle}`,
-    liveClassId: liveClass.id,
-  }))).onConflictDoNothing().returning({ id: notificationsTable.id });
-
-  await pruneOldNotifications(tx, enrolled.map(({ userId }) => userId));
-  return inserted.length;
+  // Postgres takes at most 65,535 values per statement: 5,000 rows x 5 columns stays well below it
+  let inserted = 0;
+  for (let i = 0; i < enrolled.length; i += 5000) {
+    const chunk = enrolled.slice(i, i + 5000);
+    const rows = await tx.insert(notificationsTable).values(chunk.map(({ userId }) => ({
+      userId,
+      type: "live_class",
+      title: "New Live Class Scheduled",
+      body: `${liveClass.title} · ${courseTitle}`,
+      liveClassId: liveClass.id,
+    }))).onConflictDoNothing().returning({ id: notificationsTable.id });
+    await pruneOldNotifications(tx, chunk.map(({ userId }) => userId));
+    inserted += rows.length;
+  }
+  return inserted;
 };
 
 // Create a live class for a course and notify enrolled students (Admin)
@@ -94,11 +99,12 @@ router.post("/courses/:courseId/live-classes", requireAdmin, async (req, res) =>
         const uids = enrolledStudents.map((s) => s.userId);
         const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(inArray(pushTokensTable.userId, uids))).map((r) => r.token);
         if (tokens.length > 0) {
-          sendExpoPush(tokens, {
+          // Awaited: on Lambda nothing runs after the response, so a push left running was lost
+          await sendExpoPush(tokens, {
             title: `🔴 Live Class: ${result.liveClass.title}`,
             body: `${course.title} · Live Class is starting / scheduled!`,
             data: { type: "live_class", liveClassId: result.liveClass.id, courseId },
-          }).catch(() => {});
+          }).catch((err) => logger.warn({ err }, "Live class push failed"));
         }
       }
     } catch {}
@@ -196,11 +202,12 @@ router.post("/live-classes/:id/notify", requireAdmin, async (req, res) => {
         const uids = enrolledStudents.map((s) => s.userId);
         const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(inArray(pushTokensTable.userId, uids))).map((r) => r.token);
         if (tokens.length > 0) {
-          sendExpoPush(tokens, {
+          // Awaited: on Lambda nothing runs after the response, so a push left running was lost
+          await sendExpoPush(tokens, {
             title: `🔴 Live Class: ${row.liveClass.title}`,
             body: `${row.courseTitle} · Live Class announcement!`,
             data: { type: "live_class", liveClassId: row.liveClass.id, courseId: row.liveClass.courseId },
-          }).catch(() => {});
+          }).catch((err) => logger.warn({ err }, "Live class push failed"));
         }
       }
     } catch {}

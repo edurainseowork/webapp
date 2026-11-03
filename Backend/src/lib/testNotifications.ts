@@ -25,15 +25,21 @@ export async function notifyTestScheduled(test: Test): Promise<number> {
 
     const when = `${formatStart(test.publishTime)} · ${test.durationMinutes} min`;
     const inserted = await db.transaction(async (tx) => {
-      const rows = await tx.insert(notificationsTable).values(enrolled.map((userId) => ({
-        userId,
-        type: "test",
-        title: "New Test Scheduled",
-        body: `${test.title} · ${course?.title ?? "Your course"} · ${when}`,
-        testId: test.id,
-      }))).onConflictDoNothing().returning({ userId: notificationsTable.userId });
-      await pruneOldNotifications(tx, enrolled);
-      return rows.map((row) => row.userId);
+      // Postgres takes at most 65,535 values per statement: 5,000 rows x 5 columns stays well below it
+      const ids: number[] = [];
+      for (let i = 0; i < enrolled.length; i += 5000) {
+        const chunk = enrolled.slice(i, i + 5000);
+        const rows = await tx.insert(notificationsTable).values(chunk.map((userId) => ({
+          userId,
+          type: "test",
+          title: "New Test Scheduled",
+          body: `${test.title} · ${course?.title ?? "Your course"} · ${when}`,
+          testId: test.id,
+        }))).onConflictDoNothing().returning({ userId: notificationsTable.userId });
+        await pruneOldNotifications(tx, chunk);
+        ids.push(...rows.map((row) => row.userId));
+      }
+      return ids;
     });
     if (inserted.length === 0) return 0; // everyone was already told about this test
 

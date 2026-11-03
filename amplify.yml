@@ -1,0 +1,19 @@
+# AWS Amplify Hosting: the CMS (CMS-Portal) from this pnpm workspace. Production branch: main.
+# CMS-Portal/package-lock.json is out of date, so install with pnpm from the workspace lockfile, never npm ci.
+version: 1
+applications:
+  - appRoot: CMS-Portal
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - nvm install 22 && nvm use 22
+            - npm install -g pnpm@10.28.0
+            - pnpm install --frozen-lockfile
+        build:
+          commands:
+            - pnpm run build
+      artifacts:
+        baseDirectory: dist
+        files:
+          - '**/*'

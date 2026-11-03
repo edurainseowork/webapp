@@ -27,6 +27,15 @@ provider:
     GOOGLE_PLAY_SERVICE_ACCOUNT: ${env:GOOGLE_PLAY_SERVICE_ACCOUNT, ''}
     MSG91_AUTH_KEY: ${env:MSG91_AUTH_KEY, ''}
     REDIS_URL: ${env:REDIS_URL, ''}
+    # Used by the code but missing here: a deploy replaces the Lambda's variables with this list, so a value
+    # typed into the AWS console was wiped by the next deploy. Empty means the code's default.
+    GEMINI_API_KEY: ${env:GEMINI_API_KEY, ''}
+    GEMINI_MODEL: ${env:GEMINI_MODEL, ''}
+    SUPER_ADMIN_EMAIL: ${env:SUPER_ADMIN_EMAIL, ''}
+    APP_TIME_ZONE: ${env:APP_TIME_ZONE, 'Asia/Kolkata'}
+    APP_MIN_VERSION: ${env:APP_MIN_VERSION, ''}
+    APP_LATEST_VERSION: ${env:APP_LATEST_VERSION, ''}
+    EXPO_ACCESS_TOKEN: ${env:EXPO_ACCESS_TOKEN, ''}
     CACHE_EPOCH: ${env:CACHE_EPOCH, '1'}
     CACHE_ENABLED: ${env:CACHE_ENABLED, 'true'}
     CACHE_BYPASS: ${env:CACHE_BYPASS, 'false'}
@@ -62,6 +71,8 @@ package:
 functions:
   api:
     handler: dist/lambda.handler
+    # API Gateway ends every request at 30 s; the default 6 s cut off heavy CMS requests (uploads, reports)
+    timeout: 29
     events:
       - httpApi: '*'
   # Safety nets for pending payments. Same code, a longer timeout than a web request gets.
@@ -77,3 +88,8 @@ functions:
           rate: rate(1 hour)
           input:
             task: reconcile
+      # Notifications for big audiences (CMS announcements, tests, live classes), queued by lib/expoPush.ts
+      - schedule:
+          rate: rate(1 minute)
+          input:
+            task: push
