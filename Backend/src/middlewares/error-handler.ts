@@ -80,7 +80,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
       requestId,
       method: req.method,
       path: req.originalUrl,
-      err: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      // drizzle's "Failed query" hides the database's own reason in err.cause
+      err: err instanceof Error ? { message: err.message, cause: (err.cause as Error | undefined)?.message, code: pgErrorCode(err), stack: err.stack } : err,
     },
     "Unhandled production error captured by shield"
   );
