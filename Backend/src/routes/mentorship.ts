@@ -18,6 +18,7 @@ import { ensureMentorshipSchema } from "../lib/mentorshipSchema";
 import {
   BOOKING_LEAD_MS,
   BOOKING_WINDOW_DAYS,
+  JOIN_EARLY_MS,
   loadCourseMentorLinks,
   loadFavoriteUids,
   loadMentorProfiles,
@@ -277,7 +278,9 @@ router.post("/bookings", rateLimit({ windowMs: 60_000, max: 10 }), async (req, r
   res.status(201).json({ success: true, booking: { ...booking, topic: input.topic, mentorId: slotInfo.mentorUid, mentorName: profile.name ?? "" } });
 });
 
-// GET /api/mentorship/bookings — the student's upcoming sessions
+// GET /api/mentorship/bookings — the student's sessions that have not ended yet (a session stays listed
+// while it is running, so the student can still join). The Meet link is only sent once the join window
+// is open; before that the app just learns whether the mentor has added one (linkReady).
 router.get("/bookings", async (req, res) => {
   const userId = userIdOf(req);
   await ensureMentorshipSchema();
@@ -289,17 +292,41 @@ router.get("/bookings", async (req, res) => {
       startsAt: mentorSlotsTable.startsAt,
       durationMinutes: mentorSlotsTable.durationMinutes,
       courseTitle: coursesTable.title,
-      meetLink: sql<string | null>`mentor_bookings.meet_link`,
+      meetLink: mentorBookingsTable.meetLink,
     })
     .from(mentorBookingsTable)
     .innerJoin(mentorSlotsTable, eq(mentorBookingsTable.slotId, mentorSlotsTable.id))
     .leftJoin(coursesTable, eq(mentorBookingsTable.courseId, coursesTable.id))
-    .where(and(eq(mentorBookingsTable.userId, userId), eq(mentorBookingsTable.status, "confirmed"), gt(mentorSlotsTable.startsAt, new Date())))
+    .where(
+      and(
+        eq(mentorBookingsTable.userId, userId),
+        eq(mentorBookingsTable.status, "confirmed"),
+        sql`${mentorSlotsTable.startsAt} + make_interval(mins => ${mentorSlotsTable.durationMinutes}) > now()`,
+      ),
+    )
     .orderBy(asc(mentorSlotsTable.startsAt));
   const profiles = await loadMentorProfiles([...new Set<string>(rows.map((r) => String(r.mentorId)))]);
+  const now = Date.now();
   res.json({
     success: true,
-    data: rows.map((r) => ({ ...r, startsAt: new Date(r.startsAt).toISOString(), mentorName: profiles.get(r.mentorId)?.name ?? null })),
+    data: rows.map(({ meetLink, ...r }) => {
+      const start = new Date(r.startsAt).getTime();
+      const end = start + r.durationMinutes * 60_000;
+      const opens = start - JOIN_EARLY_MS;
+      const joinOpen = now >= opens;
+      return {
+        ...r,
+        startsAt: new Date(start).toISOString(),
+        endsAt: new Date(end).toISOString(),
+        joinOpensAt: new Date(opens).toISOString(),
+        mentorName: profiles.get(r.mentorId)?.name ?? null,
+        linkReady: !!meetLink,
+        joinOpen,
+        meetLink: joinOpen ? meetLink : null,
+        // Relative, so a wrong phone clock can't make the app refresh at the wrong moment
+        msUntilChange: (joinOpen ? end : opens) - now,
+      };
+    }),
   });
 });
 

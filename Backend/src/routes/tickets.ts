@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
 import { pool } from "../db/index.js";
 import { logger } from "../lib/logger.js";
 import { getIO } from "../socket.js";
@@ -270,34 +271,32 @@ export async function syncTicketsFromDb(force: boolean = false): Promise<DoubtTi
   return ticketsStore;
 }
 
-/** The ticket as kept in memory (attachments are markers). Falls back to one database row for tickets outside the memory window. */
+/** The ticket as saved (attachments are markers), read from the database row. */
 export async function findTicketLight(idOrNumber: string): Promise<DoubtTicket | null> {
   if (!idOrNumber) return null;
   const clean = String(idOrNumber).trim();
   const lower = clean.toLowerCase();
   const stripped = lower.replace(/^#/, '').replace(/^tkt-?/i, '');
 
-  const match = (t: DoubtTicket) =>
-    t.id === clean ||
-    t.id.toLowerCase() === lower ||
-    t.ticketNumber === clean ||
-    t.ticketNumber.toLowerCase() === lower ||
-    t.ticketNumber.toLowerCase().replace(/^tkt-?/i, '') === stripped;
-
-  const inMemory = ticketsStore.find(match);
-  if (inMemory) return inMemory;
-  // Older than the memory window, or created on another server: read just that one row
+  // Always the row, never the memory copy: on Lambda every container has its own memory, so its copy can miss
+  // messages another container saved (the app polled that copy and never saw the teacher's reply), and a reply
+  // saved on top of it erased them. Both columns are indexed (primary key, unique), so this is one cheap lookup.
   try {
-    const { rows } = await pool.query(
-      'SELECT data FROM doubt_tickets WHERE id = $1 OR lower(ticket_number) IN ($2, $3) LIMIT 1',
-      [clean, lower, `tkt-${stripped}`],
-    );
-    return (rows[0]?.data as DoubtTicket | undefined) ?? null;
+    const { rows } = await pool.query('SELECT data FROM doubt_tickets WHERE id = $1 OR ticket_number = $2 LIMIT 1', [
+      clean,
+      `TKT-${stripped.toUpperCase()}`,
+    ]);
+    if (rows[0]) return rows[0].data as DoubtTicket;
   } catch (err) {
     if (isDbUnavailable(err)) throw err; // answered as 503, not as "ticket not found"
     logger.warn({ err }, 'Ticket lookup failed');
-    return null;
   }
+  // Demo tickets that only exist in memory (no database configured)
+  return (
+    ticketsStore.find(
+      (t) => t.id === clean || t.id.toLowerCase() === lower || t.ticketNumber.toLowerCase().replace(/^tkt-?/i, '') === stripped,
+    ) ?? null
+  );
 }
 
 /** The ticket with its attachments back in place: what a reply, claim or detail view needs. */
@@ -321,7 +320,16 @@ export async function persistTicket(full: DoubtTicket) {
        ON CONFLICT (id) DO UPDATE SET
          ticket_number = EXCLUDED.ticket_number,
          status = EXCLUDED.status,
-         data = EXCLUDED.data,
+         -- Messages are only ever added. Keep every message already saved (a student and a teacher replying at the
+         -- same moment, on two servers, each saved a copy without the other's message) and add this copy's new
+         -- ones after them, so both replies stay. The order of saved messages never changes.
+         data = EXCLUDED.data || jsonb_build_object('messages',
+           coalesce(doubt_tickets.data->'messages', '[]'::jsonb) || coalesce((
+             SELECT jsonb_agg(m ORDER BY i)
+               FROM jsonb_array_elements(coalesce(EXCLUDED.data->'messages', '[]'::jsonb)) WITH ORDINALITY AS n(m, i)
+              WHERE m ? 'id'
+                AND NOT coalesce(doubt_tickets.data->'messages', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('id', m->'id'))
+           ), '[]'::jsonb)),
          updated_at = now()`,
       [ticket.id, ticket.ticketNumber, ticket.status, JSON.stringify(ticket), ticket.submittedAt || new Date().toISOString()]
     );
@@ -578,6 +586,33 @@ router.get('/analytics', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   await initDbTable().catch(() => {});
   const id = String(req.params.id);
+
+  // ?after=N — chat polling: the status and only the messages after the first N. Without it every poll
+  // downloaded every photo in the chat again. Saved messages never move (see persistTicket), so N is stable.
+  const after = Number(req.query.after);
+  if (req.query.after !== undefined && Number.isInteger(after) && after >= 0) {
+    const light = await findTicketLight(id);
+    if (!light) {
+      res.status(404).json({ error: 'Ticket not found' });
+      return;
+    }
+    const all = light.messages || [];
+    const fresh = all.slice(after);
+    res.json({
+      success: true,
+      data: {
+        id: light.id,
+        ticketNumber: light.ticketNumber,
+        status: light.status,
+        assignedTo: light.assignedTo,
+        resolutionRequestedAt: light.resolutionRequestedAt,
+        messageCount: all.length,
+        messages: hasBlobs(fresh) ? await inflate(fresh, blobStore) : fresh,
+      },
+    });
+    return;
+  }
+
   const ticket = await findTicket(id);
   if (!ticket) {
     res.status(404).json({ error: 'Ticket not found' });
@@ -619,7 +654,8 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const ticketNumber = await getNextTicketNumber();
-    const id = `t-${Date.now()}`;
+    // Random part: two doubts raised in the same millisecond had the same id, and the second overwrote the first
+    const id = `t-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const nowIso = new Date().toISOString();
 
     const allAttachments: string[] = Array.isArray(attachments)
@@ -673,7 +709,17 @@ router.post('/', async (req: Request, res: Response) => {
       previousChats: [],
     };
 
-    await persistTicket(newTicket); // awaited: nothing runs after the response on Lambda, and a lost ticket must be an error
+    // awaited: nothing runs after the response on Lambda, and a lost ticket must be an error
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await persistTicket(newTicket);
+        break;
+      } catch (err: any) {
+        // Two doubts raised at the same moment were given the same next number (unique): take the next free one
+        if (err?.code !== '23505' || attempt >= 5) throw err;
+        newTicket.ticketNumber = await getNextTicketNumber();
+      }
+    }
     // Emit live to CMS TA Pool and all connected clients
     const io = getIO();
     io?.emit('ticket_created', {

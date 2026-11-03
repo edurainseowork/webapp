@@ -21,6 +21,8 @@ import { toPublicUrl } from "./media";
 export const BOOKING_LEAD_MS = 30 * 60_000;
 /** How far ahead students can see and book slots. */
 export const BOOKING_WINDOW_DAYS = 30;
+/** The Join button (student app and Mentor Desk) opens this long before a session starts. */
+export const JOIN_EARLY_MS = 10 * 60_000;
 
 export type MentorCourse = { id: number; title: string; categoryId: number | null; category: string | null };
 

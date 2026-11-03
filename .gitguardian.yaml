@@ -9,3 +9,4 @@ secret:
     - "CMS-Portal/.env.example"
     - "node_modules/**"
     - "dist/**"
+

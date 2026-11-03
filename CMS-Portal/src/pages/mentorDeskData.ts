@@ -17,7 +17,9 @@ export interface MentorSession {
   /** ISO 8601 date-times */
   startTime: string;
   endTime: string;
-  /** Google Meet link for the call; null until one is attached */
+  /** When the Join button opens (a few minutes before startTime), from the backend */
+  joinOpensAt: string;
+  /** Google Meet link for the call; null until the mentor sends one */
   meetLink: string | null;
 }
 
@@ -87,6 +89,15 @@ export async function loadMentorSessions(): Promise<MentorSession[]> {
     if (err instanceof ApiError && err.status === 403) throw new Error('Sessions are shown to mentor accounts only.');
     throw err;
   }
+}
+
+/** Sends the session's Google Meet link to the student (PUT /api/mentor-desk/sessions/:id/meet-link). Returns the saved link. */
+export async function saveMeetLink(id: string, meetLink: string): Promise<string> {
+  const res = await apiFetch<{ data: { meetLink: string } }>(`/mentor-desk/sessions/${encodeURIComponent(id)}/meet-link`, {
+    method: 'PUT',
+    body: { meetLink },
+  });
+  return res.data.meetLink;
 }
 
 export const sortSessions = (list: MentorSession[]) =>

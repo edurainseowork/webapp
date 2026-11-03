@@ -351,6 +351,8 @@ export const mentorBookingsTable = pgTable("mentor_bookings", {
   courseId: integer("course_id").references(() => coursesTable.id, { onDelete: "set null" }),
   topic: text("topic").notNull(),
   status: varchar("status", { length: 20 }).default("confirmed").notNull(),
+  // Google Meet link the mentor attaches from the Mentor Desk; null until then
+  meetLink: text("meet_link"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("mentor_bookings_user_id_idx").on(table.userId),

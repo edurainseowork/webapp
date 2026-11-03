@@ -1,5 +1,5 @@
 import edurainLogo from '../assets/logo.webp'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { signOut, type User } from 'firebase/auth'
 import { auth } from '../firebase'
 import { apiFetch } from '../api'
@@ -13,6 +13,7 @@ import {
   loadMentorSessions,
   matchesFilter,
   nameFromEmail,
+  saveMeetLink,
   type MentorSession,
   type SessionFilter,
   type SessionStatus,
@@ -200,17 +201,41 @@ function SessionCard({
   session,
   slot,
   status,
+  now,
   copied,
   onCopy,
+  onLinkSaved,
 }: {
   session: MentorSession
   slot: number
   status: SessionStatus
+  now: Date
   copied: boolean
   onCopy: () => void
+  onLinkSaved: (meetLink: string) => void
 }) {
   const meta = STATUS_META[status]
-  const canJoin = !!session.meetLink && status !== 'ended'
+  // Same window as the student's app: from a few minutes before the start until the end
+  const joinOpen = now.getTime() >= new Date(session.joinOpensAt).getTime()
+  const canJoin = !!session.meetLink && status !== 'ended' && joinOpen
+  const [link, setLink] = useState(session.meetLink ?? '')
+  const [saving, setSaving] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
+
+  const sendLink = async (e: FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setLinkError(null)
+    try {
+      const saved = await saveMeetLink(session.id, link)
+      setLink(saved)
+      onLinkSaved(saved)
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : 'Could not send the link')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <article className={`md-card ${status === 'ended' ? 'is-ended' : ''}`}>
@@ -247,6 +272,28 @@ function SessionCard({
         </div>
       </div>
 
+      {status !== 'ended' && (
+        <form className="md-av-form" style={{ marginTop: 14 }} onSubmit={sendLink}>
+          <label>
+            {session.meetLink ? 'Google Meet link (sent to the student)' : 'Google Meet link: the student sees "link coming soon" until you send it'}
+            <input
+              type="url"
+              required
+              placeholder="https://meet.google.com/abc-defg-hij"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+            />
+          </label>
+          <a className="md-btn-ghost md-av-add" href="https://meet.google.com/new" target="_blank" rel="noopener noreferrer">
+            Create Meet
+          </a>
+          <button type="submit" className="md-btn-primary md-av-add" disabled={saving || !link.trim() || link.trim() === session.meetLink}>
+            {saving ? 'Sending…' : session.meetLink ? 'Update link' : 'Send to student'}
+          </button>
+          {linkError && <p className="md-av-error">{linkError}</p>}
+        </form>
+      )}
+
       <div className="md-card-actions">
         <button
           type="button"
@@ -265,7 +312,13 @@ function SessionCard({
           onClick={() => session.meetLink && window.open(session.meetLink, '_blank', 'noopener,noreferrer')}
         >
           <VideoIcon size={15} />
-          {status === 'ended' ? 'Session Ended' : session.meetLink ? 'Connect on Google Meet' : 'Meet Link Pending'}
+          {status === 'ended'
+            ? 'Session Ended'
+            : !session.meetLink
+            ? 'Meet Link Pending'
+            : joinOpen
+            ? 'Connect on Google Meet'
+            : `Join opens ${new Date(session.joinOpensAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`}
           {canJoin && <ArrowUpRightIcon />}
         </button>
       </div>
@@ -664,8 +717,12 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
                   session={session}
                   slot={slot}
                   status={getSessionStatus(session, now)}
+                  now={now}
                   copied={copiedId === session.id}
                   onCopy={() => handleCopy(session)}
+                  onLinkSaved={(meetLink) =>
+                    setSessions((list) => list && list.map((s) => (s.id === session.id ? { ...s, meetLink } : s)))
+                  }
                 />
               ))}
             </div>

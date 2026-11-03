@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { and, asc, eq, gt, lt } from "drizzle-orm";
-import { db, categoriesTable, coursesTable, mentorBookingsTable, mentorSlotsTable, usersTable } from "@workspace/db";
+import { and, asc, eq, gt, lt, sql } from "drizzle-orm";
+import { db, categoriesTable, coursesTable, mentorBookingsTable, mentorSlotsTable, notificationsTable, pushTokensTable, usersTable } from "@workspace/db";
 import { requireDeskRole } from "../middleware/auth";
 import ticketsRouter from "./tickets.js";
 import { rateLimit } from "../middlewares/security";
@@ -9,6 +9,9 @@ import { getStaffAbout } from "../lib/staffProfiles";
 import { ensureMentorshipSchema } from "../lib/mentorshipSchema";
 import { HttpError, parseId } from "../lib/http-error";
 import { logger } from "../lib/logger";
+import { JOIN_EARLY_MS } from "../lib/mentorship";
+import { sendExpoPush } from "../lib/expoPush";
+import { pruneOldNotifications } from "../lib/liveClasses";
 
 // Mentor Desk and Teacher Assistance Desk APIs.
 const deskProfile = (req: Request) => ({
@@ -118,6 +121,7 @@ mentorDeskRouter.get("/sessions", async (req, res) => {
       category: categoriesTable.name,
       startsAt: mentorSlotsTable.startsAt,
       durationMinutes: mentorSlotsTable.durationMinutes,
+      meetLink: mentorBookingsTable.meetLink,
     })
     .from(mentorBookingsTable)
     .innerJoin(mentorSlotsTable, eq(mentorBookingsTable.slotId, mentorSlotsTable.id))
@@ -138,10 +142,65 @@ mentorDeskRouter.get("/sessions", async (req, res) => {
         studentName: r.studentName?.trim() || r.studentEmail.split("@")[0],
         startTime: start.toISOString(),
         endTime: new Date(start.getTime() + r.durationMinutes * 60_000).toISOString(),
-        meetLink: null,
+        joinOpensAt: new Date(start.getTime() - JOIN_EARLY_MS).toISOString(),
+        meetLink: r.meetLink,
       };
     }),
   });
+});
+
+// Only real Google Meet rooms (meet.google.com/abc-defg-hij): this link is sent to students, so nothing else gets through
+const MEET_LINK_RE = /^https:\/\/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})(?:[/?#].*)?$/i;
+const MeetLinkBody = z.object({ meetLink: z.string().trim().max(300) }).strict();
+
+// PUT /api/mentor-desk/sessions/:id/meet-link { meetLink } — attach (or correct) the Google Meet link of a session
+// a student booked with this mentor. The student is notified now and sees the link when the join window opens.
+mentorDeskRouter.put("/sessions/:id/meet-link", rateLimit({ windowMs: 60_000, max: 20 }), async (req, res) => {
+  const uid = mentorUid(req);
+  const id = parseId(req.params.id);
+  const code = MEET_LINK_RE.exec(MeetLinkBody.parse(req.body).meetLink)?.[1];
+  if (!code) throw new HttpError(400, "Paste a Google Meet link like https://meet.google.com/abc-defg-hij");
+  const meetLink = `https://meet.google.com/${code.toLowerCase()}`;
+  await ensureMentorshipSchema();
+
+  // One statement, so two clicks or two tabs can't race: only this mentor's own confirmed booking that hasn't
+  // ended, and only when the link actually changes (a repeated save doesn't notify the student twice)
+  const [changed] = await db
+    .update(mentorBookingsTable)
+    .set({ meetLink })
+    .where(
+      and(
+        eq(mentorBookingsTable.id, id),
+        eq(mentorBookingsTable.mentorUid, uid),
+        eq(mentorBookingsTable.status, "confirmed"),
+        sql`${mentorBookingsTable.meetLink} IS DISTINCT FROM ${meetLink}`,
+        sql`EXISTS (SELECT 1 FROM mentor_slots s WHERE s.id = ${mentorBookingsTable.slotId} AND s.starts_at + make_interval(mins => s.duration_minutes) > now())`,
+      ),
+    )
+    .returning({ userId: mentorBookingsTable.userId });
+
+  if (!changed) {
+    const [same] = await db
+      .select({ id: mentorBookingsTable.id })
+      .from(mentorBookingsTable)
+      .where(and(eq(mentorBookingsTable.id, id), eq(mentorBookingsTable.mentorUid, uid), eq(mentorBookingsTable.meetLink, meetLink)))
+      .limit(1);
+    if (!same) throw new HttpError(404, "Session not found, or it has already ended");
+  } else {
+    // Before the response: nothing runs after it on Lambda. A failed notification never fails the save.
+    try {
+      const mentorName = deskProfile(req).name || "Your mentor";
+      const title = "Your 1:1 session link is ready";
+      const body = `${mentorName} shared the Google Meet link. The Join button opens ${JOIN_EARLY_MS / 60_000} minutes before your session.`;
+      await db.insert(notificationsTable).values({ userId: changed.userId, type: "mentorship", title, body });
+      await pruneOldNotifications(db, [changed.userId]);
+      const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(eq(pushTokensTable.userId, changed.userId))).map((t) => t.token);
+      await sendExpoPush(tokens, { title, body, data: { type: "mentorship", link: "/mentorship" } });
+    } catch (err) {
+      logger.warn({ err, bookingId: id }, "Meet link saved, but the student notification failed");
+    }
+  }
+  res.json({ success: true, data: { id: String(id), meetLink } });
 });
 
 // /api/teacher-assistant-desk
