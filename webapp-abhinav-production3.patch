@@ -1,0 +1,581 @@
+diff --git a/Backend/src/lib/mentorship.ts b/Backend/src/lib/mentorship.ts
+index b582076..b952247 100644
+--- a/Backend/src/lib/mentorship.ts
++++ b/Backend/src/lib/mentorship.ts
+@@ -21,6 +21,8 @@ import { toPublicUrl } from "./media";
+ export const BOOKING_LEAD_MS = 30 * 60_000;
+ /** How far ahead students can see and book slots. */
+ export const BOOKING_WINDOW_DAYS = 30;
++/** The Join button (student app and Mentor Desk) opens this long before a session starts. */
++export const JOIN_EARLY_MS = 10 * 60_000;
+ 
+ export type MentorCourse = { id: number; title: string; categoryId: number | null; category: string | null };
+ 
+diff --git a/Backend/src/routes/desks.ts b/Backend/src/routes/desks.ts
+index a0d3faa..0a2ac2d 100644
+--- a/Backend/src/routes/desks.ts
++++ b/Backend/src/routes/desks.ts
+@@ -1,7 +1,7 @@
+ import { Router, type Request } from "express";
+ import { z } from "zod";
+-import { and, asc, eq, gt, lt } from "drizzle-orm";
+-import { db, categoriesTable, coursesTable, mentorBookingsTable, mentorSlotsTable, usersTable } from "@workspace/db";
++import { and, asc, eq, gt, lt, sql } from "drizzle-orm";
++import { db, categoriesTable, coursesTable, mentorBookingsTable, mentorSlotsTable, notificationsTable, pushTokensTable, usersTable } from "@workspace/db";
+ import { requireDeskRole } from "../middleware/auth";
+ import ticketsRouter from "./tickets.js";
+ import { rateLimit } from "../middlewares/security";
+@@ -9,6 +9,9 @@ import { getStaffAbout } from "../lib/staffProfiles";
+ import { ensureMentorshipSchema } from "../lib/mentorshipSchema";
+ import { HttpError, parseId } from "../lib/http-error";
+ import { logger } from "../lib/logger";
++import { JOIN_EARLY_MS } from "../lib/mentorship";
++import { sendExpoPush } from "../lib/expoPush";
++import { pruneOldNotifications } from "../lib/liveClasses";
+ 
+ // Mentor Desk and Teacher Assistance Desk APIs.
+ const deskProfile = (req: Request) => ({
+@@ -118,6 +121,7 @@ mentorDeskRouter.get("/sessions", async (req, res) => {
+       category: categoriesTable.name,
+       startsAt: mentorSlotsTable.startsAt,
+       durationMinutes: mentorSlotsTable.durationMinutes,
++      meetLink: mentorBookingsTable.meetLink,
+     })
+     .from(mentorBookingsTable)
+     .innerJoin(mentorSlotsTable, eq(mentorBookingsTable.slotId, mentorSlotsTable.id))
+@@ -138,12 +142,67 @@ mentorDeskRouter.get("/sessions", async (req, res) => {
+         studentName: r.studentName?.trim() || r.studentEmail.split("@")[0],
+         startTime: start.toISOString(),
+         endTime: new Date(start.getTime() + r.durationMinutes * 60_000).toISOString(),
+-        meetLink: null,
++        joinOpensAt: new Date(start.getTime() - JOIN_EARLY_MS).toISOString(),
++        meetLink: r.meetLink,
+       };
+     }),
+   });
+ });
+ 
++// Only real Google Meet rooms (meet.google.com/abc-defg-hij): this link is sent to students, so nothing else gets through
++const MEET_LINK_RE = /^https:\/\/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})(?:[/?#].*)?$/i;
++const MeetLinkBody = z.object({ meetLink: z.string().trim().max(300) }).strict();
++
++// PUT /api/mentor-desk/sessions/:id/meet-link { meetLink } — attach (or correct) the Google Meet link of a session
++// a student booked with this mentor. The student is notified now and sees the link when the join window opens.
++mentorDeskRouter.put("/sessions/:id/meet-link", rateLimit({ windowMs: 60_000, max: 20 }), async (req, res) => {
++  const uid = mentorUid(req);
++  const id = parseId(req.params.id);
++  const code = MEET_LINK_RE.exec(MeetLinkBody.parse(req.body).meetLink)?.[1];
++  if (!code) throw new HttpError(400, "Paste a Google Meet link like https://meet.google.com/abc-defg-hij");
++  const meetLink = `https://meet.google.com/${code.toLowerCase()}`;
++  await ensureMentorshipSchema();
++
++  // One statement, so two clicks or two tabs can't race: only this mentor's own confirmed booking that hasn't
++  // ended, and only when the link actually changes (a repeated save doesn't notify the student twice)
++  const [changed] = await db
++    .update(mentorBookingsTable)
++    .set({ meetLink })
++    .where(
++      and(
++        eq(mentorBookingsTable.id, id),
++        eq(mentorBookingsTable.mentorUid, uid),
++        eq(mentorBookingsTable.status, "confirmed"),
++        sql`${mentorBookingsTable.meetLink} IS DISTINCT FROM ${meetLink}`,
++        sql`EXISTS (SELECT 1 FROM mentor_slots s WHERE s.id = ${mentorBookingsTable.slotId} AND s.starts_at + make_interval(mins => s.duration_minutes) > now())`,
++      ),
++    )
++    .returning({ userId: mentorBookingsTable.userId });
++
++  if (!changed) {
++    const [same] = await db
++      .select({ id: mentorBookingsTable.id })
++      .from(mentorBookingsTable)
++      .where(and(eq(mentorBookingsTable.id, id), eq(mentorBookingsTable.mentorUid, uid), eq(mentorBookingsTable.meetLink, meetLink)))
++      .limit(1);
++    if (!same) throw new HttpError(404, "Session not found, or it has already ended");
++  } else {
++    // Before the response: nothing runs after it on Lambda. A failed notification never fails the save.
++    try {
++      const mentorName = deskProfile(req).name || "Your mentor";
++      const title = "Your 1:1 session link is ready";
++      const body = `${mentorName} shared the Google Meet link. The Join button opens ${JOIN_EARLY_MS / 60_000} minutes before your session.`;
++      await db.insert(notificationsTable).values({ userId: changed.userId, type: "mentorship", title, body });
++      await pruneOldNotifications(db, [changed.userId]);
++      const tokens = (await db.select({ token: pushTokensTable.token }).from(pushTokensTable).where(eq(pushTokensTable.userId, changed.userId))).map((t) => t.token);
++      await sendExpoPush(tokens, { title, body, data: { type: "mentorship", link: "/mentorship" } });
++    } catch (err) {
++      logger.warn({ err, bookingId: id }, "Meet link saved, but the student notification failed");
++    }
++  }
++  res.json({ success: true, data: { id: String(id), meetLink } });
++});
++
+ // /api/teacher-assistant-desk
+ export const teacherAssistantDeskRouter = Router();
+ teacherAssistantDeskRouter.use(requireDeskRole("teacher_assistant"));
+diff --git a/Backend/src/routes/mentorship.ts b/Backend/src/routes/mentorship.ts
+index db1af65..2d97454 100644
+--- a/Backend/src/routes/mentorship.ts
++++ b/Backend/src/routes/mentorship.ts
+@@ -18,6 +18,7 @@ import { ensureMentorshipSchema } from "../lib/mentorshipSchema";
+ import {
+   BOOKING_LEAD_MS,
+   BOOKING_WINDOW_DAYS,
++  JOIN_EARLY_MS,
+   loadCourseMentorLinks,
+   loadFavoriteUids,
+   loadMentorProfiles,
+@@ -277,7 +278,9 @@ router.post("/bookings", rateLimit({ windowMs: 60_000, max: 10 }), async (req, r
+   res.status(201).json({ success: true, booking: { ...booking, topic: input.topic, mentorId: slotInfo.mentorUid, mentorName: profile.name ?? "" } });
+ });
+ 
+-// GET /api/mentorship/bookings — the student's upcoming sessions
++// GET /api/mentorship/bookings — the student's sessions that have not ended yet (a session stays listed
++// while it is running, so the student can still join). The Meet link is only sent once the join window
++// is open; before that the app just learns whether the mentor has added one (linkReady).
+ router.get("/bookings", async (req, res) => {
+   const userId = userIdOf(req);
+   await ensureMentorshipSchema();
+@@ -289,17 +292,41 @@ router.get("/bookings", async (req, res) => {
+       startsAt: mentorSlotsTable.startsAt,
+       durationMinutes: mentorSlotsTable.durationMinutes,
+       courseTitle: coursesTable.title,
+-      meetLink: sql<string | null>`mentor_bookings.meet_link`,
++      meetLink: mentorBookingsTable.meetLink,
+     })
+     .from(mentorBookingsTable)
+     .innerJoin(mentorSlotsTable, eq(mentorBookingsTable.slotId, mentorSlotsTable.id))
+     .leftJoin(coursesTable, eq(mentorBookingsTable.courseId, coursesTable.id))
+-    .where(and(eq(mentorBookingsTable.userId, userId), eq(mentorBookingsTable.status, "confirmed"), gt(mentorSlotsTable.startsAt, new Date())))
++    .where(
++      and(
++        eq(mentorBookingsTable.userId, userId),
++        eq(mentorBookingsTable.status, "confirmed"),
++        sql`${mentorSlotsTable.startsAt} + make_interval(mins => ${mentorSlotsTable.durationMinutes}) > now()`,
++      ),
++    )
+     .orderBy(asc(mentorSlotsTable.startsAt));
+   const profiles = await loadMentorProfiles([...new Set<string>(rows.map((r) => String(r.mentorId)))]);
++  const now = Date.now();
+   res.json({
+     success: true,
+-    data: rows.map((r) => ({ ...r, startsAt: new Date(r.startsAt).toISOString(), mentorName: profiles.get(r.mentorId)?.name ?? null })),
++    data: rows.map(({ meetLink, ...r }) => {
++      const start = new Date(r.startsAt).getTime();
++      const end = start + r.durationMinutes * 60_000;
++      const opens = start - JOIN_EARLY_MS;
++      const joinOpen = now >= opens;
++      return {
++        ...r,
++        startsAt: new Date(start).toISOString(),
++        endsAt: new Date(end).toISOString(),
++        joinOpensAt: new Date(opens).toISOString(),
++        mentorName: profiles.get(r.mentorId)?.name ?? null,
++        linkReady: !!meetLink,
++        joinOpen,
++        meetLink: joinOpen ? meetLink : null,
++        // Relative, so a wrong phone clock can't make the app refresh at the wrong moment
++        msUntilChange: (joinOpen ? end : opens) - now,
++      };
++    }),
+   });
+ });
+ 
+diff --git a/Backend/src/routes/tickets.ts b/Backend/src/routes/tickets.ts
+index 8efda6f..d9b6826 100644
+--- a/Backend/src/routes/tickets.ts
++++ b/Backend/src/routes/tickets.ts
+@@ -1,4 +1,5 @@
+ import { Router, type Request, type Response } from "express";
++import { randomUUID } from "node:crypto";
+ import { pool } from "../db/index.js";
+ import { logger } from "../lib/logger.js";
+ import { getIO } from "../socket.js";
+@@ -270,34 +271,32 @@ export async function syncTicketsFromDb(force: boolean = false): Promise<DoubtTi
+   return ticketsStore;
+ }
+ 
+-/** The ticket as kept in memory (attachments are markers). Falls back to one database row for tickets outside the memory window. */
++/** The ticket as saved (attachments are markers), read from the database row. */
+ export async function findTicketLight(idOrNumber: string): Promise<DoubtTicket | null> {
+   if (!idOrNumber) return null;
+   const clean = String(idOrNumber).trim();
+   const lower = clean.toLowerCase();
+   const stripped = lower.replace(/^#/, '').replace(/^tkt-?/i, '');
+ 
+-  const match = (t: DoubtTicket) =>
+-    t.id === clean ||
+-    t.id.toLowerCase() === lower ||
+-    t.ticketNumber === clean ||
+-    t.ticketNumber.toLowerCase() === lower ||
+-    t.ticketNumber.toLowerCase().replace(/^tkt-?/i, '') === stripped;
+-
+-  const inMemory = ticketsStore.find(match);
+-  if (inMemory) return inMemory;
+-  // Older than the memory window, or created on another server: read just that one row
++  // Always the row, never the memory copy: on Lambda every container has its own memory, so its copy can miss
++  // messages another container saved (the app polled that copy and never saw the teacher's reply), and a reply
++  // saved on top of it erased them. Both columns are indexed (primary key, unique), so this is one cheap lookup.
+   try {
+-    const { rows } = await pool.query(
+-      'SELECT data FROM doubt_tickets WHERE id = $1 OR lower(ticket_number) IN ($2, $3) LIMIT 1',
+-      [clean, lower, `tkt-${stripped}`],
+-    );
+-    return (rows[0]?.data as DoubtTicket | undefined) ?? null;
++    const { rows } = await pool.query('SELECT data FROM doubt_tickets WHERE id = $1 OR ticket_number = $2 LIMIT 1', [
++      clean,
++      `TKT-${stripped.toUpperCase()}`,
++    ]);
++    if (rows[0]) return rows[0].data as DoubtTicket;
+   } catch (err) {
+     if (isDbUnavailable(err)) throw err; // answered as 503, not as "ticket not found"
+     logger.warn({ err }, 'Ticket lookup failed');
+-    return null;
+   }
++  // Demo tickets that only exist in memory (no database configured)
++  return (
++    ticketsStore.find(
++      (t) => t.id === clean || t.id.toLowerCase() === lower || t.ticketNumber.toLowerCase().replace(/^tkt-?/i, '') === stripped,
++    ) ?? null
++  );
+ }
+ 
+ /** The ticket with its attachments back in place: what a reply, claim or detail view needs. */
+@@ -321,7 +320,16 @@ export async function persistTicket(full: DoubtTicket) {
+        ON CONFLICT (id) DO UPDATE SET
+          ticket_number = EXCLUDED.ticket_number,
+          status = EXCLUDED.status,
+-         data = EXCLUDED.data,
++         -- Messages are only ever added. Keep every message already saved (a student and a teacher replying at the
++         -- same moment, on two servers, each saved a copy without the other's message) and add this copy's new
++         -- ones after them, so both replies stay. The order of saved messages never changes.
++         data = EXCLUDED.data || jsonb_build_object('messages',
++           coalesce(doubt_tickets.data->'messages', '[]'::jsonb) || coalesce((
++             SELECT jsonb_agg(m ORDER BY i)
++               FROM jsonb_array_elements(coalesce(EXCLUDED.data->'messages', '[]'::jsonb)) WITH ORDINALITY AS n(m, i)
++              WHERE m ? 'id'
++                AND NOT coalesce(doubt_tickets.data->'messages', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('id', m->'id'))
++           ), '[]'::jsonb)),
+          updated_at = now()`,
+       [ticket.id, ticket.ticketNumber, ticket.status, JSON.stringify(ticket), ticket.submittedAt || new Date().toISOString()]
+     );
+@@ -578,6 +586,33 @@ router.get('/analytics', async (req: Request, res: Response) => {
+ router.get('/:id', async (req: Request, res: Response) => {
+   await initDbTable().catch(() => {});
+   const id = String(req.params.id);
++
++  // ?after=N — chat polling: the status and only the messages after the first N. Without it every poll
++  // downloaded every photo in the chat again. Saved messages never move (see persistTicket), so N is stable.
++  const after = Number(req.query.after);
++  if (req.query.after !== undefined && Number.isInteger(after) && after >= 0) {
++    const light = await findTicketLight(id);
++    if (!light) {
++      res.status(404).json({ error: 'Ticket not found' });
++      return;
++    }
++    const all = light.messages || [];
++    const fresh = all.slice(after);
++    res.json({
++      success: true,
++      data: {
++        id: light.id,
++        ticketNumber: light.ticketNumber,
++        status: light.status,
++        assignedTo: light.assignedTo,
++        resolutionRequestedAt: light.resolutionRequestedAt,
++        messageCount: all.length,
++        messages: hasBlobs(fresh) ? await inflate(fresh, blobStore) : fresh,
++      },
++    });
++    return;
++  }
++
+   const ticket = await findTicket(id);
+   if (!ticket) {
+     res.status(404).json({ error: 'Ticket not found' });
+@@ -619,7 +654,8 @@ router.post('/', async (req: Request, res: Response) => {
+     }
+ 
+     const ticketNumber = await getNextTicketNumber();
+-    const id = `t-${Date.now()}`;
++    // Random part: two doubts raised in the same millisecond had the same id, and the second overwrote the first
++    const id = `t-${Date.now()}-${randomUUID().slice(0, 8)}`;
+     const nowIso = new Date().toISOString();
+ 
+     const allAttachments: string[] = Array.isArray(attachments)
+@@ -673,7 +709,17 @@ router.post('/', async (req: Request, res: Response) => {
+       previousChats: [],
+     };
+ 
+-    await persistTicket(newTicket); // awaited: nothing runs after the response on Lambda, and a lost ticket must be an error
++    // awaited: nothing runs after the response on Lambda, and a lost ticket must be an error
++    for (let attempt = 1; ; attempt++) {
++      try {
++        await persistTicket(newTicket);
++        break;
++      } catch (err: any) {
++        // Two doubts raised at the same moment were given the same next number (unique): take the next free one
++        if (err?.code !== '23505' || attempt >= 5) throw err;
++        newTicket.ticketNumber = await getNextTicketNumber();
++      }
++    }
+     // Emit live to CMS TA Pool and all connected clients
+     const io = getIO();
+     io?.emit('ticket_created', {
+diff --git a/Backend/tests/ticket-merge.check.mjs b/Backend/tests/ticket-merge.check.mjs
+new file mode 100644
+index 0000000..c26d8ad
+--- /dev/null
++++ b/Backend/tests/ticket-merge.check.mjs
+@@ -0,0 +1,78 @@
++// Doubt chat on Lambda: every container keeps its own memory copy of a ticket. Checks that
++//  1. a ticket is read from the database row, not a stale memory copy (the app saw teacher replies late or never), and
++//  2. two servers saving the same ticket at once keep BOTH new messages, in a stable order (?after=N polling relies on it).
++// Run against a throwaway database (it creates and empties doubt_tickets / ticket_blobs):
++//   DATABASE_URL=postgres://... node tests/ticket-merge.check.mjs
++import assert from "node:assert/strict";
++import { build } from "esbuild";
++import { rm } from "node:fs/promises";
++import path from "node:path";
++import { fileURLToPath, pathToFileURL } from "node:url";
++
++if (!process.env.DATABASE_URL) throw new Error("Set DATABASE_URL to a throwaway database");
++process.env.AWS_LAMBDA_FUNCTION_NAME ||= "check"; // like Lambda: no warm-up, no seeding
++
++const here = path.dirname(fileURLToPath(import.meta.url));
++// The real tickets.ts (and @workspace/db, which is TypeScript) bundled; npm packages stay external
++const out = path.resolve(here, "../node_modules/.cache/ticket-check.mjs");
++await build({
++  stdin: { contents: 'export * from "./src/routes/tickets.ts"; export { pool } from "@workspace/db";', resolveDir: path.resolve(here, ".."), loader: "ts" },
++  bundle: true,
++  platform: "node",
++  format: "esm",
++  outfile: out,
++  external: ["express", "pg", "drizzle-orm", "socket.io", "pino", "pino-http", "zod", "firebase-admin", "redis", "dotenv"],
++  logLevel: "error",
++});
++const { persistTicket, findTicketLight, ticketsStore, pool } = await import(pathToFileURL(out).href);
++
++await pool.query(`CREATE TABLE IF NOT EXISTS doubt_tickets (
++  id VARCHAR(64) PRIMARY KEY, ticket_number VARCHAR(32) NOT NULL UNIQUE, status VARCHAR(32) NOT NULL, data JSONB NOT NULL,
++  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(), created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
++await pool.query("CREATE TABLE IF NOT EXISTS ticket_blobs (id TEXT PRIMARY KEY, content TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
++await pool.query("TRUNCATE doubt_tickets, ticket_blobs");
++
++const msg = (id, sender) => ({ id, sender, senderName: sender, text: id, time: "10:00" });
++const base = {
++  id: "t-check",
++  ticketNumber: "TKT-9001",
++  status: "queue",
++  submittedAt: new Date().toISOString(),
++  studentInfo: { email: "s@example.com" },
++  messages: [msg("m1", "student")],
++};
++const copy = () => structuredClone(base);
++const savedIds = async () => (await pool.query("SELECT data FROM doubt_tickets WHERE id = $1", [base.id])).rows[0].data.messages.map((m) => m.id);
++
++await persistTicket(copy());
++
++// 1. Another container adds a reply straight to the row; this process' memory copy doesn't have it
++const other = copy();
++other.messages.push(msg("ta1", "ta"));
++await pool.query("UPDATE doubt_tickets SET data = $2 WHERE id = $1", [base.id, JSON.stringify(other)]);
++assert.equal(ticketsStore.find((t) => t.id === base.id).messages.length, 1, "memory copy is stale on purpose");
++assert.deepEqual((await findTicketLight(base.id)).messages.map((m) => m.id), ["m1", "ta1"], "read must come from the row");
++assert.equal((await findTicketLight("tkt-9001")).id, base.id, "ticket number lookup, any case");
++
++// 2. Two servers, each holding a copy without the other's new message, save at the same moment
++const a = copy();
++a.messages.push(msg("st2", "student"));
++const b = copy();
++b.messages.push(msg("ta2", "ta"));
++b.status = "in_progress";
++await Promise.all([persistTicket(a), persistTicket(b)]);
++const ids = await savedIds();
++assert.deepEqual(ids.slice(0, 2), ["m1", "ta1"], "saved messages keep their place");
++assert.deepEqual([...ids.slice(2)].sort(), ["st2", "ta2"], "both concurrent replies are kept");
++
++// Saving an old copy again (retry, or a status change) adds nothing and moves nothing
++await persistTicket(copy());
++assert.deepEqual(await savedIds(), ids);
++const row = (await pool.query("SELECT status FROM doubt_tickets WHERE id = $1", [base.id])).rows[0];
++assert.equal(row.status, "queue", "status is still last writer wins");
++
++await pool.query("TRUNCATE doubt_tickets, ticket_blobs");
++await pool.end();
++await rm(out, { force: true });
++console.log("ticket-merge check passed");
++process.exit(0); // the db module keeps a keep-alive timer
+diff --git a/CMS-Portal/src/pages/MentorDesk.tsx b/CMS-Portal/src/pages/MentorDesk.tsx
+index e2413bd..6cd3868 100644
+--- a/CMS-Portal/src/pages/MentorDesk.tsx
++++ b/CMS-Portal/src/pages/MentorDesk.tsx
+@@ -1,5 +1,5 @@
+ import edurainLogo from '../assets/logo.webp'
+-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
++import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+ import { signOut, type User } from 'firebase/auth'
+ import { auth } from '../firebase'
+ import { apiFetch } from '../api'
+@@ -13,6 +13,7 @@ import {
+   loadMentorSessions,
+   matchesFilter,
+   nameFromEmail,
++  saveMeetLink,
+   type MentorSession,
+   type SessionFilter,
+   type SessionStatus,
+@@ -200,17 +201,41 @@ function SessionCard({
+   session,
+   slot,
+   status,
++  now,
+   copied,
+   onCopy,
++  onLinkSaved,
+ }: {
+   session: MentorSession
+   slot: number
+   status: SessionStatus
++  now: Date
+   copied: boolean
+   onCopy: () => void
++  onLinkSaved: (meetLink: string) => void
+ }) {
+   const meta = STATUS_META[status]
+-  const canJoin = !!session.meetLink && status !== 'ended'
++  // Same window as the student's app: from a few minutes before the start until the end
++  const joinOpen = now.getTime() >= new Date(session.joinOpensAt).getTime()
++  const canJoin = !!session.meetLink && status !== 'ended' && joinOpen
++  const [link, setLink] = useState(session.meetLink ?? '')
++  const [saving, setSaving] = useState(false)
++  const [linkError, setLinkError] = useState<string | null>(null)
++
++  const sendLink = async (e: FormEvent) => {
++    e.preventDefault()
++    setSaving(true)
++    setLinkError(null)
++    try {
++      const saved = await saveMeetLink(session.id, link)
++      setLink(saved)
++      onLinkSaved(saved)
++    } catch (err) {
++      setLinkError(err instanceof Error ? err.message : 'Could not send the link')
++    } finally {
++      setSaving(false)
++    }
++  }
+ 
+   return (
+     <article className={`md-card ${status === 'ended' ? 'is-ended' : ''}`}>
+@@ -247,6 +272,28 @@ function SessionCard({
+         </div>
+       </div>
+ 
++      {status !== 'ended' && (
++        <form className="md-av-form" style={{ marginTop: 14 }} onSubmit={sendLink}>
++          <label>
++            {session.meetLink ? 'Google Meet link (sent to the student)' : 'Google Meet link: the student sees "link coming soon" until you send it'}
++            <input
++              type="url"
++              required
++              placeholder="https://meet.google.com/abc-defg-hij"
++              value={link}
++              onChange={(e) => setLink(e.target.value)}
++            />
++          </label>
++          <a className="md-btn-ghost md-av-add" href="https://meet.google.com/new" target="_blank" rel="noopener noreferrer">
++            Create Meet
++          </a>
++          <button type="submit" className="md-btn-primary md-av-add" disabled={saving || !link.trim() || link.trim() === session.meetLink}>
++            {saving ? 'Sending…' : session.meetLink ? 'Update link' : 'Send to student'}
++          </button>
++          {linkError && <p className="md-av-error">{linkError}</p>}
++        </form>
++      )}
++
+       <div className="md-card-actions">
+         <button
+           type="button"
+@@ -265,7 +312,13 @@ function SessionCard({
+           onClick={() => session.meetLink && window.open(session.meetLink, '_blank', 'noopener,noreferrer')}
+         >
+           <VideoIcon size={15} />
+-          {status === 'ended' ? 'Session Ended' : session.meetLink ? 'Connect on Google Meet' : 'Meet Link Pending'}
++          {status === 'ended'
++            ? 'Session Ended'
++            : !session.meetLink
++            ? 'Meet Link Pending'
++            : joinOpen
++            ? 'Connect on Google Meet'
++            : `Join opens ${new Date(session.joinOpensAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`}
+           {canJoin && <ArrowUpRightIcon />}
+         </button>
+       </div>
+@@ -664,8 +717,12 @@ export default function MentorDesk({ user, onExit }: MentorDeskProps) {
+                   session={session}
+                   slot={slot}
+                   status={getSessionStatus(session, now)}
++                  now={now}
+                   copied={copiedId === session.id}
+                   onCopy={() => handleCopy(session)}
++                  onLinkSaved={(meetLink) =>
++                    setSessions((list) => list && list.map((s) => (s.id === session.id ? { ...s, meetLink } : s)))
++                  }
+                 />
+               ))}
+             </div>
+diff --git a/CMS-Portal/src/pages/mentorDeskData.ts b/CMS-Portal/src/pages/mentorDeskData.ts
+index 83e9223..1361e1d 100644
+--- a/CMS-Portal/src/pages/mentorDeskData.ts
++++ b/CMS-Portal/src/pages/mentorDeskData.ts
+@@ -17,7 +17,9 @@ export interface MentorSession {
+   /** ISO 8601 date-times */
+   startTime: string;
+   endTime: string;
+-  /** Google Meet link for the call; null until one is attached */
++  /** When the Join button opens (a few minutes before startTime), from the backend */
++  joinOpensAt: string;
++  /** Google Meet link for the call; null until the mentor sends one */
+   meetLink: string | null;
+ }
+ 
+@@ -89,6 +91,15 @@ export async function loadMentorSessions(): Promise<MentorSession[]> {
+   }
+ }
+ 
++/** Sends the session's Google Meet link to the student (PUT /api/mentor-desk/sessions/:id/meet-link). Returns the saved link. */
++export async function saveMeetLink(id: string, meetLink: string): Promise<string> {
++  const res = await apiFetch<{ data: { meetLink: string } }>(`/mentor-desk/sessions/${encodeURIComponent(id)}/meet-link`, {
++    method: 'PUT',
++    body: { meetLink },
++  });
++  return res.data.meetLink;
++}
++
+ export const sortSessions = (list: MentorSession[]) =>
+   [...list].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+ 
+diff --git a/shared/db/migrations/0014_mentor_meet_link.sql b/shared/db/migrations/0014_mentor_meet_link.sql
+new file mode 100644
+index 0000000..2c34c84
+--- /dev/null
++++ b/shared/db/migrations/0014_mentor_meet_link.sql
+@@ -0,0 +1,5 @@
++-- Google Meet link of a 1:1 mentorship session (Mentor Desk → "Send link to student").
++-- The app adds this column itself the first time it is needed (Backend/src/lib/mentorshipSchema.ts) on a new database;
++-- run this file by hand on a database that already existed. Safe to run again.
++
++ALTER TABLE mentor_bookings ADD COLUMN IF NOT EXISTS meet_link text;
+diff --git a/shared/db/src/schema/index.ts b/shared/db/src/schema/index.ts
+index ea52068..0231261 100644
+--- a/shared/db/src/schema/index.ts
++++ b/shared/db/src/schema/index.ts
+@@ -351,6 +351,8 @@ export const mentorBookingsTable = pgTable("mentor_bookings", {
+   courseId: integer("course_id").references(() => coursesTable.id, { onDelete: "set null" }),
+   topic: text("topic").notNull(),
+   status: varchar("status", { length: 20 }).default("confirmed").notNull(),
++  // Google Meet link the mentor attaches from the Mentor Desk; null until then
++  meetLink: text("meet_link"),
+   createdAt: timestamp("created_at").defaultNow().notNull(),
+ }, (table) => [
+   index("mentor_bookings_user_id_idx").on(table.userId),
