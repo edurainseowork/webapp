@@ -1,0 +1,14 @@
+{
+  // Cloudflare Worker (sirf static files): www.edurain.in/webapp/
+  "name": "edurain-webapp",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "www.edurain.in/webapp*", "zone_name": "edurain.in" },
+    { "pattern": "www.edurain.in/study*", "zone_name": "edurain.in" }
+  ]
+}

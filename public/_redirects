@@ -1,0 +1,2 @@
+/study /webapp/ 301
+/study/* /webapp/:splat 301
