@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "npm install -g pnpm@10.28.0 && pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm run build",
+  "installCommand": "npx --yes pnpm@10.28.0 install --frozen-lockfile",
+  "buildCommand": "npx --yes pnpm@10.28.0 run build",
   "outputDirectory": "dist",
   "ignoreCommand": "[ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ]",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
