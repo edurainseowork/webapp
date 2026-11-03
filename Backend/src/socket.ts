@@ -11,6 +11,9 @@ import {
   type DoubtTicket,
   type ChatMessage,
   getRelativeTime,
+  chatTime,
+  chatPhotosLeft,
+  studentPhotoProblem,
 } from './routes/tickets.js';
 import { hasBlobs, inflate } from './lib/ticketBlobs.js';
 import { corsOptions } from './middlewares/security.js';
@@ -162,6 +165,12 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
         return;
       }
 
+      const photoProblem = role === 'student' ? studentPhotoProblem(attachments, chatPhotosLeft(ticket)) : null;
+      if (photoProblem) {
+        socket.emit('error_message', { message: photoProblem });
+        return;
+      }
+
       // Turn-based check for student
       if (role === 'student') {
         const lastMsg = ticket.messages[ticket.messages.length - 1];
@@ -176,7 +185,7 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
         sender: role === 'student' ? 'student' : 'ta',
         senderName,
         text: message || '',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        time: chatTime(),
         attachmentUrls: attachments,
         attachmentUrl: attachments[0],
       };
@@ -281,15 +290,19 @@ export function initSocket(httpServer: HttpServer): SocketIOServer {
         ticket.status = 'in_progress';
         ticket.resolutionRequestedAt = undefined;
 
+        const photoProblem = studentPhotoProblem(Array.isArray(attachments) ? attachments : [], chatPhotosLeft(ticket));
         if (messageId && ticket.messages.some((m) => m.id === messageId)) {
           // Idempotency: skip duplicate message addition
+        } else if (photoProblem) {
+          socket.emit('error_message', { message: photoProblem });
+          return;
         } else if (message || (attachments && attachments.length > 0)) {
           const followupMsg: ChatMessage = {
             id: messageId || `m-st-${Date.now()}`,
             sender: 'student',
             senderName: socket.data?.name || ticket.studentName,
             text: message || '',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            time: chatTime(),
             attachmentUrls: Array.isArray(attachments) ? attachments : [],
             attachmentUrl: Array.isArray(attachments) && attachments.length > 0 ? attachments[0] : undefined,
           };

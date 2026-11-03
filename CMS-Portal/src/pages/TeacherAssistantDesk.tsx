@@ -136,12 +136,15 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
           seen.add(t.id);
           return true;
         });
-        // The list can lag a few seconds behind (server memory) and carries no photos: never step back from a
-        // copy of a ticket read here with at least as many messages (messages are only ever added)
+        // The list can lag a few seconds behind (server memory) and leaves photos out ("[attachment]"). Saved
+        // messages never change, so keep this desk's copy of every message it already has and take only the
+        // new ones from the list (the open ticket then reads their photos, see missingPhotos below)
         setTickets((prev) =>
           unique.map((t) => {
-            const mine = prev.find((p) => p.id === t.id);
-            return mine && (mine.messages?.length ?? 0) >= (t.messages?.length ?? 0) ? { ...t, messages: mine.messages } : t;
+            const mine = prev.find((p) => p.id === t.id)?.messages || [];
+            if (!mine.length) return t;
+            const known = new Set(mine.map((m) => m.id));
+            return { ...t, messages: [...mine, ...(t.messages || []).filter((m) => !known.has(m.id))] };
           })
         );
         saveStoredTickets(unique);
@@ -294,6 +297,23 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
     };
   }, []);
 
+  // One ticket in full, photos included, merged into the list
+  const refreshTicket = (id: string) =>
+    apiFetch<{ success: boolean; data: DoubtTicket }>(`/tickets/${encodeURIComponent(id)}`)
+      .then((res) => {
+        const fresh = res?.data;
+        if (!fresh?.id) return;
+        setTickets((prev) => {
+          const mine = prev.find((t) => t.id === fresh.id);
+          if (!mine) return [fresh, ...prev];
+          // Keep replies sent from this desk that the server hasn't saved yet
+          const saved = new Set((fresh.messages || []).map((m) => m.id));
+          const pending = (mine.messages || []).filter((m) => !saved.has(m.id));
+          return prev.map((t) => (t.id === fresh.id ? { ...t, ...fresh, messages: [...(fresh.messages || []), ...pending] } : t));
+        });
+      })
+      .catch(() => {}); // the list refresh catches up
+
   // Live: the backend pings ticketSignals/_pool every time a ticket is saved (a student's reply, a new doubt).
   // Read that one ticket straight away instead of waiting for the 12 s list refresh.
   useEffect(() => {
@@ -305,22 +325,7 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
         first = false; // the value it already had, nothing new
         return;
       }
-      if (!changed?.id) return;
-      const id = changed.id;
-      apiFetch<{ success: boolean; data: DoubtTicket }>(`/tickets/${encodeURIComponent(id)}`)
-        .then((res) => {
-          const fresh = res?.data;
-          if (!fresh?.id) return;
-          setTickets((prev) => {
-            const mine = prev.find((t) => t.id === fresh.id);
-            if (!mine) return [fresh, ...prev];
-            // Keep replies sent from this desk that the server hasn't saved yet
-            const saved = new Set((fresh.messages || []).map((m) => m.id));
-            const pending = (mine.messages || []).filter((m) => !saved.has(m.id));
-            return prev.map((t) => (t.id === fresh.id ? { ...t, ...fresh, messages: [...(fresh.messages || []), ...pending] } : t));
-          });
-        })
-        .catch(() => {}); // the list refresh catches up
+      if (changed?.id) refreshTicket(changed.id);
     });
   }, []);
 
@@ -350,6 +355,14 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
     if (!selectedTicketId) return null;
     return tickets.find((t) => t.id === selectedTicketId || t.ticketNumber === selectedTicketId) || null;
   }, [tickets, selectedTicketId]);
+
+  // The list sends "[attachment]" instead of photos: when the open chat has any, read that ticket in full
+  const missingPhotos = !!activeTicket?.messages?.some((m) =>
+    [m.attachmentUrl, ...(m.attachmentUrls || [])].includes('[attachment]')
+  );
+  useEffect(() => {
+    if (selectedTicketId && missingPhotos) refreshTicket(selectedTicketId);
+  }, [selectedTicketId, missingPhotos]);
 
   // Auto-scroll chat to bottom
   useEffect(() => {

@@ -452,6 +452,35 @@ function sanitizeTicketForList(t: DoubtTicket): any {
   };
 }
 
+/** Time shown next to a message. Lambda runs on UTC; students and teachers read Indian time. */
+export const chatTime = () =>
+  new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: process.env.APP_TIME_ZONE || 'Asia/Kolkata' });
+
+// Student photos: 1 when raising a doubt, STUDENT_CHAT_PHOTOS more in the chat, each an image under 1 MB.
+// The app and the website compress to fit and count before sending; this is the check no client can skip.
+const STUDENT_CHAT_PHOTOS = 2;
+const MAX_PHOTO_BYTES = 1024 * 1024;
+const IMAGE_DATA_URL = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
+
+/** Photos the student has already sent in the chat (the first message is the doubt itself). */
+export const chatPhotosLeft = (t: DoubtTicket) =>
+  STUDENT_CHAT_PHOTOS -
+  (t.messages || []).slice(1).filter((m) => m.sender === 'student').reduce((n, m) => n + (m.attachmentUrls?.length || (m.attachmentUrl ? 1 : 0)), 0);
+
+/** Why these student photos can't be accepted, or null when they can. */
+export function studentPhotoProblem(attachments: string[], allowed: number): string | null {
+  if (attachments.length > Math.max(0, allowed)) {
+    return `You can send up to ${STUDENT_CHAT_PHOTOS} photos in a doubt chat${allowed > 0 ? ` (${allowed} left)` : ''}.`;
+  }
+  for (const a of attachments) {
+    if (!IMAGE_DATA_URL.test(a)) return 'Photos must be JPEG, PNG or WebP images.';
+    const b64 = a.slice(a.indexOf(',') + 1);
+    const bytes = Math.floor((b64.length * 3) / 4) - (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0);
+    if (bytes > MAX_PHOTO_BYTES) return 'Each photo must be under 1 MB.';
+  }
+  return null;
+}
+
 // Who is calling comes from the verified token and the user row only, never from anything in the request body.
 const STAFF = new Set(['admin', 'faculty', 'teacher_assistant']);
 const callerRole = (req: Request): string =>
@@ -670,6 +699,11 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Strictly max 1 photo during initial ticket creation
     const initialAttachments = allAttachments.slice(0, 1);
+    const photoProblem = STAFF.has(callerRole(req)) ? null : studentPhotoProblem(initialAttachments, 1);
+    if (photoProblem) {
+      res.status(400).json({ error: photoProblem });
+      return;
+    }
 
     const newTicket: DoubtTicket = {
       id,
@@ -696,7 +730,7 @@ router.post('/', async (req: Request, res: Response) => {
           sender: 'student',
           senderName: studentName?.trim() || 'Student',
           text: content,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          time: chatTime(),
           attachmentUrl: initialAttachments[0] || undefined,
           attachmentUrls: initialAttachments,
         },
@@ -892,6 +926,17 @@ const handleTicketAction = async (req: Request, res: Response) => {
     return;
   }
 
+  // A follow-up is the student's message: same photo limits as a reply (a repeat of a saved one is let through)
+  const followupPhotos = Array.isArray(attachments) ? attachments.filter((u: unknown) => typeof u === 'string') : [];
+  const followupProblem =
+    action === 'followup' && !STAFF.has(callerRole(req)) && !(messageId && ticket.messages.some((m) => m.id === messageId))
+      ? studentPhotoProblem(followupPhotos, chatPhotosLeft(ticket))
+      : null;
+  if (followupProblem) {
+    res.status(400).json({ error: followupProblem });
+    return;
+  }
+
   const io = getIO();
 
   if (action === 'solved') {
@@ -935,7 +980,7 @@ const handleTicketAction = async (req: Request, res: Response) => {
         sender: 'student',
         senderName: req.user?.name || (req.auth?.name as string | undefined) || ticket.studentName,
         text: message || '',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        time: chatTime(),
         attachmentUrls: Array.isArray(attachments) ? attachments : [],
         attachmentUrl: Array.isArray(attachments) && attachments.length > 0 ? attachments[0] : undefined,
       };
@@ -997,20 +1042,25 @@ router.post('/:id/reply', async (req: Request, res: Response) => {
     return;
   }
 
-  // Allow student follow-ups freely (e.g. sending additional context or images)
-
   const allAttachments: string[] = Array.isArray(attachments)
     ? attachments.filter((u: any) => typeof u === 'string')
     : attachmentUrl
     ? [attachmentUrl]
     : [];
 
+  // Students can follow up freely, but with at most 2 photos in the whole chat, each under 1 MB
+  const photoProblem = sender === 'student' ? studentPhotoProblem(allAttachments, chatPhotosLeft(ticket)) : null;
+  if (photoProblem) {
+    res.status(400).json({ error: photoProblem });
+    return;
+  }
+
   const replyMsg: ChatMessage = {
     id: clientMsgId || `m-${sender}-${Date.now()}`,
     sender: sender === 'student' ? 'student' : 'ta',
     senderName: req.user?.name || senderName || (sender === 'student' ? ticket.studentName : 'Teacher Assistant'),
     text: text || '',
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    time: chatTime(),
     attachmentUrl: allAttachments[0] || undefined,
     attachmentUrls: allAttachments,
   };
