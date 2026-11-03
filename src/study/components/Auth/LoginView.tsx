@@ -9,6 +9,9 @@ import {
   Checkbox,
   AuthModeToggle,
   TextLink,
+  LegalLink,
+  TERMS_URL,
+  PRIVACY_URL,
   isValidEmail,
   MIN_PASSWORD_LENGTH,
 } from './AuthFields';
@@ -60,8 +63,8 @@ export function LoginView({ onSubmit, onForgotPassword, onSwitchToSignup, notice
       subtitle="Log in to pick up right where you left off."
       footer={
         <>
-          By continuing, you agree to EduRain&apos;s <TextLink>Terms of Service</TextLink> and{' '}
-          <TextLink>Privacy Policy</TextLink>.
+          By continuing, you agree to EduRain&apos;s <LegalLink href={TERMS_URL}>Terms of Service</LegalLink> and{' '}
+          <LegalLink href={PRIVACY_URL}>Privacy Policy</LegalLink>.
         </>
       }
     >

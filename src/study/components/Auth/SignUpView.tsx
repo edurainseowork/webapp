@@ -10,7 +10,9 @@ import {
   Checkbox,
   AuthModeToggle,
   StepIndicator,
-  TextLink,
+  LegalLink,
+  TERMS_URL,
+  PRIVACY_URL,
   isValidEmail,
   MIN_PASSWORD_LENGTH,
 } from './AuthFields';
@@ -171,7 +173,8 @@ export function SignUpView({ initialData, onSubmit, onSwitchToLogin }: SignUpVie
             }}
             error={!!errors.terms}
           >
-            I agree to EduRain&apos;s <TextLink>Terms of Service</TextLink> and <TextLink>Privacy Policy</TextLink>.
+            I agree to EduRain&apos;s <LegalLink href={TERMS_URL}>Terms of Service</LegalLink> and{' '}
+            <LegalLink href={PRIVACY_URL}>Privacy Policy</LegalLink>.
           </Checkbox>
           {errors.terms && <p className="text-[11px] font-medium text-red-500 mt-1.5 ml-7">{errors.terms}</p>}
         </div>

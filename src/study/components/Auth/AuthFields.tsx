@@ -333,14 +333,28 @@ export function StepIndicator({ step, total, label }: { step: number; total: num
   );
 }
 
+const LINK_CLASS = 'font-semibold text-[#175A67] hover:text-[#0F3B42] hover:underline underline-offset-2 transition-colors';
+
 export function TextLink({ children, className = '', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
       {...props}
-      className={`font-semibold text-[#175A67] hover:text-[#0F3B42] hover:underline underline-offset-2 transition-colors disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed ${className}`}
+      className={`${LINK_CLASS} disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed ${className}`}
     >
       {children}
     </button>
+  );
+}
+
+export const TERMS_URL = 'https://www.edurain.in/terms';
+export const PRIVACY_URL = 'https://www.edurain.in/privacy';
+
+/** Opens a policy page in a new tab, so a half-filled form is not lost. */
+export function LegalLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+      {children}
+    </a>
   );
 }

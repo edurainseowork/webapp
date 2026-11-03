@@ -14,7 +14,7 @@ const HIGHLIGHTS = [
 ];
 
 const STATS = [
-  { value: '45,000+', label: 'Aspirants' },
+  { value: '15,000+', label: 'Aspirants' },
   { value: '4,800+', label: 'Ranker notes' },
   { value: '4.9', label: 'Avg. rating', star: true },
 ];

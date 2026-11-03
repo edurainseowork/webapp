@@ -70,7 +70,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose }) =
           Supercharge Your Rank with Pro
         </h2>
         <p className="text-xs sm:text-sm text-[#2A707C] mt-1">
-          Join 45,000+ serious aspirants targeting top IITs and AIIMS with intelligent AI prep.
+          Join 15,000+ serious aspirants targeting top IITs and AIIMS with intelligent AI prep.
         </p>
 
         {/* Billing Toggle */}
