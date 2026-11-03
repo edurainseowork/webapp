@@ -5,6 +5,7 @@ import { logger } from "../lib/logger.js";
 import { getIO } from "../socket.js";
 import { externalize, inflate, hasBlobs, stripBlobs, type BlobStore } from "../lib/ticketBlobs.js";
 import { isDbUnavailable } from "../lib/dbErrors.js";
+import { signalTicketChange } from "../lib/ticketSignals.js";
 
 export interface ChatMessage {
   id: string;
@@ -314,7 +315,7 @@ export async function persistTicket(full: DoubtTicket) {
   } else {
     ticketsStore.unshift(ticket);
   }
-  await pool.query(
+  const { rows } = await pool.query(
       `INSERT INTO doubt_tickets (id, ticket_number, status, data, submitted_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, now())
        ON CONFLICT (id) DO UPDATE SET
@@ -330,9 +331,12 @@ export async function persistTicket(full: DoubtTicket) {
               WHERE m ? 'id'
                 AND NOT coalesce(doubt_tickets.data->'messages', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('id', m->'id'))
            ), '[]'::jsonb)),
-         updated_at = now()`,
+         updated_at = now()
+       RETURNING status, CASE WHEN jsonb_typeof(data->'messages') = 'array' THEN jsonb_array_length(data->'messages') ELSE 0 END AS n`,
       [ticket.id, ticket.ticketNumber, ticket.status, JSON.stringify(ticket), ticket.submittedAt || new Date().toISOString()]
     );
+  // Every save goes through here (HTTP routes, socket handlers, auto-close), so one call keeps every chat live
+  await signalTicketChange(ticket.id, Number(rows[0]?.n ?? 0), String(rows[0]?.status ?? ticket.status));
 }
 
 export async function saveTicketToDb(ticket: DoubtTicket) {

@@ -17,6 +17,8 @@ provider:
     CORS_ORIGINS: ${env:CORS_ORIGINS, ''}
     PUBLIC_BASE_URL: ${env:PUBLIC_BASE_URL, ''}
     FIREBASE_SERVICE_ACCOUNT: ${env:FIREBASE_SERVICE_ACCOUNT, ''}
+    # Live doubt chat signals (lib/ticketSignals.ts), e.g. https://<project>-default-rtdb.asia-southeast1.firebasedatabase.app
+    FIREBASE_DATABASE_URL: ${env:FIREBASE_DATABASE_URL, ''}
     AWS_S3_BUCKET_NAME: ${env:AWS_S3_BUCKET_NAME, ''}
     BUNNY_STREAM_LIBRARY_ID: ${env:BUNNY_STREAM_LIBRARY_ID, ''}
     BUNNY_STREAM_API_KEY: ${env:BUNNY_STREAM_API_KEY, ''}

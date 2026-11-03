@@ -2,6 +2,8 @@ import edurainLogo from '../assets/logo.webp'
 import { useState, useEffect, useRef, useMemo, type ChangeEvent, type FormEvent } from 'react';
 import type { User } from 'firebase/auth';
 import { io, Socket } from 'socket.io-client';
+import { onValue, ref } from 'firebase/database';
+import { rtdb } from '../firebase';
 import {
   getStoredTickets,
   saveStoredTickets,
@@ -134,7 +136,14 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
           seen.add(t.id);
           return true;
         });
-        setTickets(unique);
+        // The list can lag a few seconds behind (server memory) and carries no photos: never step back from a
+        // copy of a ticket read here with at least as many messages (messages are only ever added)
+        setTickets((prev) =>
+          unique.map((t) => {
+            const mine = prev.find((p) => p.id === t.id);
+            return mine && (mine.messages?.length ?? 0) >= (t.messages?.length ?? 0) ? { ...t, messages: mine.messages } : t;
+          })
+        );
         saveStoredTickets(unique);
       }
     } catch {
@@ -283,6 +292,36 @@ export function TeacherAssistantDesk({ user, onExit }: TeacherAssistantDeskProps
       clearInterval(interval);
       socket.disconnect();
     };
+  }, []);
+
+  // Live: the backend pings ticketSignals/_pool every time a ticket is saved (a student's reply, a new doubt).
+  // Read that one ticket straight away instead of waiting for the 12 s list refresh.
+  useEffect(() => {
+    if (!rtdb) return;
+    let first = true;
+    return onValue(ref(rtdb, 'ticketSignals/_pool'), (snap) => {
+      const changed = snap.val() as { id?: string } | null;
+      if (first) {
+        first = false; // the value it already had, nothing new
+        return;
+      }
+      if (!changed?.id) return;
+      const id = changed.id;
+      apiFetch<{ success: boolean; data: DoubtTicket }>(`/tickets/${encodeURIComponent(id)}`)
+        .then((res) => {
+          const fresh = res?.data;
+          if (!fresh?.id) return;
+          setTickets((prev) => {
+            const mine = prev.find((t) => t.id === fresh.id);
+            if (!mine) return [fresh, ...prev];
+            // Keep replies sent from this desk that the server hasn't saved yet
+            const saved = new Set((fresh.messages || []).map((m) => m.id));
+            const pending = (mine.messages || []).filter((m) => !saved.has(m.id));
+            return prev.map((t) => (t.id === fresh.id ? { ...t, ...fresh, messages: [...(fresh.messages || []), ...pending] } : t));
+          });
+        })
+        .catch(() => {}); // the list refresh catches up
+    });
   }, []);
 
   // When selected ticket changes, join the room

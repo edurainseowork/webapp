@@ -1,0 +1,11 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "ticketSignals": {
+      "$ticketId": {
+        ".read": "auth != null"
+      }
+    }
+  }
+}
