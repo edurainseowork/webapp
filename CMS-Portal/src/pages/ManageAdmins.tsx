@@ -87,7 +87,7 @@ const ABOUT_MAX_LENGTH = 1000
 
 // Where the "set your password" email sends people afterwards: admins back to this CMS,
 // mentors and teacher assistance to the study website's login page.
-const STUDY_URL = (import.meta.env.VITE_STUDY_URL || 'http://localhost:5173/study/').trim()
+const STUDY_URL = (import.meta.env.VITE_STUDY_URL || 'http://localhost:5173/webapp/').trim()
 const continueUrlFor = (role: StaffRole) =>
   role === 'admin' ? window.location.origin : role === 'mentor' ? `${window.location.origin}/mentorDesk` : role === 'teacher_assistant' ? `${window.location.origin}/teacherAssistant` : STUDY_URL
 // Firebase sends the "set your password" email (its Password reset template). The link is a

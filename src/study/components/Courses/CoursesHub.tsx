@@ -47,7 +47,7 @@ export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, i
       const batch = catalog.getBatch(openBatchId);
       if (batch) {
         const slug = courseUrlSlug(batch);
-        const targetUrl = `/study/courses/${slug}`;
+        const targetUrl = `/webapp/courses/${slug}`;
         if (window.location.pathname !== targetUrl) {
           window.history.replaceState(null, '', targetUrl);
         }
@@ -61,14 +61,14 @@ export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, i
     if (typeof window !== 'undefined') {
       const batch = catalog.getBatch(batchId);
       const slug = batch ? courseUrlSlug(batch) : batchId;
-      window.history.pushState(null, '', `/study/courses/${slug}`);
+      window.history.pushState(null, '', `/webapp/courses/${slug}`);
     }
   };
 
   const closeBatch = () => {
     setOpenBatchId(null);
     if (typeof window !== 'undefined') {
-      window.history.pushState(null, '', '/study/courses');
+      window.history.pushState(null, '', '/webapp/courses');
     }
   };
 
@@ -86,7 +86,7 @@ export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, i
         onExit={() => {
           setOpenBatchId(null);
           if (typeof window !== 'undefined') {
-            window.history.pushState(null, '', '/study');
+            window.history.pushState(null, '', '/webapp');
           }
           onExit();
         }}
@@ -94,7 +94,7 @@ export function CoursesHub({ mode, selectedBatch, searchQuery, goalCategoryId, i
           setOpenBatchId(null);
           setView('enrolled');
           if (typeof window !== 'undefined') {
-            window.history.pushState(null, '', '/study/my-courses');
+            window.history.pushState(null, '', '/webapp/my-courses');
           }
         }}
       />

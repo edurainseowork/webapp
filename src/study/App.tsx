@@ -278,8 +278,8 @@ export function App() {
     resetSubViews();
     setSearchQuery('');
 
-    // Dynamic shareable course detail URL: /study/courses/:batchSlug
-    const courseDetailMatch = path.match(/^\/study\/courses\/(.+)$/);
+    // Dynamic shareable course detail URL: /webapp/courses/:batchSlug
+    const courseDetailMatch = path.match(/^\/webapp\/courses\/(.+)$/);
     if (courseDetailMatch) {
       const slugOrId = decodeURIComponent(courseDetailMatch[1].trim());
       setActiveNav('courses');
@@ -287,7 +287,7 @@ export function App() {
       return;
     }
 
-    if (path.endsWith('/courses') || path === '/study/courses') {
+    if (path.endsWith('/courses') || path === '/webapp/courses') {
       setActiveNav('courses');
       setDirectOpenCourseId(null);
     } else if (path.endsWith('/daily-doubts') || path.endsWith('/daily-drop') || path.endsWith('/pi')) {
@@ -348,7 +348,7 @@ export function App() {
     setActiveNav(nav);
     if (typeof window !== 'undefined') {
       const slug = customSlug !== undefined ? customSlug : (nav === 'study-central' ? '' : nav === 'pi' ? 'daily-drop' : nav);
-      const url = `/study/${slug ? slug : ''}`;
+      const url = `/webapp/${slug ? slug : ''}`;
       if (window.location.pathname !== url) {
         window.history.pushState(null, '', url);
       }
@@ -369,7 +369,7 @@ export function App() {
     else if (type === 'mentorship') setIsMentorshipOpen(true);
     else if (type === 'batch-tests') setIsCourseTestsOpen(true);
     if (typeof window !== 'undefined') {
-      const url = `/study/${type}`;
+      const url = `/webapp/${type}`;
       if (window.location.pathname !== url) {
         window.history.pushState(null, '', url);
       }
@@ -417,7 +417,7 @@ export function App() {
       .catch((err) => console.error('Could not load the saved goal', err));
   }, [session.uid]);
 
-  // Smart landing routing on /study:
+  // Smart landing routing on /webapp:
   // - First-time: goal modal opens -> onConfirm directs to courses
   // - Returning: unenrolled (ownedIds.length === 0) -> courses; enrolled (ownedIds.length > 0) -> study-central (home)
   useEffect(() => {
@@ -426,16 +426,16 @@ export function App() {
     if (coursesStatus === 'loading') return;
 
     const currentPath = window.location.pathname.replace(/\/+$/, '');
-    if (currentPath === '/study') {
+    if (currentPath === '/webapp') {
       initialLandingDone.current = true;
       if (!goal) {
         setIsGoalModalOpen(true);
       } else if (ownedIds.length === 0) {
         setActiveNav('courses');
-        window.history.replaceState(null, '', '/study/courses');
+        window.history.replaceState(null, '', '/webapp/courses');
       } else {
         setActiveNav('study-central');
-        window.history.replaceState(null, '', '/study');
+        window.history.replaceState(null, '', '/webapp');
       }
     }
   }, [session.uid, goal, coursesStatus, ownedIds.length]);
@@ -1061,14 +1061,14 @@ export function App() {
                 setIsSavedPdfsPageOpen(false);
                 setIsBookmarksPageOpen(true);
                 if (typeof window !== 'undefined') {
-                  window.history.pushState(null, '', '/study/bookmarks');
+                  window.history.pushState(null, '', '/webapp/bookmarks');
                 }
               }}
               onGoBookmarks={() => {
                 setIsSavedPdfsPageOpen(false);
                 setIsBookmarksPageOpen(true);
                 if (typeof window !== 'undefined') {
-                  window.history.pushState(null, '', '/study/bookmarks');
+                  window.history.pushState(null, '', '/webapp/bookmarks');
                 }
               }}
               onGoLibrary={() => {

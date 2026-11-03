@@ -9,18 +9,18 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
           const cleanUrl = (req.url || '').split('?')[0];
-          if (cleanUrl === '' || cleanUrl === '/' || cleanUrl === '/study') {
+          if (cleanUrl === '' || cleanUrl === '/' || cleanUrl === '/webapp') {
             const query = (req.url || '').includes('?') ? (req.url || '').slice((req.url || '').indexOf('?')) : '';
-            res.writeHead(302, { Location: `/study/${query}` });
+            res.writeHead(302, { Location: `/webapp/${query}` });
             res.end();
             return;
           }
-          if (req.url && (req.url.startsWith('/study/') || req.url === '/study') && !req.url.includes('.')) {
-            req.url = '/study/index.html';
+          if (req.url && (req.url.startsWith('/webapp/') || req.url === '/webapp') && !req.url.includes('.')) {
+            req.url = '/webapp/index.html';
           }
-          // Role desks live outside /study but are the same single-page app
+          // Role desks live outside /webapp but are the same single-page app
           if (req.url && /^\/(mentorDesk|teacherAssistantDesk)(\/[^.]*)?(\?.*)?$/i.test(req.url)) {
-            req.url = '/study/index.html';
+            req.url = '/webapp/index.html';
           }
           next();
         });
@@ -33,9 +33,11 @@ export default defineConfig({
     strictPort: true,
   },
   build: {
+    // Everything under /webapp/ (www.edurain.in/webapp), so another site can route that one path here
+    assetsDir: 'webapp/assets',
     rollupOptions: {
       input: {
-        main: 'study/index.html',
+        main: 'webapp/index.html',
       },
     },
   },

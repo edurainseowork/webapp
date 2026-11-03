@@ -5,7 +5,7 @@ export const DESK_HOME = {
   
   export type DeskRole = keyof typeof DESK_HOME;
   
-  export const STUDY_HOME = '/study/';
+  export const STUDY_HOME = '/webapp/';
   
   export const isDeskRole = (role: string | null | undefined): role is DeskRole =>
   Boolean(role && Object.prototype.hasOwnProperty.call(DESK_HOME, role));
