@@ -62,7 +62,16 @@ const enrollAppleIap = async (
  * POST /api/apple-iap/verify
  * Validates Apple StoreKit in-app purchase transaction and unlocks course
  */
+// LOCKED: this route enrolled the caller for any transactionId it was sent, without asking Apple
+// whether the purchase is real, so anyone signed in could unlock any course for free. It stays off
+// until it verifies each transaction with the App Store Server API (signed JWS from Apple).
+const APPLE_IAP_VERIFIED_WITH_APPLE = false;
+
 router.post("/verify", requireAuth, async (req, res) => {
+  if (!APPLE_IAP_VERIFIED_WITH_APPLE) {
+    res.status(503).json({ error: "Apple purchases are not available yet. Please buy this course on www.edurain.in." });
+    return;
+  }
   const parse = VerifyAppleIapBody.safeParse(req.body);
   if (!parse.success) {
     res.status(400).json({ error: parse.error.issues[0]?.message || "Invalid Apple purchase data" });
