@@ -11,6 +11,7 @@ import {
   studentGoalsTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth.js";
+import { requireEnrolled } from "../lib/enrollment.js";
 import { rateLimit } from "../middlewares/security";
 import { HttpError } from "../lib/http-error";
 import { logger } from "../lib/logger";
@@ -237,7 +238,7 @@ const BookingBody = z
   .strict();
 
 // POST /api/mentorship/bookings { slotId, topic, courseId? } — book one open slot
-router.post("/bookings", rateLimit({ windowMs: 60_000, max: 10 }), async (req, res) => {
+router.post("/bookings", rateLimit({ windowMs: 60_000, max: 10 }), requireEnrolled("1:1 mentorship"), async (req, res) => {
   const userId = userIdOf(req);
   const input = BookingBody.parse(req.body);
   await ensureMentorshipSchema();

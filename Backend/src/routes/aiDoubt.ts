@@ -15,6 +15,8 @@ import {
 } from "../lib/geminiClient.js";
 import { inspectStudentMessage } from "../lib/abuseGuardEngine.js";
 import { rateLimit } from "../middlewares/security.js";
+import { requireAuth } from "../middleware/auth.js";
+import { requireEnrolled } from "../lib/enrollment.js";
 import {
   checkUserLockStatus,
   issueModerationStrike,
@@ -22,6 +24,9 @@ import {
 } from "../lib/aiModeration.js";
 
 const router = Router();
+
+// EduAI Tutor: signed-in students who bought a course (staff always)
+router.use(requireAuth, requireEnrolled("EduAI Tutor"));
 
 // Ensure PostgreSQL tables exist for chat and moderation
 let tablesChecked = false;
@@ -72,7 +77,7 @@ function resolveUserIdentifier(req: any): string {
  */
 router.get("/quota", async (req: Request, res: Response) => {
   const userId = resolveUserIdentifier(req);
-  const quota = hybridQuotaTracker.getUserQuota(userId);
+  const quota = await hybridQuotaTracker.getUserQuota(userId);
   const lockStatus = await checkUserLockStatus(userId);
 
   res.json({
@@ -112,9 +117,9 @@ router.post("/moderation/strike", async (req: Request, res: Response) => {
  * 3. POST /api/v1/ai/doubt/heartbeat
  * Logs 30 seconds of active study time to student's 1-hour quota
  */
-router.post("/heartbeat", (req: Request, res: Response) => {
+router.post("/heartbeat", async (req: Request, res: Response) => {
   const userId = resolveUserIdentifier(req);
-  const quota = hybridQuotaTracker.recordHeartbeat(userId, 30);
+  const quota = await hybridQuotaTracker.recordHeartbeat(userId, 30);
   res.json({
     success: true,
     data: quota,
@@ -294,7 +299,7 @@ router.post("/stream", aiStreamLimiter, async (req: Request, res: Response) => {
     logger.warn({ dbErr }, "Could not record user chat turn to DB");
   }
 
-  const currentQuota = hybridQuotaTracker.getUserQuota(userId);
+  const currentQuota = await hybridQuotaTracker.getUserQuota(userId);
 
   // 3. ZERO-QUOTA ROUTE: Greetings ("hi", "hello", "namaste")
   if (isGreetingQuery(prompt)) {
@@ -311,7 +316,7 @@ router.post("/stream", aiStreamLimiter, async (req: Request, res: Response) => {
   }
 
   // 5. Consume Question Quota for legitimate academic query
-  const quotaCheck = hybridQuotaTracker.consumeQuestion(userId);
+  const quotaCheck = await hybridQuotaTracker.consumeQuestion(userId);
   if (!quotaCheck.success) {
     res.status(429).json({
       error: "Quota Exceeded",

@@ -6,6 +6,7 @@ import { getIO } from "../socket.js";
 import { externalize, inflate, hasBlobs, stripBlobs, type BlobStore } from "../lib/ticketBlobs.js";
 import { isDbUnavailable } from "../lib/dbErrors.js";
 import { signalTicketChange } from "../lib/ticketSignals.js";
+import { requireEnrolled } from "../lib/enrollment.js";
 
 export interface ChatMessage {
   id: string;
@@ -488,7 +489,8 @@ const callerRole = (req: Request): string =>
 const phone10 = (p: unknown) => String(p ?? '').replace(/\D/g, '').slice(-10);
 const callerIdentity = (req: Request) => ({
   email: String(req.user?.email || req.auth?.email || '').toLowerCase().trim(),
-  phone: phone10(req.user?.phone || (req.auth as any)?.phone_number || (req.auth as any)?.phone),
+  // Only the OTP-verified login number from the token (a profile phone could be typed in by anyone)
+  phone: phone10((req.auth as any)?.phone_number),
 });
 function isOwner(req: Request, t: DoubtTicket): boolean {
   const me = callerIdentity(req);
@@ -661,7 +663,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // 5. POST /api/tickets — Student raises a new doubt ticket into Central Pool
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireEnrolled('Doubt solving'), async (req: Request, res: Response) => {
   await initDbTable().catch(() => {});
   try {
     const {

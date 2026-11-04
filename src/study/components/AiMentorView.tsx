@@ -189,6 +189,12 @@ export function AiMentorView({ userName, onBack }: AiMentorViewProps) {
               });
             }
           }
+        } else if (quotaRes.status === 402 && isMounted) {
+          // No course bought yet: EduAI Tutor stays locked
+          const json = await quotaRes.json().catch(() => null);
+          const reason = json?.message || 'EduAI Tutor unlocks after you enroll in a course.';
+          setQuota((q) => ({ ...q, isAllowed: false, reason, questionsLeft: 0 }));
+          setErrorMessage(reason);
         }
 
         // 2. Fetch last 2 sessions history
@@ -434,7 +440,7 @@ export function AiMentorView({ userName, onBack }: AiMentorViewProps) {
         return;
       }
 
-      if (response.status === 429) {
+      if (response.status === 429 || response.status === 402) {
         const errorJson = await response.json();
         const reason = errorJson?.message || 'Daily limit reached.';
         setQuota((q) => ({ ...q, isAllowed: false, reason, questionsLeft: 0 }));

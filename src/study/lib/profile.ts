@@ -52,6 +52,16 @@ export async function updateProfile(patch: ProfileUpdate): Promise<StudentProfil
   return (await apiFetch<{ data: StudentProfile }>('/profile', { method: 'PATCH', body: patch })).data;
 }
 
+/**
+ * Moves the login number to `phone` once its OTP was verified (MSG91 access token), then
+ * refreshes the sign-in token so the new number is used for phone login right away.
+ */
+export async function changeLoginPhone(phone: string, accessToken: string): Promise<string> {
+  const res = await apiFetch<{ phone: string }>('/auth/change-phone', { method: 'POST', body: { phone, accessToken } });
+  await auth.currentUser?.getIdToken(true).catch(() => undefined);
+  return res.phone;
+}
+
 export const PHOTO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 export const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 

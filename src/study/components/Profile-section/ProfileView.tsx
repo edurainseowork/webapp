@@ -28,6 +28,7 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { useAuth } from '../../AuthGate';
+import { ChangePhoneDialog } from './ChangePhoneDialog';
 import type { StudentGoal } from '../../lib/goal';
 import {
   PHOTO_MAX_BYTES,
@@ -56,7 +57,6 @@ interface ProfileViewProps {
 
 type Draft = {
   name: string;
-  phone: string;
   gender: Gender | '';
   city: string;
   state: string;
@@ -71,8 +71,6 @@ const GENDERS: { value: Gender | ''; label: string }[] = [
 ];
 const genderLabel = (g: Gender | null) => GENDERS.find((x) => x.value === (g ?? ''))?.label ?? 'Not specified';
 
-const PHONE_RE = /^\+?[0-9]{10,15}$/;
-const cleanPhone = (v: string) => v.replace(/[\s()-]/g, '');
 
 const errorText = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
@@ -162,6 +160,7 @@ export function ProfileView({ onBack, goal, onPhotoChange }: ProfileViewProps) {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [phoneDialogOpen, setPhoneDialogOpen] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -201,7 +200,6 @@ export function ProfileView({ onBack, goal, onPhotoChange }: ProfileViewProps) {
     if (!profile) return;
     setDraft({
       name: profile.name ?? '',
-      phone: profile.phone ?? '',
       gender: profile.gender ?? '',
       city: profile.city ?? '',
       state: profile.state ?? '',
@@ -226,17 +224,14 @@ export function ProfileView({ onBack, goal, onPhotoChange }: ProfileViewProps) {
   const saveEdit = async () => {
     if (!draft || !profile || saving) return;
     const name = draft.name.trim().replace(/\s+/g, ' ');
-    const phone = cleanPhone(draft.phone.trim());
     if (name.length < 2) return setFormError('Name must be at least 2 characters.');
     if (name.length > 80) return setFormError('Name is too long.');
-    if (phone && !PHONE_RE.test(phone)) return setFormError('Enter a valid mobile number (10 to 15 digits).');
 
     setSaving(true);
     setFormError(null);
     try {
       const saved = await updateProfile({
         name,
-        phone: phone || null,
         gender: draft.gender || null,
         city: draft.city.trim() || null,
         state: draft.state.trim() || null,
@@ -510,13 +505,17 @@ export function ProfileView({ onBack, goal, onPhotoChange }: ProfileViewProps) {
             )}
           </DetailCard>
 
-          <DetailCard label="Mobile Number" icon={Phone}>
-            {isEditing && draft ? (
-              <input className={inputClass} type="tel" value={draft.phone} maxLength={20} placeholder="e.g. 9876543210" onChange={(e) => update('phone')(e.target.value)} aria-label="Mobile number" />
-            ) : profile.phone ? (
-              <span className="font-semibold text-[#0B1C30] text-sm truncate block">{profile.phone}</span>
+          <DetailCard label="Mobile Number · Login" icon={Phone}>
+            {/* The login number only changes with an OTP on the new number */}
+            {profile.phone ? (
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-[#0B1C30] text-sm truncate">{profile.phone}</span>
+                <button onClick={() => setPhoneDialogOpen(true)} className="shrink-0 text-xs font-bold text-[#006972] hover:underline">
+                  Change
+                </button>
+              </div>
             ) : (
-              <button onClick={startEdit} className="font-bold text-[#006972] text-sm hover:underline">
+              <button onClick={() => setPhoneDialogOpen(true)} className="font-bold text-[#006972] text-sm hover:underline">
                 + Add Mobile Number
               </button>
             )}
@@ -646,6 +645,17 @@ export function ProfileView({ onBack, goal, onPhotoChange }: ProfileViewProps) {
           trend={accuracyDiff === null || accuracyDiff === 0 ? undefined : accuracyDiff > 0 ? 'up' : 'down'}
         />
       </div>
+
+      <ChangePhoneDialog
+        open={phoneDialogOpen}
+        hasPhone={!!profile?.phone}
+        onClose={() => setPhoneDialogOpen(false)}
+        onChanged={(phone) => {
+          setPhoneDialogOpen(false);
+          setProfile((p) => (p ? { ...p, phone } : p));
+          showToast(`+91 ${phone} is now your login number.`);
+        }}
+      />
 
       {toast && (
         <div

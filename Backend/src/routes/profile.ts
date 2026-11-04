@@ -60,6 +60,8 @@ const updateProfileSchema = z
   .strict()
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 
+const phone10 = (value: unknown) => String(value ?? "").replace(/\D/g, "").slice(-10);
+
 function requireDbUserId(req: Request): number {
   const id = req.user?.id;
   if (!id) throw new HttpError(401, "Could not load your account. Please log in again.");
@@ -120,14 +122,27 @@ router.get("/", async (req, res) => {
   if (tokenEmail && req.user && req.user.email.toLowerCase() !== tokenEmail) {
     await db.update(usersTable).set({ email: tokenEmail, updatedAt: new Date() }).where(eq(usersTable.id, userId));
   }
+  // Same for the login number (OTP-verified at sign-up or by POST /api/auth/change-phone). A token
+  // can be up to an hour old, so on a mismatch the Firebase account itself decides, never the token.
+  const uid = req.auth?.uid;
+  const tokenPhone = phone10(req.auth?.phone_number);
+  const dbPhone = phone10(req.user?.phone);
+  if (uid && !uid.startsWith("test-") && tokenPhone !== dbPhone) {
+    const loginPhone = phone10((await firebaseAuth.getUser(uid).catch(() => null))?.phoneNumber);
+    if (loginPhone.length === 10 && loginPhone !== dbPhone) {
+      await db.update(usersTable).set({ phone: loginPhone, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+    }
+  }
 
   res.json({ success: true, data: await loadProfile(req, userId) });
 });
 
-// PATCH /api/profile  { name?, phone?, gender?, address?, city?, state?, pincode? }
+// PATCH /api/profile  { name?, gender?, address?, city?, state?, pincode? }
+// The login number only changes through an OTP (POST /api/auth/change-phone); a `phone` sent here
+// by older app versions is accepted and ignored.
 router.patch("/", async (req, res) => {
   const userId = requireDbUserId(req);
-  const input = updateProfileSchema.parse(req.body ?? {});
+  const { phone: _phone, ...input } = updateProfileSchema.parse(req.body ?? {});
 
   await db.update(usersTable).set({ ...input, updatedAt: new Date() }).where(eq(usersTable.id, userId));
 

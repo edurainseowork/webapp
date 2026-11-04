@@ -9,6 +9,9 @@ import { hasPrivilegedClaims, isSuperAdminEmail, isSuperAdminToken } from '../li
 import { deskRoleFromClaims } from '../lib/deskRoles';
 import { emailDispatchQueue } from '../lib/perfEngine';
 import { accountToUpdate, otpNumberMatches, otpReplyHasNumber } from '../lib/signupGuards';
+import { db } from '@workspace/db';
+import { usersTable } from '@workspace/db/schema';
+import { eq } from 'drizzle-orm';
 
 export const authRouter = Router();
 
@@ -27,6 +30,27 @@ const isPrivilegedAccount = (user: UserRecord) =>
   hasPrivilegedClaims(user.customClaims) || !!deskRoleFromClaims(user.customClaims) || isSuperAdminEmail(user.email);
 const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
 const ACCOUNT_EXISTS_CODES = new Set(['auth/email-already-exists', 'auth/email-already-in-use', 'auth/phone-number-already-exists']);
+
+/**
+ * Asks MSG91 whether an OTP access token is genuine. On success `number` is what MSG91 says the
+ * OTP was sent to (e.g. "919876543210"); on failure `error` is safe to show to the user.
+ */
+async function verifyMsg91Token(accessToken: string): Promise<{ number: unknown } | { error: string }> {
+  try {
+    const verifyResponse = await axios.post(
+      'https://control.msg91.com/api/v5/widget/verifyAccessToken',
+      { authkey: MSG91_AUTH_KEY, 'access-token': accessToken },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 4000 }
+    );
+    if (verifyResponse.data?.type === 'error') {
+      return { error: verifyResponse.data.message || 'Invalid Access Token' };
+    }
+    return { number: verifyResponse.data?.message };
+  } catch (msg91Error: any) {
+    console.error('MSG91 Verify Error:', msg91Error?.response?.data || msg91Error.message);
+    return { error: 'Failed to verify OTP with MSG91' };
+  }
+}
 
 /**
  * GET /api/auth/me — Return authenticated user profile and resolved RBAC role
@@ -72,35 +96,16 @@ authRouter.post('/verify-otp-and-signup', authStrictLimiter, async (req: Request
       return res.status(400).json({ error: 'All fields (name, email, password, phone, accessToken) are required' });
     }
 
-    // Verify via MSG91 verifyAccessToken API
-    try {
-      const verifyResponse = await axios.post(
-        'https://control.msg91.com/api/v5/widget/verifyAccessToken',
-        {
-          authkey: MSG91_AUTH_KEY,
-          "access-token": accessToken
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 4000
-        }
-      );
-
-      if (verifyResponse.data?.type === 'error') {
-        return res.status(400).json({ error: verifyResponse.data.message || 'Invalid Access Token' });
-      }
-      // The token proves who owns the number MSG91 sent the OTP to, not the number in the form
-      if (!otpNumberMatches(verifyResponse.data?.message, phone)) {
-        return res.status(400).json({ error: 'OTP was verified for a different mobile number. Please verify this number again.' });
-      }
-      if (!otpReplyHasNumber(verifyResponse.data?.message)) {
-        console.warn('MSG91 verifyAccessToken reply has no mobile number; number match skipped');
-      }
-    } catch (msg91Error: any) {
-      console.error('MSG91 Verify Error:', msg91Error?.response?.data || msg91Error.message);
-      return res.status(400).json({ error: 'Failed to verify OTP with MSG91' });
+    const verified = await verifyMsg91Token(accessToken);
+    if ('error' in verified) {
+      return res.status(400).json({ error: verified.error });
+    }
+    // The token proves who owns the number MSG91 sent the OTP to, not the number in the form
+    if (!otpNumberMatches(verified.number, phone)) {
+      return res.status(400).json({ error: 'OTP was verified for a different mobile number. Please verify this number again.' });
+    }
+    if (!otpReplyHasNumber(verified.number)) {
+      console.warn('MSG91 verifyAccessToken reply has no mobile number; number match skipped');
     }
     // App sign-up must never take over a CMS account (Super Admin, admins, faculty)
     if (isSuperAdminEmail(email)) {
@@ -141,6 +146,50 @@ authRouter.post('/verify-otp-and-signup', authStrictLimiter, async (req: Request
     console.error('Error verifying OTP and signing up:', error.message);
     res.status(500).json({ error: 'Failed to sign up' });
   }
+});
+
+/**
+ * POST /api/auth/change-phone { phone, accessToken } — the signed-in user moves their login number
+ * to a new one they just verified with an OTP. A number already on another account is refused.
+ */
+authRouter.post('/change-phone', authStrictLimiter, authenticateToken, async (req: Request, res: Response): Promise<any> => {
+  const digits = String(req.body?.phone ?? '').replace(/\D/g, '').slice(-10);
+  const accessToken = req.body?.accessToken;
+  if (!/^[6-9][0-9]{9}$/.test(digits) || typeof accessToken !== 'string' || !accessToken) {
+    return res.status(400).json({ error: 'Enter a valid 10-digit mobile number and verify it with the OTP.' });
+  }
+
+  const verified = await verifyMsg91Token(accessToken);
+  if ('error' in verified) {
+    return res.status(400).json({ error: verified.error });
+  }
+  // Here the number in MSG91's reply is required: it is the only proof of who received the OTP
+  if (!otpReplyHasNumber(verified.number) || !otpNumberMatches(verified.number, digits)) {
+    console.warn('change-phone: MSG91 reply did not confirm the number', { reply: typeof verified.number });
+    return res.status(400).json({ error: 'OTP was verified for a different mobile number. Please verify this number again.' });
+  }
+
+  const uid = req.auth!.uid;
+  const phoneWithCode = `+91${digits}`;
+  const owner = await getAuth().getUserByPhoneNumber(phoneWithCode).catch(() => null);
+  if (owner && owner.uid !== uid) {
+    return res.status(409).json({ error: 'This number is already linked to another EduRain account.' });
+  }
+  if (!owner) {
+    try {
+      await getAuth().updateUser(uid, { phoneNumber: phoneWithCode });
+    } catch (err: any) {
+      // Someone else claimed the number between our check and this write
+      if (err?.code === 'auth/phone-number-already-exists') {
+        return res.status(409).json({ error: 'This number is already linked to another EduRain account.' });
+      }
+      throw err;
+    }
+  }
+  if (req.user?.id) {
+    await db.update(usersTable).set({ phone: digits, updatedAt: new Date() }).where(eq(usersTable.id, req.user.id));
+  }
+  res.json({ success: true, phone: digits });
 });
 
 authRouter.post('/get-email-by-phone', authStrictLimiter, async (req: Request, res: Response): Promise<any> => {

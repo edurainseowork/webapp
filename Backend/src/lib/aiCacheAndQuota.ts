@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { pool } from "@workspace/db";
 
 /* ------------------------------------------------------------------ */
 /*  1. IN-MEMORY LRU CACHE FOR EXACT PROMPTS                          */
@@ -69,13 +70,6 @@ export const aiCache = new InMemoryLruCache();
 export const DAILY_QUESTION_LIMIT = 30;
 export const DAILY_MINUTES_LIMIT = 60;
 
-interface UserDailyUsage {
-  date: string; // YYYY-MM-DD in UTC/IST
-  questionsUsed: number;
-  activeSeconds: number;
-  lastHeartbeat: number;
-}
-
 export interface UserQuotaStatus {
   isAllowed: boolean;
   reason: string | null;
@@ -87,86 +81,93 @@ export interface UserQuotaStatus {
   minutesLeft: number;
 }
 
-class HybridQuotaTracker {
-  private usage = new Map<string, UserDailyUsage>();
+// Counts live in Postgres (one row per student per IST day), so every Lambda instance sees the
+// same numbers and leaving the screen or a cold start never resets them. Resets at midnight IST.
+const QUOTA_TIME_ZONE = process.env.APP_TIME_ZONE || "Asia/Kolkata";
+const DAILY_SECONDS_LIMIT = DAILY_MINUTES_LIMIT * 60;
 
-  private getTodayString(): string {
-    return new Date().toISOString().slice(0, 10);
+let tableReady: Promise<void> | null = null;
+const ensureQuotaTable = () =>
+  (tableReady ??= pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS ai_daily_usage (
+        user_key VARCHAR(64) NOT NULL,
+        usage_day DATE NOT NULL,
+        questions_used INTEGER NOT NULL DEFAULT 0,
+        active_seconds INTEGER NOT NULL DEFAULT 0,
+        last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (user_key, usage_day)
+      )`)
+    .then(() => undefined)
+    .catch((err) => {
+      // Two Lambdas creating the table at the same moment: the loser gets one of these; the table exists
+      if (err?.code === "23505" || err?.code === "42P07") return;
+      tableReady = null;
+      throw err;
+    }));
+
+const TODAY = `(NOW() AT TIME ZONE $2)::date`;
+
+export function quotaStatus(questionsUsed: number, activeSeconds: number): UserQuotaStatus {
+  const minutesUsed = Math.floor(activeSeconds / 60);
+  const questionsLeft = Math.max(0, DAILY_QUESTION_LIMIT - questionsUsed);
+  const minutesLeft = Math.max(0, DAILY_MINUTES_LIMIT - minutesUsed);
+
+  let reason: string | null = null;
+  if (questionsLeft <= 0) {
+    reason = `Aapka daily limit (${DAILY_QUESTION_LIMIT} questions) pura ho gaya hai. Kal naye doubts unlock honge.`;
+  } else if (minutesLeft <= 0) {
+    reason = `Aapka daily 1 hour study limit pura ho gaya hai. Kal naye doubts unlock honge.`;
   }
 
-  private getUserRecord(userId: string | number): UserDailyUsage {
-    const key = String(userId);
-    const today = this.getTodayString();
-    let record = this.usage.get(key);
-
-    if (!record || record.date !== today) {
-      record = {
-        date: today,
-        questionsUsed: 0,
-        activeSeconds: 0,
-        lastHeartbeat: Date.now(),
-      };
-      this.usage.set(key, record);
-    }
-
-    return record;
-  }
-
-  getUserQuota(userId: string | number): UserQuotaStatus {
-    const record = this.getUserRecord(userId);
-    const minutesUsed = Math.floor(record.activeSeconds / 60);
-
-    const questionsLeft = Math.max(0, DAILY_QUESTION_LIMIT - record.questionsUsed);
-    const minutesLeft = Math.max(0, DAILY_MINUTES_LIMIT - minutesUsed);
-
-    const questionsExhausted = questionsLeft <= 0;
-    const timeExhausted = minutesLeft <= 0;
-
-    const isAllowed = !questionsExhausted && !timeExhausted;
-    let reason: string | null = null;
-
-    if (questionsExhausted) {
-      reason = `Aapka daily limit (${DAILY_QUESTION_LIMIT} questions) pura ho gaya hai. Kal naye doubts unlock honge.`;
-    } else if (timeExhausted) {
-      reason = `Aapka daily 1 hour study limit pura ho gaya hai. Kal naye doubts unlock honge.`;
-    }
-
-    return {
-      isAllowed,
-      reason,
-      questionsUsed: record.questionsUsed,
-      questionsLimit: DAILY_QUESTION_LIMIT,
-      questionsLeft,
-      minutesUsed,
-      minutesLimit: DAILY_MINUTES_LIMIT,
-      minutesLeft,
-    };
-  }
-
-  consumeQuestion(userId: string | number): { success: boolean; quota: UserQuotaStatus } {
-    const quota = this.getUserQuota(userId);
-    if (!quota.isAllowed) {
-      return { success: false, quota };
-    }
-
-    const record = this.getUserRecord(userId);
-    record.questionsUsed += 1;
-    return { success: true, quota: this.getUserQuota(userId) };
-  }
-
-  recordHeartbeat(userId: string | number, secondsToAdd = 30): UserQuotaStatus {
-    const record = this.getUserRecord(userId);
-    const now = Date.now();
-
-    // Prevent abuse: heartbeat must not be called faster than every 10 seconds
-    const diffMs = now - record.lastHeartbeat;
-    if (diffMs >= 8000) {
-      record.activeSeconds += Math.min(secondsToAdd, Math.floor(diffMs / 1000));
-      record.lastHeartbeat = now;
-    }
-
-    return this.getUserQuota(userId);
-  }
+  return {
+    isAllowed: reason === null,
+    reason,
+    questionsUsed,
+    questionsLimit: DAILY_QUESTION_LIMIT,
+    questionsLeft,
+    minutesUsed,
+    minutesLimit: DAILY_MINUTES_LIMIT,
+    minutesLeft,
+  };
 }
 
-export const hybridQuotaTracker = new HybridQuotaTracker();
+export const hybridQuotaTracker = {
+  async getUserQuota(userId: string | number): Promise<UserQuotaStatus> {
+    await ensureQuotaTable();
+    const { rows } = await pool.query(
+      `SELECT questions_used, active_seconds FROM ai_daily_usage WHERE user_key = $1 AND usage_day = ${TODAY}`,
+      [String(userId), QUOTA_TIME_ZONE],
+    );
+    return quotaStatus(rows[0]?.questions_used ?? 0, rows[0]?.active_seconds ?? 0);
+  },
+
+  /** Takes one question if the student has any left today. Safe when two requests race. */
+  async consumeQuestion(userId: string | number): Promise<{ success: boolean; quota: UserQuotaStatus }> {
+    await ensureQuotaTable();
+    const { rows } = await pool.query(
+      `INSERT INTO ai_daily_usage (user_key, usage_day, questions_used) VALUES ($1, ${TODAY}, 1)
+       ON CONFLICT (user_key, usage_day) DO UPDATE SET questions_used = ai_daily_usage.questions_used + 1
+       WHERE ai_daily_usage.questions_used < $3 AND ai_daily_usage.active_seconds < $4
+       RETURNING questions_used, active_seconds`,
+      [String(userId), QUOTA_TIME_ZONE, DAILY_QUESTION_LIMIT, DAILY_SECONDS_LIMIT],
+    );
+    if (!rows[0]) return { success: false, quota: await this.getUserQuota(userId) };
+    return { success: true, quota: quotaStatus(rows[0].questions_used, rows[0].active_seconds) };
+  },
+
+  /** Adds active study time; heartbeats closer than 8 s apart are ignored. */
+  async recordHeartbeat(userId: string | number, secondsToAdd = 30): Promise<UserQuotaStatus> {
+    await ensureQuotaTable();
+    await pool.query(
+      `INSERT INTO ai_daily_usage (user_key, usage_day) VALUES ($1, ${TODAY})
+       ON CONFLICT (user_key, usage_day) DO UPDATE SET
+         active_seconds = ai_daily_usage.active_seconds
+           + LEAST($3, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM NOW() - ai_daily_usage.last_heartbeat)))::int),
+         last_heartbeat = NOW()
+       WHERE NOW() - ai_daily_usage.last_heartbeat >= INTERVAL '8 seconds'`,
+      [String(userId), QUOTA_TIME_ZONE, secondsToAdd],
+    );
+    return this.getUserQuota(userId);
+  },
+};
