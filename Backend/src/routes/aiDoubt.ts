@@ -127,6 +127,56 @@ router.post("/heartbeat", async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/ai/doubt/report { reason, answer, prompt? }
+ * A student flags an EduAI answer as wrong or offensive from inside the chat (Play Store /
+ * App Store rule for apps with AI-generated content). Saved for review and sent to Slack.
+ */
+const REPORT_REASONS = new Set(["wrong", "offensive"]);
+let reportsTableReady = false;
+const clip = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : null);
+
+router.post("/report", rateLimit({ windowMs: 60_000, max: 10 }), async (req: Request, res: Response) => {
+  const userId = resolveUserIdentifier(req);
+  const reason = req.body?.reason;
+  const answer = clip(req.body?.answer, 8000);
+  const prompt = clip(req.body?.prompt, 2000);
+  if (!REPORT_REASONS.has(reason) || !answer) {
+    res.status(400).json({ error: "Choose why you are reporting this answer." });
+    return;
+  }
+
+  if (!reportsTableReady) {
+    await db
+      .execute(sql`
+        CREATE TABLE IF NOT EXISTS ai_answer_reports (
+          id SERIAL PRIMARY KEY,
+          user_identifier VARCHAR(64) NOT NULL,
+          reason VARCHAR(16) NOT NULL,
+          answer TEXT NOT NULL,
+          prompt TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`)
+      .catch((err: any) => {
+        // Another Lambda created it at the same moment: the table exists
+        if (err?.code !== "23505" && err?.code !== "42P07") throw err;
+      });
+    reportsTableReady = true;
+  }
+  await db.execute(sql`
+    INSERT INTO ai_answer_reports (user_identifier, reason, answer, prompt)
+    VALUES (${userId}, ${reason}, ${answer}, ${prompt})
+  `);
+
+  void sendSlackAlert("EduAI answer reported by a student", new Error(`Reason: ${reason}`), {
+    userId,
+    reason,
+    prompt: prompt?.slice(0, 300),
+    answer: answer.slice(0, 500),
+  }).catch(() => {});
+  res.json({ success: true });
+});
+
+/**
  * 4. GET /api/v1/ai/doubt/history
  * Returns the LAST 2 chat sessions with messages for the sidebar
  */
