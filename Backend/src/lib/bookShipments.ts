@@ -85,7 +85,9 @@ export async function saveShipment(userId: number, razorpayOrderId: string, deta
   const order = rows[0];
   if (!order) return { error: "Order not found", status: 404 as const };
   if (order.status !== "created") return { error: "This order is already closed. Please start again.", status: 409 as const };
-  const bookName = `${order.title} Books`;
+  // Same name the Android app shows: "Dropper 2027 batch" -> "Dropper 2027 Books"
+  const base = String(order.title || '').replace(/\bbatch(es)?\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
+  const bookName = !base ? 'Books' : /\bbooks?$/i.test(base) ? base : `${base} Books`;
   const saved = await db.execute<{ id: number }>(sql`
     INSERT INTO book_shipments (razorpay_order_id, user_id, course_id, book_name, student_name, receiver_name,
       receiver_phone, email, address_line, city, state, pincode)
