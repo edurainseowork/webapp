@@ -20,6 +20,8 @@ import TeacherAssistantDesk from './TeacherAssistantDesk'
 import TeacherAssistantAnalysis from './TeacherAssistantAnalysis'
 import { handoffError } from '../handoff'
 import SupportContacts from './SupportContacts'
+import MobileVideo from './MobileVideo'
+import BookOrders from './BookOrders'
 import FaqManager from './FaqManager'
 import CustomSelect from '../components/CustomSelect'
 import '../index.css'
@@ -40,6 +42,8 @@ const TAB_TO_PATH: Record<string, string> = {
   notifications: '/notifications',
   tests: '/tests',
   supportContacts: '/support-contacts',
+  mobileVideo: '/mobile-video',
+  bookOrders: '/book-orders',
   faqs: '/faqs',
   students: '/students',
   admins: '/manage-staff',
@@ -61,6 +65,8 @@ const pathToTab = (pathname: string): string => {
   if (clean === '/notifications') return 'notifications';
   if (clean === '/tests') return 'tests';
   if (clean === '/support-contacts' || clean === '/support') return 'supportContacts';
+  if (clean === '/mobile-video') return 'mobileVideo';
+  if (clean === '/book-orders') return 'bookOrders';
   if (clean === '/faqs' || clean === '/faq') return 'faqs';
   if (clean === '/students' || clean === '/student-management') return 'students';
   if (clean === '/manage-staff' || clean === '/admins') return 'admins';
@@ -752,6 +758,12 @@ function App() {
               <div className={`nav-link ${activeTab === 'supportContacts' ? 'active' : ''}`} onClick={() => handleTabChange('supportContacts')}>
                 Support Contacts
               </div>
+              <div className={`nav-link ${activeTab === 'mobileVideo' ? 'active' : ''}`} onClick={() => handleTabChange('mobileVideo')}>
+                Mobile Video
+              </div>
+              <div className={`nav-link ${activeTab === 'bookOrders' ? 'active' : ''}`} onClick={() => handleTabChange('bookOrders')}>
+                Book Orders
+              </div>
               <div className={`nav-link ${activeTab === 'faqs' ? 'active' : ''}`} onClick={() => handleTabChange('faqs')}>
                 FAQs
               </div>
@@ -797,6 +809,8 @@ function App() {
                 {activeTab === 'notifications' && 'Notifications'}
                 {activeTab === 'tests' && 'Test Management'}
                 {activeTab === 'supportContacts' && 'Support Contacts'}
+                {activeTab === 'mobileVideo' && 'Mobile Video'}
+                {activeTab === 'bookOrders' && 'Book Orders'}
                 {activeTab === 'faqs' && 'Course FAQs'}
                 {activeTab === 'students' && 'User & Student Management'}
                 {activeTab === 'admins' && 'Manage Staff'}
@@ -1440,6 +1454,18 @@ function App() {
             {activeTab === 'supportContacts' && (
               <div className="animate-view">
                 <SupportContacts showToast={showToast} />
+              </div>
+            )}
+
+            {activeTab === 'mobileVideo' && (
+              <div className="animate-view">
+                <MobileVideo showToast={showToast} />
+              </div>
+            )}
+
+            {activeTab === 'bookOrders' && (
+              <div className="animate-view">
+                <BookOrders showToast={showToast} />
               </div>
             )}
 

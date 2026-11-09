@@ -19,6 +19,8 @@ import enrollmentsRouter from "./enrollments.js";
 import adminNotificationsRouter from "./adminNotifications.js";
 import profileRouter from "./profile.js";
 import bunnyRouter from "./bunny.routes.js";
+import { appIntroVideoRouter, cmsAppIntroVideoRouter } from "./appIntroVideo.js";
+import { bookOrdersRouter, cmsBookOrdersRouter } from "./bookOrders.js";
 import cmsTestsRouter from "./cmsTests.js";
 import testsRouter from "./tests.js";
 import cmsAdminsRouter from "./cmsAdmins.js";
@@ -32,7 +34,7 @@ import ebooksRouter from "./ebooks.js";
 import aiDoubtRouter from "./aiDoubt.js";
 import supportContactsRouter from "./supportContacts.js";
 import syncRouter from "./sync.js";
-import { restrictDeskRoles, authenticateToken, verifyToken } from "../middleware/auth.js";
+import { restrictDeskRoles, authenticateToken, verifyToken, requireAdmin, requireAdminOrFaculty } from "../middleware/auth.js";
 import {
   adminApiLimiter,
   aiRateLimiter,
@@ -85,10 +87,13 @@ router.use("/ebooks", catalogReadLimiter, ebooksRouter);
 router.use("/content", catalogReadLimiter, contentRouter);
 router.use("/tests", catalogReadLimiter, testsRouter);
 router.use("/support-contacts", catalogReadLimiter, supportContactsRouter);
+router.use("/app-intro-video", catalogReadLimiter, appIntroVideoRouter);
 
 // 2. Payment, Coupon & Enrollment Endpoints (20 req / 60s Token Bucket per User/IP)
 router.use("/coupons", identifyStudent, paymentRateLimiter, couponsRouter);
 router.use("/razorpay", identifyStudent, paymentRateLimiter, razorpayRouter);
+// Delivery details for "<batch> Books" bought in the Android app (paid through the batch order above)
+router.use("/book-orders", identifyStudent, paymentRateLimiter, bookOrdersRouter);
 router.use("/internal", internalRouter);
 router.use("/google-play", identifyStudent, paymentRateLimiter, googlePlayRouter);
 router.use("/apple-iap", identifyStudent, paymentRateLimiter, appleIapRouter);
@@ -117,6 +122,8 @@ router.use("/admin", adminApiLimiter, adminRouter);
 router.use("/stats", adminApiLimiter, statsRouter);
 router.use("/cms/tests", adminApiLimiter, cmsTestsRouter);
 router.use("/cms/admins", adminApiLimiter, cmsAdminsRouter);
+router.use("/cms/app-intro-video", adminApiLimiter, requireAdmin, cmsAppIntroVideoRouter);
+router.use("/cms/book-orders", adminApiLimiter, requireAdmin, cmsBookOrdersRouter);
 router.use("/mentor-desk", adminApiLimiter, mentorDeskRouter);
 router.use("/teacher-assistant-desk", adminApiLimiter, teacherAssistantDeskRouter);
 
@@ -126,6 +133,8 @@ router.use("/ai", aiRateLimiter, aiDoubtRouter);
 
 // Mounted at root: live classes & bunny video streaming
 router.use(liveClassesRouter);
+// Creating and deleting Bunny videos is for CMS staff only (these routes had no sign-in check)
+router.use("/videos", adminApiLimiter, requireAdminOrFaculty);
 router.use(bunnyRouter);
 
 export default router;
